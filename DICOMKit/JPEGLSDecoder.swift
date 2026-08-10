@@ -38,7 +38,7 @@ enum JPEGLSDecoder {
         let header = try parser.readHeader(expectedWidth: expectedWidth, expectedHeight: expectedHeight)
         guard header.precision <= bitsAllocated else { throw DICOMImageError.invalidImageAttributes }
 
-        let samples: [Int]
+        let samples: [Int32]
         switch (header.frameComponentCount, header.scanComponentIdentifiers.count, header.interleaveMode) {
         case (1, 1, 0):
             var decoder = SampleDecoder(
@@ -69,7 +69,7 @@ enum JPEGLSDecoder {
             samples = try decoder.decode()
             try decoder.finishFrame()
         case (3, 1, 0):
-            var planes = [[Int]](repeating: [], count: 3)
+            var planes = [[Int32]](repeating: [], count: 3)
             var scan = header
             for scanIndex in 0..<3 {
                 var decoder = SampleDecoder(
@@ -102,22 +102,42 @@ enum JPEGLSDecoder {
                     guard try parser.readMarker() == 0xD9 else { throw DICOMImageError.truncatedPixelData }
                 }
             }
-            guard planes.allSatisfy({ $0.count == expectedWidth * expectedHeight }) else {
+            let pixelCount = expectedWidth * expectedHeight
+            guard planes.allSatisfy({ $0.count == pixelCount }) else {
                 throw DICOMImageError.truncatedPixelData
             }
-            samples = (0..<(expectedWidth * expectedHeight)).flatMap { pixel in planes.map { $0[pixel] } }
+            samples = [Int32](unsafeUninitializedCapacity: pixelCount * 3) { buffer, initializedCount in
+                planes[0].withUnsafeBufferPointer { plane0 in
+                    planes[1].withUnsafeBufferPointer { plane1 in
+                        planes[2].withUnsafeBufferPointer { plane2 in
+                            for pixel in 0..<pixelCount {
+                                buffer[pixel * 3] = plane0[pixel]
+                                buffer[pixel * 3 + 1] = plane1[pixel]
+                                buffer[pixel * 3 + 2] = plane2[pixel]
+                            }
+                        }
+                    }
+                }
+                initializedCount = pixelCount * 3
+            }
         default:
             throw DICOMImageError.unsupportedPixelFormat
         }
 
-        var value = Data()
-        value.reserveCapacity(samples.count * (bitsAllocated / 8))
-        for sample in samples {
-            if bitsAllocated == 8 {
-                value.append(UInt8(sample))
-            } else {
-                value.append(UInt8(sample & 0xFF))
-                value.append(UInt8(sample >> 8))
+        let bytesPerSample = bitsAllocated / 8
+        var value = Data(count: samples.count * bytesPerSample)
+        value.withUnsafeMutableBytes { (destination: UnsafeMutableRawBufferPointer) in
+            samples.withUnsafeBufferPointer { source in
+                if bytesPerSample == 1 {
+                    for index in 0..<source.count {
+                        destination[index] = UInt8(truncatingIfNeeded: source[index])
+                    }
+                } else {
+                    let destination16 = destination.bindMemory(to: UInt16.self)
+                    for index in 0..<source.count {
+                        destination16[index] = UInt16(truncatingIfNeeded: source[index]).littleEndian
+                    }
+                }
             }
         }
         return DecodedFrame(value: value, precision: header.precision, samplesPerPixel: header.frameComponentCount)
@@ -534,7 +554,7 @@ private extension JPEGLSDecoder {
             runIndex = Array(repeating: 0, count: componentCount)
         }
 
-        mutating func decode() throws -> [Int] {
+        mutating func decode() throws -> [Int32] {
             interleaveMode == 1 ? try decodeLineInterleaved() : try decodePixelInterleaved()
         }
 
@@ -553,29 +573,41 @@ private extension JPEGLSDecoder {
         /// RGB every component of a pixel is decoded together (entering run
         /// mode only when all components agree, per T.87's triplet coding).
         /// Returns samples in pixel-major order (component fastest-varying).
-        private mutating func decodePixelInterleaved() throws -> [Int] {
-            var previous = Array(repeating: [Int](repeating: 0, count: width), count: componentCount)
-            var leftEdgeA = Array(repeating: 0, count: componentCount)
-            var leftEdgeC = Array(repeating: 0, count: componentCount)
-            var output = [Int]()
-            output.reserveCapacity(width * height * componentCount)
+        private mutating func decodePixelInterleaved() throws -> [Int32] {
+            // Flat, component-major buffers (component c's row occupies
+            // [c*width, c*width+width)) instead of [[Int]]: one contiguous
+            // allocation per buffer for the whole scan rather than a nested
+            // array of per-component arrays.
+            var previous = [Int32](repeating: 0, count: componentCount * width)
+            var current = [Int32](repeating: 0, count: componentCount * width)
+            var leftEdgeA = [Int32](repeating: 0, count: componentCount)
+            var leftEdgeC = [Int32](repeating: 0, count: componentCount)
+            // Scratch reused across every pixel instead of allocating fresh
+            // per-pixel arrays for the gradient categories and the run's
+            // starting Ra per component.
+            var q1s = [Int](repeating: 0, count: componentCount)
+            var q2s = [Int](repeating: 0, count: componentCount)
+            var q3s = [Int](repeating: 0, count: componentCount)
+            var startRa = [Int](repeating: 0, count: componentCount)
+            var output = [Int32](repeating: 0, count: width * height * componentCount)
 
             var decodedPixels = 0
             var restartIndex = 0
             var resetPreviousLine = false
-            for _ in 0..<height {
-                var current = Array(repeating: [Int](repeating: 0, count: width), count: componentCount)
+            for row in 0..<height {
+                // Every index of `current` is written exactly once below
+                // (by run-fill or regular decode) before this row ends, so
+                // it needs no clearing — the loop only ever reads positions
+                // it has already written within the same row.
                 var x = 0
                 while x < width {
-                    var q1s = [Int](repeating: 0, count: componentCount)
-                    var q2s = [Int](repeating: 0, count: componentCount)
-                    var q3s = [Int](repeating: 0, count: componentCount)
                     var allZero = true
                     for component in 0..<componentCount {
-                        let ra = x > 0 ? current[component][x - 1] : leftEdgeA[component]
-                        let rb = previous[component][x]
-                        let rc = x > 0 ? previous[component][x - 1] : leftEdgeC[component]
-                        let rd = x + 1 < width ? previous[component][x + 1] : rb
+                        let base = component * width
+                        let ra = x > 0 ? Int(current[base + x - 1]) : Int(leftEdgeA[component])
+                        let rb = Int(previous[base + x])
+                        let rc = x > 0 ? Int(previous[base + x - 1]) : Int(leftEdgeC[component])
+                        let rd = x + 1 < width ? Int(previous[base + x + 1]) : rb
                         let q1 = quantize(rd - rb)
                         let q2 = quantize(rb - rc)
                         let q3 = quantize(rc - ra)
@@ -585,15 +617,16 @@ private extension JPEGLSDecoder {
                         if q1 != 0 || q2 != 0 || q3 != 0 { allZero = false }
                     }
                     if allZero {
-                        let nextX = try decodeRunPixel(from: x, leftEdgeA: leftEdgeA, previous: previous, current: &current)
+                        let nextX = try decodeRunPixel(from: x, leftEdgeA: leftEdgeA, previous: previous, current: &current, startRa: &startRa)
                         decodedPixels += nextX - x
                         x = nextX
                     } else {
                         for component in 0..<componentCount {
-                            let ra = x > 0 ? current[component][x - 1] : leftEdgeA[component]
-                            let rb = previous[component][x]
-                            let rc = x > 0 ? previous[component][x - 1] : leftEdgeC[component]
-                            current[component][x] = try decodeRegular(ra: ra, rb: rb, rc: rc, q1: q1s[component], q2: q2s[component], q3: q3s[component])
+                            let base = component * width
+                            let ra = x > 0 ? Int(current[base + x - 1]) : Int(leftEdgeA[component])
+                            let rb = Int(previous[base + x])
+                            let rc = x > 0 ? Int(previous[base + x - 1]) : Int(leftEdgeC[component])
+                            current[base + x] = Int32(try decodeRegular(ra: ra, rb: rb, rc: rc, q1: q1s[component], q2: q2s[component], q3: q3s[component]))
                         }
                         x += 1
                         decodedPixels += 1
@@ -605,16 +638,25 @@ private extension JPEGLSDecoder {
                         resetPreviousLine = true
                     }
                 }
-                for pixel in 0..<width {
-                    for component in 0..<componentCount {
-                        output.append(current[component][pixel])
+                output.withUnsafeMutableBufferPointer { output in
+                    current.withUnsafeBufferPointer { current in
+                        for pixel in 0..<width {
+                            let destinationBase = (row * width + pixel) * componentCount
+                            for component in 0..<componentCount {
+                                output[destinationBase + component] = current[component * width + pixel]
+                            }
+                        }
                     }
                 }
                 for component in 0..<componentCount {
                     leftEdgeC[component] = resetPreviousLine ? 0 : leftEdgeA[component]
-                    leftEdgeA[component] = resetPreviousLine ? 0 : current[component][0]
+                    leftEdgeA[component] = resetPreviousLine ? 0 : current[component * width]
                 }
-                previous = resetPreviousLine ? Array(repeating: [Int](repeating: 0, count: width), count: componentCount) : current
+                if resetPreviousLine {
+                    for index in previous.indices { previous[index] = 0 }
+                } else {
+                    swap(&previous, &current)
+                }
                 resetPreviousLine = false
             }
             return output
@@ -627,23 +669,25 @@ private extension JPEGLSDecoder {
         /// context 0 for every component of a multi-component pixel, since
         /// the run's all-components-equal-Ra condition already captures the
         /// smoothness that the dynamic check exists to detect.
-        private mutating func decodeRunPixel(from start: Int, leftEdgeA: [Int], previous: [[Int]], current: inout [[Int]]) throws -> Int {
-            let startRa = (0..<componentCount).map { component in
-                start > 0 ? current[component][start - 1] : leftEdgeA[component]
+        private mutating func decodeRunPixel(from start: Int, leftEdgeA: [Int32], previous: [Int32], current: inout [Int32], startRa: inout [Int]) throws -> Int {
+            for component in 0..<componentCount {
+                startRa[component] = start > 0 ? Int(current[component * width + start - 1]) : Int(leftEdgeA[component])
             }
             let length = try decodeRunLength(runIndexSlot: 0, remaining: width - start)
             if length > 0 {
                 for component in 0..<componentCount {
-                    for index in start..<(start + length) { current[component][index] = startRa[component] }
+                    let base = component * width
+                    let value = Int32(startRa[component])
+                    for index in (base + start)..<(base + start + length) { current[index] = value }
                 }
             }
             let interruption = start + length
             guard interruption < width else { return width }
             for component in 0..<componentCount {
                 let ra = startRa[component]
-                let rb = previous[component][interruption]
+                let rb = Int(previous[component * width + interruption])
                 let contextIndex = componentCount == 1 ? (abs(ra - rb) <= near ? 1 : 0) : 0
-                current[component][interruption] = try decodeRunInterruptionSample(ra: ra, rb: rb, contextIndex: contextIndex, runIndexSlot: 0)
+                current[component * width + interruption] = Int32(try decodeRunInterruptionSample(ra: ra, rb: rb, contextIndex: contextIndex, runIndexSlot: 0))
             }
             if runIndex[0] > 0 { runIndex[0] -= 1 }
             return interruption + 1
@@ -658,34 +702,36 @@ private extension JPEGLSDecoder {
         /// index and edge state), sharing only the adaptive regular/run
         /// contexts with the other components. Returns samples in
         /// pixel-major order (component fastest-varying).
-        private mutating func decodeLineInterleaved() throws -> [Int] {
-            var previous = Array(repeating: [Int](repeating: 0, count: width), count: componentCount)
-            var leftEdgeA = Array(repeating: 0, count: componentCount)
-            var leftEdgeC = Array(repeating: 0, count: componentCount)
-            var output = [Int](repeating: 0, count: width * height * componentCount)
+        private mutating func decodeLineInterleaved() throws -> [Int32] {
+            // Flat, component-major buffers as in decodePixelInterleaved.
+            var previous = [Int32](repeating: 0, count: componentCount * width)
+            var current = [Int32](repeating: 0, count: componentCount * width)
+            var leftEdgeA = [Int32](repeating: 0, count: componentCount)
+            var leftEdgeC = [Int32](repeating: 0, count: componentCount)
+            var output = [Int32](repeating: 0, count: width * height * componentCount)
 
             var decodedSamples = 0
             var restartIndex = 0
             var resetPreviousLine = false
             let totalSamples = width * height * componentCount
             for row in 0..<height {
-                var current = Array(repeating: [Int](repeating: 0, count: width), count: componentCount)
                 for component in 0..<componentCount {
+                    let base = component * width
                     var x = 0
                     while x < width {
-                        let ra = x > 0 ? current[component][x - 1] : leftEdgeA[component]
-                        let rb = previous[component][x]
-                        let rc = x > 0 ? previous[component][x - 1] : leftEdgeC[component]
-                        let rd = x + 1 < width ? previous[component][x + 1] : rb
+                        let ra = x > 0 ? Int(current[base + x - 1]) : Int(leftEdgeA[component])
+                        let rb = Int(previous[base + x])
+                        let rc = x > 0 ? Int(previous[base + x - 1]) : Int(leftEdgeC[component])
+                        let rd = x + 1 < width ? Int(previous[base + x + 1]) : rb
                         let q1 = quantize(rd - rb)
                         let q2 = quantize(rb - rc)
                         let q3 = quantize(rc - ra)
                         if q1 == 0, q2 == 0, q3 == 0 {
-                            let nextX = try decodeRunComponent(component: component, from: x, ra: ra, previousComponent: previous[component], current: &current[component])
+                            let nextX = try decodeRunComponent(component: component, from: x, ra: ra, previous: previous, current: &current)
                             decodedSamples += nextX - x
                             x = nextX
                         } else {
-                            current[component][x] = try decodeRegular(ra: ra, rb: rb, rc: rc, q1: q1, q2: q2, q3: q3)
+                            current[base + x] = Int32(try decodeRegular(ra: ra, rb: rb, rc: rc, q1: q1, q2: q2, q3: q3))
                             x += 1
                             decodedSamples += 1
                         }
@@ -697,14 +743,23 @@ private extension JPEGLSDecoder {
                         }
                     }
                     leftEdgeC[component] = resetPreviousLine ? 0 : leftEdgeA[component]
-                    leftEdgeA[component] = resetPreviousLine ? 0 : current[component][0]
+                    leftEdgeA[component] = resetPreviousLine ? 0 : current[base]
                 }
-                for pixel in 0..<width {
-                    for component in 0..<componentCount {
-                        output[(row * width + pixel) * componentCount + component] = current[component][pixel]
+                output.withUnsafeMutableBufferPointer { output in
+                    current.withUnsafeBufferPointer { current in
+                        for pixel in 0..<width {
+                            let destinationBase = (row * width + pixel) * componentCount
+                            for component in 0..<componentCount {
+                                output[destinationBase + component] = current[component * width + pixel]
+                            }
+                        }
                     }
                 }
-                previous = resetPreviousLine ? Array(repeating: [Int](repeating: 0, count: width), count: componentCount) : current
+                if resetPreviousLine {
+                    for index in previous.indices { previous[index] = 0 }
+                } else {
+                    swap(&previous, &current)
+                }
                 resetPreviousLine = false
             }
             return output
@@ -714,16 +769,18 @@ private extension JPEGLSDecoder {
         /// component's own run index slot. The run-interruption context is
         /// always chosen dynamically here: line interleave decodes each
         /// component as an independent single-component scan.
-        private mutating func decodeRunComponent(component: Int, from start: Int, ra: Int, previousComponent: [Int], current: inout [Int]) throws -> Int {
+        private mutating func decodeRunComponent(component: Int, from start: Int, ra: Int, previous: [Int32], current: inout [Int32]) throws -> Int {
+            let base = component * width
             let length = try decodeRunLength(runIndexSlot: component, remaining: width - start)
             if length > 0 {
-                for index in start..<(start + length) { current[index] = ra }
+                let value = Int32(ra)
+                for index in (base + start)..<(base + start + length) { current[index] = value }
             }
             let interruption = start + length
             guard interruption < width else { return width }
-            let rb = previousComponent[interruption]
+            let rb = Int(previous[base + interruption])
             let contextIndex = abs(ra - rb) <= near ? 1 : 0
-            current[interruption] = try decodeRunInterruptionSample(ra: ra, rb: rb, contextIndex: contextIndex, runIndexSlot: component)
+            current[base + interruption] = Int32(try decodeRunInterruptionSample(ra: ra, rb: rb, contextIndex: contextIndex, runIndexSlot: component))
             if runIndex[component] > 0 { runIndex[component] -= 1 }
             return interruption + 1
         }
