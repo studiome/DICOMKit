@@ -8,6 +8,8 @@ public enum TransferSyntax: Sendable, Equatable {
     case explicitVRBigEndian
     /// RLE Lossless (`1.2.840.10008.1.2.5`).
     case rleLossless
+    /// JPEG Baseline (Process 1, 8-bit) (`1.2.840.10008.1.2.4.50`).
+    case jpegBaseline
     /// A transfer syntax not modelled by DICOMKit.
     case unknown(String)
 
@@ -18,6 +20,7 @@ public enum TransferSyntax: Sendable, Equatable {
         case .explicitVRLittleEndian: "1.2.840.10008.1.2.1"
         case .explicitVRBigEndian: "1.2.840.10008.1.2.2"
         case .rleLossless: "1.2.840.10008.1.2.5"
+        case .jpegBaseline: "1.2.840.10008.1.2.4.50"
         case .unknown(let uid): uid
         }
     }
@@ -28,6 +31,7 @@ public enum TransferSyntax: Sendable, Equatable {
         case Self.explicitVRLittleEndian.uid: self = .explicitVRLittleEndian
         case Self.explicitVRBigEndian.uid: self = .explicitVRBigEndian
         case Self.rleLossless.uid: self = .rleLossless
+        case Self.jpegBaseline.uid: self = .jpegBaseline
         default: self = .unknown(uid)
         }
     }

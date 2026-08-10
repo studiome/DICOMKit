@@ -730,6 +730,15 @@ struct DICOMKitTests {
         #expect(try imageBytes(frames[1].cgImage()) == Data([0x34]))
     }
 
+    @Test func recognizesJPEGBaselineTransferSyntax() throws {
+        let file = try DICOMFile(data: part10File(
+            transferSyntaxUID: TransferSyntax.jpegBaseline.uid,
+            datasetElements: []
+        ))
+
+        #expect(file.transferSyntax == .jpegBaseline)
+    }
+
     @Test func rejectsSequenceItemTagThatIsNeitherItemNorDelimiter() {
         let data = part10File(
             transferSyntaxUID: TransferSyntax.explicitVRLittleEndian.uid,

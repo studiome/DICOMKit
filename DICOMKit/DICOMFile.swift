@@ -47,6 +47,8 @@ public struct DICOMFile: Sendable {
         guard let frameCount = Int(dataset[.numberOfFrames]?.stringValue ?? "1"), frameCount > 0 else { return nil }
         let pixelCount = Int(rows) * Int(columns)
         let values: [Data]
+        var outputSamples = Int(samplesPerPixel)
+        var outputPhotometric = PhotometricInterpretation(name: photometricInterpretation)
         switch transferSyntax {
         case .rleLossless:
             guard let fragments = pixelElement.encapsulatedFragments,
@@ -69,6 +71,14 @@ public struct DICOMFile: Sendable {
                 }
             }
             guard values.count == frameCount else { return nil }
+        case .jpegBaseline:
+            guard let fragments = pixelElement.encapsulatedFragments,
+                  let fragmentOffsets = pixelElement.encapsulatedFragmentOffsets,
+                  let basicOffsetTable = pixelElement.basicOffsetTable,
+                  let frames = try? RLELosslessDecoder.frameFragments(fragments: fragments, fragmentOffsets: fragmentOffsets, basicOffsetTable: basicOffsetTable, frameCount: frameCount) else { return nil }
+            values = frames.compactMap { try? JPEGFrameDecoder.decodeRGB(fragments: $0, width: Int(columns), height: Int(rows)) }
+            guard values.count == frameCount else { return nil }
+            outputSamples = 3; outputPhotometric = .rgb
         default:
             guard bitsAllocated.isMultiple(of: 8) else { return nil }
             let bytesPerFrame = pixelCount * Int(samplesPerPixel) * (Int(bitsAllocated) / 8)
@@ -81,9 +91,9 @@ public struct DICOMFile: Sendable {
             value: value,
             rows: Int(rows),
             columns: Int(columns),
-            samplesPerPixel: Int(samplesPerPixel),
+            samplesPerPixel: outputSamples,
             bitsAllocated: Int(bitsAllocated),
-            photometricInterpretation: PhotometricInterpretation(name: photometricInterpretation),
+            photometricInterpretation: outputPhotometric,
             planarConfiguration: Int(dataset[.planarConfiguration]?.uint16Value ?? 0),
             bitsStored: dataset[.bitsStored]?.uint16Value.map(Int.init),
             pixelRepresentation: Int(dataset[.pixelRepresentation]?.uint16Value ?? 0),
@@ -125,7 +135,7 @@ public struct DICOMFile: Sendable {
             throw DICOMError.missingTransferSyntaxUID
         }
         transferSyntax = TransferSyntax(uid: uid)
-        guard transferSyntax == .explicitVRLittleEndian || transferSyntax == .implicitVRLittleEndian || transferSyntax == .rleLossless else {
+        guard transferSyntax == .explicitVRLittleEndian || transferSyntax == .implicitVRLittleEndian || transferSyntax == .rleLossless || transferSyntax == .jpegBaseline else {
             throw DICOMError.unsupportedTransferSyntax(uid)
         }
 
