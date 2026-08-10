@@ -7,70 +7,72 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		21CD6B3C30296523008D0AEC /* DICOMKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 21CD6B3030296523008D0AEC /* DICOMKit.framework */; };
+		DC000000000000000000001C /* DICOMKit in Frameworks */ = {isa = PBXBuildFile; productRef = DC000000000000000000001B /* DICOMKit */; };
+		DC000000000000000000001D /* DICOMKitCloudHost.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = DC0000000000000000000006 /* DICOMKitCloudHost.framework */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
-		21CD6B3D30296523008D0AEC /* PBXContainerItemProxy */ = {
+		DC000000000000000000001E /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
-			containerPortal = 21CD6B2730296523008D0AEC /* Project object */;
+			containerPortal = DC0000000000000000000001 /* Project object */;
 			proxyType = 1;
-			remoteGlobalIDString = 21CD6B2F30296523008D0AEC;
-			remoteInfo = DICOMKit;
+			remoteGlobalIDString = DC0000000000000000000008;
+			remoteInfo = DICOMKitCloudHost;
 		};
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
-		21CD6B3030296523008D0AEC /* DICOMKit.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = DICOMKit.framework; sourceTree = BUILT_PRODUCTS_DIR; };
-		21CD6B3B30296523008D0AEC /* DICOMKitTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = DICOMKitTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		DC0000000000000000000006 /* DICOMKitCloudHost.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = DICOMKitCloudHost.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		DC0000000000000000000007 /* DICOMKitCloudHostTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = DICOMKitCloudHostTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
-		21CD6B3230296523008D0AEC /* DICOMKit */ = {
+		DC0000000000000000000004 /* CloudHost */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			path = DICOMKit;
+			path = CloudHost;
 			sourceTree = "<group>";
 		};
-		21CD6B3F30296523008D0AEC /* DICOMKitTests */ = {
+		DC0000000000000000000005 /* CloudHostTests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			path = DICOMKitTests;
+			path = CloudHostTests;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
-		21CD6B2D30296523008D0AEC /* Frameworks */ = {
+		DC000000000000000000000C /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				DC000000000000000000001C /* DICOMKit in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		21CD6B3830296523008D0AEC /* Frameworks */ = {
+		DC000000000000000000000D /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				21CD6B3C30296523008D0AEC /* DICOMKit.framework in Frameworks */,
+				DC000000000000000000001D /* DICOMKitCloudHost.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
-		21CD6B2630296523008D0AEC = {
+		DC0000000000000000000002 = {
 			isa = PBXGroup;
 			children = (
-				21CD6B3230296523008D0AEC /* DICOMKit */,
-				21CD6B3F30296523008D0AEC /* DICOMKitTests */,
-				21CD6B3130296523008D0AEC /* Products */,
+				DC0000000000000000000004 /* CloudHost */,
+				DC0000000000000000000005 /* CloudHostTests */,
+				DC0000000000000000000003 /* Products */,
 			);
 			sourceTree = "<group>";
 		};
-		21CD6B3130296523008D0AEC /* Products */ = {
+		DC0000000000000000000003 /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				21CD6B3030296523008D0AEC /* DICOMKit.framework */,
-				21CD6B3B30296523008D0AEC /* DICOMKitTests.xctest */,
+				DC0000000000000000000006 /* DICOMKitCloudHost.framework */,
+				DC0000000000000000000007 /* DICOMKitCloudHostTests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -78,7 +80,7 @@
 /* End PBXGroup section */
 
 /* Begin PBXHeadersBuildPhase section */
-		21CD6B2B30296523008D0AEC /* Headers */ = {
+		DC0000000000000000000010 /* Headers */ = {
 			isa = PBXHeadersBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -88,99 +90,103 @@
 /* End PBXHeadersBuildPhase section */
 
 /* Begin PBXNativeTarget section */
-		21CD6B2F30296523008D0AEC /* DICOMKit */ = {
+		DC0000000000000000000008 /* DICOMKitCloudHost */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = 21CD6B4430296523008D0AEC /* Build configuration list for PBXNativeTarget "DICOMKit" */;
+			buildConfigurationList = DC0000000000000000000015 /* Build configuration list for PBXNativeTarget "DICOMKitCloudHost" */;
 			buildPhases = (
-				21CD6B2B30296523008D0AEC /* Headers */,
-				21CD6B2C30296523008D0AEC /* Sources */,
-				21CD6B2D30296523008D0AEC /* Frameworks */,
-				21CD6B2E30296523008D0AEC /* Resources */,
+				DC0000000000000000000010 /* Headers */,
+				DC000000000000000000000A /* Sources */,
+				DC000000000000000000000C /* Frameworks */,
+				DC000000000000000000000E /* Resources */,
 			);
 			buildRules = (
 			);
 			dependencies = (
 			);
 			fileSystemSynchronizedGroups = (
-				21CD6B3230296523008D0AEC /* DICOMKit */,
+				DC0000000000000000000004 /* CloudHost */,
 			);
-			name = DICOMKit;
+			name = DICOMKitCloudHost;
 			packageProductDependencies = (
+				DC000000000000000000001B /* DICOMKit */,
 			);
-			productName = DICOMKit;
-			productReference = 21CD6B3030296523008D0AEC /* DICOMKit.framework */;
+			productName = DICOMKitCloudHost;
+			productReference = DC0000000000000000000006 /* DICOMKitCloudHost.framework */;
 			productType = "com.apple.product-type.framework";
 		};
-		21CD6B3A30296523008D0AEC /* DICOMKitTests */ = {
+		DC0000000000000000000009 /* DICOMKitCloudHostTests */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = 21CD6B4730296523008D0AEC /* Build configuration list for PBXNativeTarget "DICOMKitTests" */;
+			buildConfigurationList = DC0000000000000000000016 /* Build configuration list for PBXNativeTarget "DICOMKitCloudHostTests" */;
 			buildPhases = (
-				21CD6B3730296523008D0AEC /* Sources */,
-				21CD6B3830296523008D0AEC /* Frameworks */,
-				21CD6B3930296523008D0AEC /* Resources */,
+				DC000000000000000000000B /* Sources */,
+				DC000000000000000000000D /* Frameworks */,
+				DC000000000000000000000F /* Resources */,
 			);
 			buildRules = (
 			);
 			dependencies = (
-				21CD6B3E30296523008D0AEC /* PBXTargetDependency */,
+				DC000000000000000000001F /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
-				21CD6B3F30296523008D0AEC /* DICOMKitTests */,
+				DC0000000000000000000005 /* CloudHostTests */,
 			);
-			name = DICOMKitTests;
+			name = DICOMKitCloudHostTests;
 			packageProductDependencies = (
 			);
-			productName = DICOMKitTests;
-			productReference = 21CD6B3B30296523008D0AEC /* DICOMKitTests.xctest */;
+			productName = DICOMKitCloudHostTests;
+			productReference = DC0000000000000000000007 /* DICOMKitCloudHostTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
 		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
-		21CD6B2730296523008D0AEC /* Project object */ = {
+		DC0000000000000000000001 /* Project object */ = {
 			isa = PBXProject;
 			attributes = {
 				BuildIndependentTargetsInParallel = 1;
 				LastSwiftUpdateCheck = 2660;
 				LastUpgradeCheck = 2660;
 				TargetAttributes = {
-					21CD6B2F30296523008D0AEC = {
+					DC0000000000000000000008 = {
 						CreatedOnToolsVersion = 26.6;
 					};
-					21CD6B3A30296523008D0AEC = {
+					DC0000000000000000000009 = {
 						CreatedOnToolsVersion = 26.6;
 					};
 				};
 			};
-			buildConfigurationList = 21CD6B2A30296523008D0AEC /* Build configuration list for PBXProject "DICOMKit" */;
+			buildConfigurationList = DC0000000000000000000014 /* Build configuration list for PBXProject "DICOMKit" */;
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
 			knownRegions = (
 				en,
 				Base,
 			);
-			mainGroup = 21CD6B2630296523008D0AEC;
+			mainGroup = DC0000000000000000000002;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				DC000000000000000000001A /* Local DICOMKit package */,
+			);
 			preferredProjectObjectVersion = 77;
-			productRefGroup = 21CD6B3130296523008D0AEC /* Products */;
+			productRefGroup = DC0000000000000000000003 /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				21CD6B2F30296523008D0AEC /* DICOMKit */,
-				21CD6B3A30296523008D0AEC /* DICOMKitTests */,
+				DC0000000000000000000008 /* DICOMKitCloudHost */,
+				DC0000000000000000000009 /* DICOMKitCloudHostTests */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
-		21CD6B2E30296523008D0AEC /* Resources */ = {
+		DC000000000000000000000E /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		21CD6B3930296523008D0AEC /* Resources */ = {
+		DC000000000000000000000F /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -190,14 +196,14 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
-		21CD6B2C30296523008D0AEC /* Sources */ = {
+		DC000000000000000000000A /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		21CD6B3730296523008D0AEC /* Sources */ = {
+		DC000000000000000000000B /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -207,261 +213,92 @@
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
-		21CD6B3E30296523008D0AEC /* PBXTargetDependency */ = {
+		DC000000000000000000001F /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			target = 21CD6B2F30296523008D0AEC /* DICOMKit */;
-			targetProxy = 21CD6B3D30296523008D0AEC /* PBXContainerItemProxy */;
+			target = DC0000000000000000000008 /* DICOMKitCloudHost */;
+			targetProxy = DC000000000000000000001E /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
-		21CD6B4230296523008D0AEC /* Debug */ = {
+		DC0000000000000000000011 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				ALWAYS_SEARCH_USER_PATHS = NO;
-				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
-				CLANG_ANALYZER_NONNULL = YES;
-				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
-				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
 				CLANG_ENABLE_MODULES = YES;
-				CLANG_ENABLE_OBJC_ARC = YES;
-				CLANG_ENABLE_OBJC_WEAK = YES;
-				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
-				CLANG_WARN_BOOL_CONVERSION = YES;
-				CLANG_WARN_COMMA = YES;
-				CLANG_WARN_CONSTANT_CONVERSION = YES;
-				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
-				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
-				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
-				CLANG_WARN_EMPTY_BODY = YES;
-				CLANG_WARN_ENUM_CONVERSION = YES;
-				CLANG_WARN_INFINITE_RECURSION = YES;
-				CLANG_WARN_INT_CONVERSION = YES;
-				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
-				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
-				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
-				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
-				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
-				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
-				CLANG_WARN_STRICT_PROTOTYPES = YES;
-				CLANG_WARN_SUSPICIOUS_MOVE = YES;
-				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
-				CLANG_WARN_UNREACHABLE_CODE = YES;
-				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 1;
 				DEBUG_INFORMATION_FORMAT = dwarf;
-				DEVELOPMENT_TEAM = 7XT4A4J2HC;
-				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
-				ENABLE_USER_SCRIPT_SANDBOXING = YES;
-				GCC_C_LANGUAGE_STANDARD = gnu17;
-				GCC_DYNAMIC_NO_PIC = NO;
-				GCC_NO_COMMON_BLOCKS = YES;
-				GCC_OPTIMIZATION_LEVEL = 0;
-				GCC_PREPROCESSOR_DEFINITIONS = (
-					"DEBUG=1",
-					"$(inherited)",
-				);
-				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
-				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
-				GCC_WARN_UNDECLARED_SELECTOR = YES;
-				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
-				GCC_WARN_UNUSED_FUNCTION = YES;
-				GCC_WARN_UNUSED_VARIABLE = YES;
-				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
-				MACOSX_DEPLOYMENT_TARGET = 11.0;
-				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
-				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
-				SDKROOT = macosx;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
-				VERSIONING_SYSTEM = "apple-generic";
-				VERSION_INFO_PREFIX = "";
 			};
 			name = Debug;
 		};
-		21CD6B4330296523008D0AEC /* Release */ = {
+		DC0000000000000000000012 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				ALWAYS_SEARCH_USER_PATHS = NO;
-				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
-				CLANG_ANALYZER_NONNULL = YES;
-				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
-				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
 				CLANG_ENABLE_MODULES = YES;
-				CLANG_ENABLE_OBJC_ARC = YES;
-				CLANG_ENABLE_OBJC_WEAK = YES;
-				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
-				CLANG_WARN_BOOL_CONVERSION = YES;
-				CLANG_WARN_COMMA = YES;
-				CLANG_WARN_CONSTANT_CONVERSION = YES;
-				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
-				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
-				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
-				CLANG_WARN_EMPTY_BODY = YES;
-				CLANG_WARN_ENUM_CONVERSION = YES;
-				CLANG_WARN_INFINITE_RECURSION = YES;
-				CLANG_WARN_INT_CONVERSION = YES;
-				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
-				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
-				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
-				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
-				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
-				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
-				CLANG_WARN_STRICT_PROTOTYPES = YES;
-				CLANG_WARN_SUSPICIOUS_MOVE = YES;
-				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
-				CLANG_WARN_UNREACHABLE_CODE = YES;
-				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 1;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
-				DEVELOPMENT_TEAM = 7XT4A4J2HC;
-				ENABLE_NS_ASSERTIONS = NO;
-				ENABLE_STRICT_OBJC_MSGSEND = YES;
-				ENABLE_USER_SCRIPT_SANDBOXING = YES;
-				GCC_C_LANGUAGE_STANDARD = gnu17;
-				GCC_NO_COMMON_BLOCKS = YES;
-				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
-				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
-				GCC_WARN_UNDECLARED_SELECTOR = YES;
-				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
-				GCC_WARN_UNUSED_FUNCTION = YES;
-				GCC_WARN_UNUSED_VARIABLE = YES;
-				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
-				MACOSX_DEPLOYMENT_TARGET = 11.0;
-				MTL_ENABLE_DEBUG_INFO = NO;
-				MTL_FAST_MATH = YES;
-				SDKROOT = macosx;
 				SWIFT_COMPILATION_MODE = wholemodule;
-				VERSIONING_SYSTEM = "apple-generic";
-				VERSION_INFO_PREFIX = "";
 			};
 			name = Release;
 		};
-		21CD6B4530296523008D0AEC /* Debug */ = {
+		DC0000000000000000000017 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				BUILD_LIBRARY_FOR_DISTRIBUTION = YES;
 				CODE_SIGN_STYLE = Automatic;
-				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 7XT4A4J2HC;
-				DYLIB_COMPATIBILITY_VERSION = 1;
-				DYLIB_CURRENT_VERSION = 1;
-				DYLIB_INSTALL_NAME_BASE = "@rpath";
-				ENABLE_MODULE_VERIFIER = YES;
+				DEFINES_MODULE = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_NSHumanReadableCopyright = "";
-				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
-				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
-				LD_RUNPATH_SEARCH_PATHS = (
-					"$(inherited)",
-					"@executable_path/../Frameworks",
-					"@loader_path/Frameworks",
-				);
-				MACOSX_DEPLOYMENT_TARGET = 14.6;
-				MARKETING_VERSION = 0.1.0;
-				MODULE_VERIFIER_SUPPORTED_LANGUAGES = "objective-c objective-c++";
-				MODULE_VERIFIER_SUPPORTED_LANGUAGE_STANDARDS = "gnu17 gnu++20";
-				PRODUCT_BUNDLE_IDENTIFIER = org.studiomexx.DICOMKit;
+				PRODUCT_BUNDLE_IDENTIFIER = org.studiomexx.DICOMKitCloudHost;
 				PRODUCT_NAME = "$(TARGET_NAME:c99extidentifier)";
 				SKIP_INSTALL = YES;
-				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
 				SUPPORTS_MACCATALYST = NO;
-				SWIFT_APPROACHABLE_CONCURRENCY = YES;
-				SWIFT_EMIT_LOC_STRINGS = YES;
-				SWIFT_INSTALL_MODULE = YES;
-				SWIFT_INSTALL_OBJC_HEADER = NO;
-				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 6.0;
 				TARGETED_DEVICE_FAMILY = 2;
 			};
 			name = Debug;
 		};
-		21CD6B4630296523008D0AEC /* Release */ = {
+		DC0000000000000000000018 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				BUILD_LIBRARY_FOR_DISTRIBUTION = YES;
 				CODE_SIGN_STYLE = Automatic;
-				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 7XT4A4J2HC;
-				DYLIB_COMPATIBILITY_VERSION = 1;
-				DYLIB_CURRENT_VERSION = 1;
-				DYLIB_INSTALL_NAME_BASE = "@rpath";
-				ENABLE_MODULE_VERIFIER = YES;
+				DEFINES_MODULE = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_NSHumanReadableCopyright = "";
-				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
-				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
-				LD_RUNPATH_SEARCH_PATHS = (
-					"$(inherited)",
-					"@executable_path/../Frameworks",
-					"@loader_path/Frameworks",
-				);
-				MACOSX_DEPLOYMENT_TARGET = 14.6;
-				MARKETING_VERSION = 0.1.0;
-				MODULE_VERIFIER_SUPPORTED_LANGUAGES = "objective-c objective-c++";
-				MODULE_VERIFIER_SUPPORTED_LANGUAGE_STANDARDS = "gnu17 gnu++20";
-				PRODUCT_BUNDLE_IDENTIFIER = org.studiomexx.DICOMKit;
+				PRODUCT_BUNDLE_IDENTIFIER = org.studiomexx.DICOMKitCloudHost;
 				PRODUCT_NAME = "$(TARGET_NAME:c99extidentifier)";
 				SKIP_INSTALL = YES;
-				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
 				SUPPORTS_MACCATALYST = NO;
-				SWIFT_APPROACHABLE_CONCURRENCY = YES;
-				SWIFT_EMIT_LOC_STRINGS = YES;
-				SWIFT_INSTALL_MODULE = YES;
-				SWIFT_INSTALL_OBJC_HEADER = NO;
-				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 6.0;
 				TARGETED_DEVICE_FAMILY = 2;
 			};
 			name = Release;
 		};
-		21CD6B4830296523008D0AEC /* Debug */ = {
+		DC0000000000000000000019 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 7XT4A4J2HC;
 				GENERATE_INFOPLIST_FILE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
-				MACOSX_DEPLOYMENT_TARGET = 14.6;
-				MARKETING_VERSION = 0.1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = org.studiomexx.DICOMKitTests;
+				PRODUCT_BUNDLE_IDENTIFIER = org.studiomexx.DICOMKitCloudHostTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
-				STRING_CATALOG_GENERATE_SYMBOLS = NO;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
-				SWIFT_APPROACHABLE_CONCURRENCY = YES;
-				SWIFT_EMIT_LOC_STRINGS = NO;
-				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SUPPORTS_MACCATALYST = NO;
 				SWIFT_VERSION = 6.0;
 				TARGETED_DEVICE_FAMILY = 2;
 			};
 			name = Debug;
 		};
-		21CD6B4930296523008D0AEC /* Release */ = {
+		DC0000000000000000000020 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 7XT4A4J2HC;
 				GENERATE_INFOPLIST_FILE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
-				MACOSX_DEPLOYMENT_TARGET = 14.6;
-				MARKETING_VERSION = 0.1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = org.studiomexx.DICOMKitTests;
+				PRODUCT_BUNDLE_IDENTIFIER = org.studiomexx.DICOMKitCloudHostTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
-				STRING_CATALOG_GENERATE_SYMBOLS = NO;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
-				SWIFT_APPROACHABLE_CONCURRENCY = YES;
-				SWIFT_EMIT_LOC_STRINGS = NO;
-				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SUPPORTS_MACCATALYST = NO;
 				SWIFT_VERSION = 6.0;
 				TARGETED_DEVICE_FAMILY = 2;
 			};
@@ -470,34 +307,49 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		21CD6B2A30296523008D0AEC /* Build configuration list for PBXProject "DICOMKit" */ = {
+		DC0000000000000000000014 /* Build configuration list for PBXProject "DICOMKit" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				21CD6B4230296523008D0AEC /* Debug */,
-				21CD6B4330296523008D0AEC /* Release */,
+				DC0000000000000000000011 /* Debug */,
+				DC0000000000000000000012 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		21CD6B4430296523008D0AEC /* Build configuration list for PBXNativeTarget "DICOMKit" */ = {
+		DC0000000000000000000015 /* Build configuration list for PBXNativeTarget "DICOMKitCloudHost" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				21CD6B4530296523008D0AEC /* Debug */,
-				21CD6B4630296523008D0AEC /* Release */,
+				DC0000000000000000000017 /* Debug */,
+				DC0000000000000000000018 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		21CD6B4730296523008D0AEC /* Build configuration list for PBXNativeTarget "DICOMKitTests" */ = {
+		DC0000000000000000000016 /* Build configuration list for PBXNativeTarget "DICOMKitCloudHostTests" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				21CD6B4830296523008D0AEC /* Debug */,
-				21CD6B4930296523008D0AEC /* Release */,
+				DC0000000000000000000019 /* Debug */,
+				DC0000000000000000000020 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		DC000000000000000000001A /* Local DICOMKit package */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = ".";
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		DC000000000000000000001B /* DICOMKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = DC000000000000000000001A /* Local DICOMKit package */;
+			productName = DICOMKit;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
-	rootObject = 21CD6B2730296523008D0AEC /* Project object */;
+	rootObject = DC0000000000000000000001 /* Project object */;
 }

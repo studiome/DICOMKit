@@ -14,7 +14,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  xcodebuild:
+  xcode-cloud-host:
     runs-on: macos-26
     env:
       DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
@@ -22,7 +22,7 @@ jobs:
       - name: Check out source
         uses: actions/checkout@v6
 
-      - name: Run unit tests (macOS)
+      - name: Test Xcode Cloud host (macOS)
         run: >-
           xcodebuild test
           -project DICOMKit.xcodeproj
@@ -30,7 +30,7 @@ jobs:
           -destination 'platform=macOS'
           CODE_SIGNING_ALLOWED=NO
 
-      - name: Build (iOS, generic device)
+      - name: Build Xcode Cloud host (iOS, generic device)
         run: >-
           xcodebuild build
           -project DICOMKit.xcodeproj

@@ -14,9 +14,9 @@
             buildForAnalyzing = "YES">
             <BuildableReference
                BuildableIdentifier = "primary"
-               BlueprintIdentifier = "21CD6B2F30296523008D0AEC"
-               BuildableName = "DICOMKit.framework"
-               BlueprintName = "DICOMKit"
+               BlueprintIdentifier = "DC0000000000000000000008"
+               BuildableName = "DICOMKitCloudHost.framework"
+               BlueprintName = "DICOMKitCloudHost"
                ReferencedContainer = "container:DICOMKit.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
@@ -28,13 +28,12 @@
       selectedLauncherIdentifier = "Xcode.DebuggerFoundation.Launcher.LLDB"
       shouldUseLaunchSchemeArgsEnv = "YES">
       <Testables>
-         <TestableReference
-            skipped = "NO">
+         <TestableReference skipped = "NO">
             <BuildableReference
                BuildableIdentifier = "primary"
-               BlueprintIdentifier = "21CD6B3A30296523008D0AEC"
-               BuildableName = "DICOMKitTests.xctest"
-               BlueprintName = "DICOMKitTests"
+               BlueprintIdentifier = "DC0000000000000000000009"
+               BuildableName = "DICOMKitCloudHostTests.xctest"
+               BlueprintName = "DICOMKitCloudHostTests"
                ReferencedContainer = "container:DICOMKit.xcodeproj">
             </BuildableReference>
          </TestableReference>

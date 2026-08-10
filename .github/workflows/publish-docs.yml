@@ -30,7 +30,7 @@ jobs:
       - name: Build DocC archive
         run: >-
           xcodebuild docbuild
-          -project DICOMKit.xcodeproj
+          -workspace .
           -scheme DICOMKit
           -destination 'platform=macOS'
           -derivedDataPath "$RUNNER_TEMP/DerivedData"
