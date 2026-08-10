@@ -179,7 +179,7 @@ public struct DICOMFile: Sendable {
                 return nil
             }
             frames = fragmentFrames.compactMap { fragments in
-                guard let decoded = try? JPEGLSDecoder.decodeLossless(
+                guard let decoded = try? JPEGLSDecoder.decode(
                     fragments: fragments,
                     width: Int(columns),
                     height: Int(rows),

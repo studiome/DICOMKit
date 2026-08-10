@@ -1,20 +1,29 @@
 import Foundation
 
 /// Decodes the JPEG-LS interchange formats used by DICOM Transfer Syntaxes
-/// `1.2.840.10008.1.2.4.80` and `1.2.840.10008.1.2.4.81`.
+/// `1.2.840.10008.1.2.4.80` (Lossless) and `1.2.840.10008.1.2.4.81`
+/// (Near-Lossless).
 ///
-/// The decoder supports single-component monochrome scans and
-/// sample-interleaved lossless RGB scans, default and explicit preset coding
-/// parameters, restart intervals, and Near-Lossless monochrome coding.
-/// Other JPEG-LS interleave modes and Near-Lossless RGB remain unsupported.
+/// Supported: 1- and 3-component scans in all three JPEG-LS interleave
+/// modes (plane, line, and sample), 2- through 16-bit sample precision,
+/// Near-Lossless coding (`NEAR > 0`) for both monochrome and RGB, default
+/// and explicit preset coding parameters, and restart intervals.
+///
+/// Not supported: mapping tables (a non-zero mapping table ID is rejected),
+/// SPIFF headers, and more than 3 components per frame.
 enum JPEGLSDecoder {
+    /// The result of decoding one frame: raw samples in pixel-major order
+    /// (component fastest-varying), the bit precision each sample was coded
+    /// at, and the number of components per pixel.
     struct DecodedFrame {
         let value: Data
         let precision: Int
         let samplesPerPixel: Int
     }
 
-    static func decodeLossless(
+    /// Decodes a JPEG-LS interchange stream (Lossless or Near-Lossless) into
+    /// raw samples.
+    static func decode(
         fragments: [Data],
         width expectedWidth: Int,
         height expectedHeight: Int,

@@ -279,7 +279,7 @@ struct JPEGFrameDecoderTests {
         let truncated = charLSMonochrome2x2.dropLast(droppedByteCount)
 
         #expect(throws: (any Error).self) {
-            try JPEGLSDecoder.decodeLossless(
+            try JPEGLSDecoder.decode(
                 fragments: [Data(truncated)],
                 width: 2,
                 height: 2,
@@ -293,7 +293,7 @@ struct JPEGFrameDecoderTests {
         malformed[0] = 0
 
         #expect(throws: DICOMImageError.unsupportedPixelFormat) {
-            try JPEGLSDecoder.decodeLossless(
+            try JPEGLSDecoder.decode(
                 fragments: [malformed],
                 width: 2,
                 height: 2,
@@ -303,7 +303,7 @@ struct JPEGFrameDecoderTests {
     }
 
     @Test func decodesReferenceJPEGLSLosslessMonochromeFrame() throws {
-        let frame = try JPEGLSDecoder.decodeLossless(
+        let frame = try JPEGLSDecoder.decode(
             fragments: [charLSMonochrome2x2],
             width: 2,
             height: 2,
