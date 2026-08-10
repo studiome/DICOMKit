@@ -30,11 +30,7 @@ if let pixelData = file.pixelData {
 
 - ``DICOMFile`` — Parse a DICOM Part 10 file.
 - ``DICOMDataset`` — Look up and iterate over data elements.
-- ``DICOMElement`` — Access a value, its VR, or its sequence items.
-- ``DICOMTag`` — Use a named tag or create a custom tag.
-- ``DICOMError`` — Handle malformed or unsupported input.
 - ``DICOMPixelData`` — Render supported uncompressed Pixel Data.
-- ``DICOMImageError`` — Handle malformed or unsupported image data.
 
 The library supports defined-length and undefined-length sequences, and a
 focused set of uncompressed image formats. It intentionally excludes compressed
@@ -57,4 +53,5 @@ capabilities after the file model is stable. Pixel Padding Value
 ### Image rendering
 
 - ``DICOMPixelData``
+- ``PhotometricInterpretation``
 - ``DICOMImageError``

@@ -56,7 +56,7 @@ public struct DICOMFile: Sendable {
     /// The reader supports Explicit VR Little Endian and Implicit VR Little
     /// Endian datasets, including defined-length and undefined-length sequences.
     ///
-    /// - Parameter data: The complete contents of a DICOM Part 10 file.
+    /// - Parameter input: The complete contents of a DICOM Part 10 file.
     /// - Throws: ``DICOMError`` if the file is malformed or uses an unsupported syntax.
     public init(data input: Data) throws {
         // `Data` slices retain the absolute indices of their underlying buffer,
