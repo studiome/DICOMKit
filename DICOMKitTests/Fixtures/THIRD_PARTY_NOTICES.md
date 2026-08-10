@@ -76,6 +76,42 @@ with `NEAR = 1` (`10, 20, 30, 40` monochrome and `10, 20, 30` RGB). They are ret
 - Generator source commit: `c0bae6496fa5d787fbb4698debd1e5decb40cf3a`
 - License: BSD-3-Clause, reproduced above
 
+## `Fixtures/JPEGLS/*.jls`
+
+These 13 real-size JPEG-LS interchange streams were generated with the
+source-pinned CharLS encoder noted above (the vendored copy has since been
+removed from this repository; CharLS was used only as a build-time test
+oracle, never shipped). Unlike the compact byte-array fixtures above, they
+are large enough (up to 64 x 64, 3 components) to exercise 0xFF bit-stuffing,
+the Near-Lossless quantizer dead zone, and more than one adaptive-statistics
+reset cycle — the blind spots that let several real-size-only decoder bugs
+ship undetected behind the 1x1/2x2 fixtures. Their expected sample values are
+never committed as literal arrays: `JPEGLSRealSizeFixture.expectedSamples()`
+in `Support/JPEGLSRealSizeFixtures.swift` regenerates them deterministically
+from each fixture's `seed` with the same gradient-plus-noise generator used
+when the fixture was produced. `JPEGLSRealSizeFixtureTests.swift` decodes
+each file and checks the result against that regenerated sequence (exact
+match when `NEAR == 0`, `|error| <= NEAR` otherwise).
+
+| File | Rows x Cols | Precision | Components | Interleave | NEAR |
+|---|---|---|---|---|---|
+| `mono8_lossless_64x64.jls` | 64x64 | 8 | 1 | - | 0 |
+| `mono16_12bit_lossless_64x64.jls` | 64x64 | 12 (16-bit storage) | 1 | - | 0 |
+| `rgb_lossless_interleave0_64x64.jls` | 64x64 | 8 | 3 | none (plane) | 0 |
+| `rgb_lossless_interleave1_64x64.jls` | 64x64 | 8 | 3 | line | 0 |
+| `rgb_lossless_interleave2_64x64.jls` | 64x64 | 8 | 3 | sample | 0 |
+| `mono8_nearlossless_near7_64x64.jls` | 64x64 | 8 | 1 | - | 7 |
+| `rgb_nearlossless_near2_interleave0_32x32.jls` | 32x32 | 8 | 3 | none (plane) | 2 |
+| `rgb_nearlossless_near2_interleave1_32x32.jls` | 32x32 | 8 | 3 | line | 2 |
+| `rgb_nearlossless_near2_interleave2_32x32.jls` | 32x32 | 8 | 3 | sample | 2 |
+| `mono8_lossless_nonsquare_97x61.jls` | 61x97 | 8 | 1 | - | 0 |
+| `mono8_nearlossless_near3_nonsquare_97x61.jls` | 61x97 | 8 | 1 | - | 3 |
+| `mono8_lossless_1x256.jls` | 256x1 | 8 | 1 | - | 0 |
+| `mono8_lossless_256x1.jls` | 1x256 | 8 | 1 | - | 0 |
+
+- Generator source commit: `c0bae6496fa5d787fbb4698debd1e5decb40cf3a`
+- License: BSD-3-Clause, reproduced above
+
 ## `CT_small.dcm`
 
 Source: [`pydicom/pydicom`](https://github.com/pydicom/pydicom),

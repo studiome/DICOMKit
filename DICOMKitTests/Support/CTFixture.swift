@@ -9,14 +9,15 @@ enum FixtureError: Error {
 /// so tests don't depend on where a checkout happens to live.
 ///
 /// `Package.swift` copies `Fixtures` as a directory, so the resource keeps
-/// that subdirectory inside the bundle.
-func fixtureURL(resource: String, extension fileExtension: String) throws -> URL {
+/// that subdirectory (and any subdirectories nested under it, such as
+/// `Fixtures/JPEGLS`) inside the bundle.
+func fixtureURL(resource: String, extension fileExtension: String, subdirectory: String = "Fixtures") throws -> URL {
     guard let url = Bundle.module.url(
         forResource: resource,
         withExtension: fileExtension,
-        subdirectory: "Fixtures"
+        subdirectory: subdirectory
     ) else {
-        throw FixtureError.missing("\(resource).\(fileExtension)")
+        throw FixtureError.missing("\(subdirectory)/\(resource).\(fileExtension)")
     }
     return url
 }
