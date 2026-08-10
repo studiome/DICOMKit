@@ -33,8 +33,9 @@ if let pixelData = file.pixelData {
 - ``DICOMPixelData`` — Render supported uncompressed Pixel Data.
 
 The library supports defined-length and undefined-length sequences, a focused
-set of uncompressed image formats, and single-frame 8-bit and 16-bit
-monochrome plus 8-bit RGB RLE Lossless decoding. It intentionally excludes
+set of uncompressed image formats and 8-bit/16-bit monochrome plus 8-bit RGB
+RLE Lossless decoding. Multi-frame RLE requires a Basic Offset Table and is
+available through ``DICOMFile/pixelDataFrames``. It intentionally excludes
 other compressed pixel decoding,
 writing, DIMSE, and DICOMweb. Those will be added as isolated capabilities
 after the file model is stable. Pixel Padding Value

@@ -4,6 +4,35 @@ import Foundation
 /// defines each RLE frame as a 64-byte header followed by PackBits-encoded
 /// byte segments, ordered from most-significant byte to least-significant byte.
 enum RLELosslessDecoder {
+    static func frameFragments(
+        fragments: [Data],
+        fragmentOffsets: [Int],
+        basicOffsetTable: Data,
+        frameCount: Int
+    ) throws -> [[Data]] {
+        guard frameCount > 0, fragments.count == fragmentOffsets.count else {
+            throw DICOMImageError.invalidImageAttributes
+        }
+        if frameCount == 1, basicOffsetTable.isEmpty { return [fragments] }
+        guard basicOffsetTable.count == frameCount * 4 else { throw DICOMImageError.unsupportedPixelFormat }
+        let offsets = stride(from: 0, to: basicOffsetTable.count, by: 4).map {
+            Int(basicOffsetTable.littleEndian(at: $0, as: UInt32.self))
+        }
+        guard offsets.first == 0, offsets == offsets.sorted(), Set(offsets).count == offsets.count else {
+            throw DICOMImageError.truncatedPixelData
+        }
+        let startIndices = try offsets.map { offset -> Int in
+            guard let index = fragmentOffsets.firstIndex(of: offset) else {
+                throw DICOMImageError.truncatedPixelData
+            }
+            return index
+        }
+        return startIndices.enumerated().map { index, start in
+            let end = index + 1 < startIndices.count ? startIndices[index + 1] : fragments.count
+            return Array(fragments[start..<end])
+        }
+    }
+
     static func decode8BitMonochrome(fragments: [Data], pixelCount: Int) throws -> Data {
         try decodedSegments(fragments: fragments, count: 1, pixelCount: pixelCount)[0]
     }

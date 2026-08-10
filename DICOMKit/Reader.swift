@@ -63,7 +63,15 @@ struct Reader {
             return DICOMElement(tag: tag, vr: vr, value: Data(), sequenceItems: try readSequence(transferSyntax: transferSyntax, length: length))
         }
         if tag == .pixelData, length == .max {
-            return DICOMElement(tag: tag, vr: vr, value: Data(), encapsulatedFragments: try readEncapsulatedPixelData())
+            let encapsulated = try readEncapsulatedPixelData()
+            return DICOMElement(
+                tag: tag,
+                vr: vr,
+                value: Data(),
+                encapsulatedFragments: encapsulated.fragments,
+                encapsulatedFragmentOffsets: encapsulated.fragmentOffsets,
+                basicOffsetTable: encapsulated.basicOffsetTable
+            )
         }
         guard length != .max else { throw DICOMError.unsupportedUndefinedLength(tag) }
         return DICOMElement(tag: tag, vr: vr, value: try readData(count: Int(length)))
@@ -71,15 +79,19 @@ struct Reader {
 
     /// Reads the item sequence used by compressed Pixel Data. The first item
     /// is the Basic Offset Table and isn't returned with the frame fragments.
-    mutating func readEncapsulatedPixelData() throws -> [Data] {
+    mutating func readEncapsulatedPixelData() throws -> (basicOffsetTable: Data, fragments: [Data], fragmentOffsets: [Int]) {
         var fragments: [Data] = []
+        var fragmentOffsets: [Int] = []
+        var basicOffsetTable: Data?
+        var firstFragmentItemOffset: Int?
         var isBasicOffsetTable = true
         while offset < data.count {
+            let itemOffset = offset
             let itemTag = try readTag()
             let itemLength = try readUInt32()
             if itemTag == DICOMTag(group: 0xFFFE, element: 0xE0DD) {
-                guard itemLength == 0, !isBasicOffsetTable else { throw DICOMError.invalidEncapsulatedPixelData }
-                return fragments
+                guard itemLength == 0, !isBasicOffsetTable, let basicOffsetTable, !fragments.isEmpty else { throw DICOMError.invalidEncapsulatedPixelData }
+                return (basicOffsetTable, fragments, fragmentOffsets)
             }
             guard itemTag == DICOMTag(group: 0xFFFE, element: 0xE000), itemLength != .max else {
                 throw DICOMError.invalidEncapsulatedPixelData
@@ -87,8 +99,12 @@ struct Reader {
             let item = try readData(count: Int(itemLength))
             if isBasicOffsetTable {
                 isBasicOffsetTable = false
+                basicOffsetTable = item
             } else {
+                if firstFragmentItemOffset == nil { firstFragmentItemOffset = itemOffset }
+                guard let firstFragmentItemOffset else { throw DICOMError.invalidEncapsulatedPixelData }
                 fragments.append(item)
+                fragmentOffsets.append(itemOffset - firstFragmentItemOffset)
             }
         }
         throw DICOMError.truncatedData

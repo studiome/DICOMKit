@@ -15,14 +15,21 @@ public struct DICOMElement: Sendable, Equatable {
     /// The compressed fragments of encapsulated Pixel Data, or `nil` for all
     /// other elements. The Basic Offset Table is not included.
     public let encapsulatedFragments: [Data]?
+    /// Byte offsets of encapsulated Pixel Data fragments, measured from the
+    /// first fragment's Item tag. `nil` for non-encapsulated elements.
+    public let encapsulatedFragmentOffsets: [Int]?
+    /// The Basic Offset Table from encapsulated Pixel Data, if present.
+    public let basicOffsetTable: Data?
 
     /// Creates an element from its tag, VR, raw value, and optional sequence items.
-    public init(tag: DICOMTag, vr: DICOMVR, value: Data, sequenceItems: [DICOMDataset]? = nil, encapsulatedFragments: [Data]? = nil) {
+    public init(tag: DICOMTag, vr: DICOMVR, value: Data, sequenceItems: [DICOMDataset]? = nil, encapsulatedFragments: [Data]? = nil, encapsulatedFragmentOffsets: [Int]? = nil, basicOffsetTable: Data? = nil) {
         self.tag = tag
         self.vr = vr
         self.value = value
         self.sequenceItems = sequenceItems
         self.encapsulatedFragments = encapsulatedFragments
+        self.encapsulatedFragmentOffsets = encapsulatedFragmentOffsets
+        self.basicOffsetTable = basicOffsetTable
     }
 
     /// The UTF-8 string value with DICOM space and NUL padding removed.

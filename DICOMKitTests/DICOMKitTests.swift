@@ -700,6 +700,36 @@ struct DICOMKitTests {
         #expect(try imageBytes(image) == Data([255, 0, 0, 0, 255, 0]))
     }
 
+    @Test func decodesMultiFrame8BitRLELosslessPixelDataUsingBasicOffsetTable() throws {
+        let firstFrame = rleFrame(segment: Data([0x00, 0x12]))
+        let secondFrame = rleFrame(segment: Data([0x00, 0x34]))
+        let data = part10File(
+            transferSyntaxUID: TransferSyntax.rleLossless.uid,
+            datasetElements: [
+                element(tag: .numberOfFrames, vr: .IS, value: "2"),
+                element(tag: .samplesPerPixel, vr: .US, value: uint16(1)),
+                element(tag: .photometricInterpretation, vr: .CS, value: "MONOCHROME2"),
+                element(tag: .rows, vr: .US, value: uint16(1)),
+                element(tag: .columns, vr: .US, value: uint16(1)),
+                element(tag: .bitsAllocated, vr: .US, value: uint16(8)),
+                // Each serialized fragment is 8 bytes of item header plus a
+                // 66-byte RLE frame. BOT offsets are relative to the first
+                // fragment item tag, as defined for encapsulated Pixel Data.
+                encapsulatedPixelData(
+                    basicOffsetTable: uint32(0) + uint32(74),
+                    fragments: [firstFrame, secondFrame]
+                )
+            ]
+        )
+
+        let file = try DICOMFile(data: data)
+        let frames = try #require(file.pixelDataFrames)
+
+        #expect(frames.count == 2)
+        #expect(try imageBytes(frames[0].cgImage()) == Data([0x12]))
+        #expect(try imageBytes(frames[1].cgImage()) == Data([0x34]))
+    }
+
     @Test func rejectsSequenceItemTagThatIsNeitherItemNorDelimiter() {
         let data = part10File(
             transferSyntaxUID: TransferSyntax.explicitVRLittleEndian.uid,
@@ -845,18 +875,19 @@ private func explicitVRElementWithInvalidVR(tag: DICOMTag, vrText: String, lengt
     return data
 }
 
-private func encapsulatedPixelData(fragments: [Data]) -> Data {
+private func encapsulatedPixelData(basicOffsetTable: Data = Data(), fragments: [Data]) -> Data {
     var data = uint16(DICOMTag.pixelData.group)
     data.append(uint16(DICOMTag.pixelData.element))
     data.append(contentsOf: "OB".utf8)
     data.append(uint16(0))
     data.append(uint32(.max))
 
-    // The first item is the Basic Offset Table. An empty table is valid for a
-    // single-frame image, which is exactly what this fixture exercises.
+    // The first item is the Basic Offset Table. It may be empty for a
+    // single-frame image.
     data.append(uint16(0xFFFE))
     data.append(uint16(0xE000))
-    data.append(uint32(0))
+    data.append(uint32(UInt32(basicOffsetTable.count)))
+    data.append(basicOffsetTable)
     for fragment in fragments {
         var padded = fragment
         if !padded.count.isMultiple(of: 2) { padded.append(0) }

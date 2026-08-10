@@ -7,6 +7,7 @@ enum DICOMDictionary {
         switch tag {
         case .transferSyntaxUID, .referencedSOPClassUID: .UI
         case .patientName: .PN
+        case .numberOfFrames: .IS
         case .rows, .columns, .samplesPerPixel, .planarConfiguration, .bitsAllocated,
              .bitsStored, .highBit, .pixelRepresentation: .US
         case .photometricInterpretation: .CS

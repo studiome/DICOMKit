@@ -12,6 +12,8 @@ extension DICOMTag {
     public static let patientName = DICOMTag(group: 0x0010, element: 0x0010)
     /// Samples per Pixel `(0028,0002)`.
     public static let samplesPerPixel = DICOMTag(group: 0x0028, element: 0x0002)
+    /// Number of Frames `(0028,0008)`.
+    public static let numberOfFrames = DICOMTag(group: 0x0028, element: 0x0008)
     /// Photometric Interpretation `(0028,0004)`.
     public static let photometricInterpretation = DICOMTag(group: 0x0028, element: 0x0004)
     /// Planar Configuration `(0028,0006)`.

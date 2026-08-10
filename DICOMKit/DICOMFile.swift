@@ -9,7 +9,7 @@ public struct DICOMFile: Sendable {
     /// The transfer syntax declared by the File Meta Information.
     public let transferSyntax: TransferSyntax
 
-    /// The uncompressed Pixel Data and its rendering attributes.
+    /// The first frame of ``pixelDataFrames``, if available.
     ///
     /// `nil` if `(7FE0,0010)` Pixel Data is absent, or if any of the
     /// following required attributes is absent: Rows `(0028,0010)`, Columns
@@ -26,6 +26,16 @@ public struct DICOMFile: Sendable {
     /// values) when absent, so their absence never causes this property to
     /// return `nil`.
     public var pixelData: DICOMPixelData? {
+        pixelDataFrames?.first
+    }
+
+    /// The image frames contained by Pixel Data.
+    ///
+    /// For RLE Lossless multi-frame images, this uses the encapsulated Pixel
+    /// Data Basic Offset Table to retain fragment boundaries. Multi-frame RLE
+    /// images without a Basic Offset Table aren't currently supported because
+    /// their frame boundaries cannot be determined reliably.
+    public var pixelDataFrames: [DICOMPixelData]? {
         guard let pixelElement = dataset[.pixelData],
               let rows = dataset[.rows]?.uint16Value,
               let columns = dataset[.columns]?.uint16Value,
@@ -34,30 +44,40 @@ public struct DICOMFile: Sendable {
               let photometricInterpretation = dataset[.photometricInterpretation]?.stringValue else {
             return nil
         }
+        guard let frameCount = Int(dataset[.numberOfFrames]?.stringValue ?? "1"), frameCount > 0 else { return nil }
         let pixelCount = Int(rows) * Int(columns)
-        let value: Data
+        let values: [Data]
         switch transferSyntax {
         case .rleLossless:
-            guard let fragments = pixelElement.encapsulatedFragments else {
+            guard let fragments = pixelElement.encapsulatedFragments,
+                  let fragmentOffsets = pixelElement.encapsulatedFragmentOffsets,
+                  let basicOffsetTable = pixelElement.basicOffsetTable,
+                  let frameFragments = try? RLELosslessDecoder.frameFragments(
+                    fragments: fragments,
+                    fragmentOffsets: fragmentOffsets,
+                    basicOffsetTable: basicOffsetTable,
+                    frameCount: frameCount
+                  ) else {
                 return nil
             }
-            switch (samplesPerPixel, bitsAllocated) {
-            case (1, 8):
-                guard let decoded = try? RLELosslessDecoder.decode8BitMonochrome(fragments: fragments, pixelCount: pixelCount) else { return nil }
-                value = decoded
-            case (1, 16):
-                guard let decoded = try? RLELosslessDecoder.decode16BitMonochrome(fragments: fragments, pixelCount: pixelCount) else { return nil }
-                value = decoded
-            case (3, 8):
-                guard let decoded = try? RLELosslessDecoder.decode8BitRGB(fragments: fragments, pixelCount: pixelCount) else { return nil }
-                value = decoded
-            default:
-                return nil
+            values = frameFragments.compactMap { fragments in
+                switch (samplesPerPixel, bitsAllocated) {
+                case (1, 8): try? RLELosslessDecoder.decode8BitMonochrome(fragments: fragments, pixelCount: pixelCount)
+                case (1, 16): try? RLELosslessDecoder.decode16BitMonochrome(fragments: fragments, pixelCount: pixelCount)
+                case (3, 8): try? RLELosslessDecoder.decode8BitRGB(fragments: fragments, pixelCount: pixelCount)
+                default: nil
+                }
             }
+            guard values.count == frameCount else { return nil }
         default:
-            value = pixelElement.value
+            guard bitsAllocated.isMultiple(of: 8) else { return nil }
+            let bytesPerFrame = pixelCount * Int(samplesPerPixel) * (Int(bitsAllocated) / 8)
+            guard bytesPerFrame > 0, pixelElement.value.count >= bytesPerFrame * frameCount else { return nil }
+            values = (0..<frameCount).map { frame in
+                pixelElement.value.subdata(in: frame * bytesPerFrame..<(frame + 1) * bytesPerFrame)
+            }
         }
-        return DICOMPixelData(
+        return values.map { value in DICOMPixelData(
             value: value,
             rows: Int(rows),
             columns: Int(columns),
@@ -71,7 +91,7 @@ public struct DICOMFile: Sendable {
             rescaleIntercept: dataset[.rescaleIntercept]?.doubleValue ?? 0.0,
             defaultWindowCenter: dataset[.windowCenter]?.doubleValue,
             defaultWindowWidth: dataset[.windowWidth]?.doubleValue
-        )
+        ) }
     }
 
     /// Parses a DICOM Part 10 file from memory.
