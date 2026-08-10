@@ -4,7 +4,7 @@
 
 Pure Swift utilities for reading DICOM Part 10 files on iPadOS and macOS.
 
-[Read the API documentation](https://studiome.github.io/DICOMKit/)
+[Read the API documentation](https://studiome.github.io/DICOMKit/documentation/dicomkit/)
 
 > **Status: early development.** DICOMKit is not yet suitable for clinical use.
 
