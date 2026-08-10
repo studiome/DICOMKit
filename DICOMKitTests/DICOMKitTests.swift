@@ -26,11 +26,7 @@ struct DICOMKitTests {
     }
 
     @Test func readsPydicomExplicitVRLittleEndianCTFixture() throws {
-        let fixtureURL = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-            .appendingPathComponent("Fixtures/CT_small.dcm")
-
-        let file = try DICOMFile(data: Data(contentsOf: fixtureURL))
+        let file = try DICOMFile(data: Data(contentsOf: try fixtureURL()))
 
         #expect(file.transferSyntax == .explicitVRLittleEndian)
         #expect(file.dataset[.rows]?.uint16Value == 128)
@@ -46,10 +42,7 @@ struct DICOMKitTests {
         // after correct rescale) rendered as mid-gray instead of black under
         // a soft-tissue window, since they were windowed as raw unsigned
         // storage values with no rescale applied.
-        let fixtureURL = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-            .appendingPathComponent("Fixtures/CT_small.dcm")
-        let file = try DICOMFile(data: Data(contentsOf: fixtureURL))
+        let file = try DICOMFile(data: Data(contentsOf: try fixtureURL()))
         let pixelData = try #require(file.pixelData)
 
         #expect(pixelData.pixelRepresentation == 1)
@@ -926,4 +919,30 @@ private func uint32(_ value: UInt32) -> Data {
 
 private func imageBytes(_ image: CGImage) throws -> Data {
     Data(try #require(image.dataProvider?.data) as Data)
+}
+
+private final class FixtureBundleToken: NSObject {}
+
+private enum FixtureError: Error {
+    case missing(String)
+}
+
+/// Resolves a test fixture from the test bundle instead of the source tree.
+/// Xcode Cloud checks out and builds source in a different location, whereas
+/// copied test resources are always available from this bundle.
+private func fixtureURL() throws -> URL {
+    #if SWIFT_PACKAGE
+    let bundle = Bundle.module
+    #else
+    let bundle = Bundle(for: FixtureBundleToken.self)
+    #endif
+    // Xcode copies the synchronized test resource group directly into the
+    // bundle root, while SwiftPM preserves the `Fixtures` directory. Support
+    // both layouts so local SwiftPM, Xcode, and Xcode Cloud share this test.
+    for subdirectory in [nil, "Fixtures"] {
+        if let url = bundle.url(forResource: "CT_small", withExtension: "dcm", subdirectory: subdirectory) {
+            return url
+        }
+    }
+    throw FixtureError.missing("CT_small.dcm")
 }

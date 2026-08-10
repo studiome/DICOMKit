@@ -25,9 +25,9 @@ let package = Package(
             name: "DICOMKitTests",
             dependencies: ["DICOMKit"],
             path: "DICOMKitTests",
-            // Declared only to silence SwiftPM's "unhandled resource" warning.
-            // Tests locate fixtures via `#filePath`, not `Bundle.module`, so this
-            // has no effect on how the fixture is actually read.
+            // Fixtures are resolved from the test bundle, which also makes
+            // them available in Xcode Cloud rather than depending on a
+            // source-tree path.
             resources: [
                 .copy("Fixtures")
             ],
