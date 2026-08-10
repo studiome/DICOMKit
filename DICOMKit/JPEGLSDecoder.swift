@@ -339,6 +339,13 @@ private extension JPEGLSDecoder {
         var offset: Int
         private var currentByte = 0
         private var bitsRemaining = 0
+        // T.87 Annex A.1 bit-stuffing: whenever the entropy coder would
+        // emit a literal 0xFF byte, the *following* byte carries a forced
+        // leading 0 bit (this is exactly what distinguishes it from a
+        // marker) and only 7 real data bits. That reduced byte can never
+        // itself equal 0xFF (its top bit is always 0), so the stuffing
+        // effect never cascades past one byte.
+        private var previousByteWasFF = false
 
         init(data: Data, offset: Int) {
             self.data = data
@@ -414,15 +421,29 @@ private extension JPEGLSDecoder {
         private mutating func loadByte() throws {
             guard offset < data.count else { throw DICOMImageError.truncatedPixelData }
             let byte = data[offset]
-            offset += 1
             if byte == 0xFF {
-                guard offset < data.count, data[offset] == 0x00 else {
-                    throw DICOMImageError.unsupportedPixelFormat
+                // Per T.87 Annex A.1, 0xFF is entropy data (not the start of
+                // a marker) only when the following byte's top bit is 0:
+                // that forced-0 bit is exactly the stuffed bit consumed
+                // below on the next call, once this FF's own 7 bits are
+                // exhausted. If the stream ends right after this 0xFF, or
+                // the following bit is 1, more bits were requested than the
+                // entropy segment actually has left.
+                guard offset + 1 < data.count, data[offset + 1] & 0x80 == 0 else {
+                    throw DICOMImageError.truncatedPixelData
                 }
-                offset += 1
             }
-            currentByte = Int(byte)
-            bitsRemaining = byte == 0xFF ? 7 : 8
+            offset += 1
+            if previousByteWasFF {
+                // The byte immediately after an 0xFF carries a forced
+                // leading 0 stuff bit; only its low 7 bits are real data.
+                currentByte = Int(byte) & 0x7F
+                bitsRemaining = 7
+            } else {
+                currentByte = Int(byte)
+                bitsRemaining = byte == 0xFF ? 7 : 8
+            }
+            previousByteWasFF = byte == 0xFF
         }
     }
 
