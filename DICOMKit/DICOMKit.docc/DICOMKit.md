@@ -41,8 +41,10 @@ markers; `.70` is limited to Selection Value 1. JPEG-LS Lossless (Transfer
 Syntax `.80`) supports monochrome 8-bit and 16-bit frames and
 sample-interleaved and plane-interleaved 8-bit `RGB` and sample-interleaved
 `YBR_FULL` (returned as `RGB`), with default or explicit Preset Coding
-Parameters and restart markers. JPEG-LS Near-Lossless `.81` supports
-single-component monochrome and sample-interleaved `RGB` 8-bit frames.
+Parameters and restart markers. The vendored CharLS decoder also supports
+line-interleaved JPEG-LS frames. JPEG-LS Near-Lossless `.81` supports
+single-component monochrome and multi-component JPEG-LS frames supported by
+CharLS.
 Multi-frame JPEG-LS data requires a Basic Offset Table and is available through
 ``DICOMFile/pixelDataFrames``.
 JPEG Baseline (Process 1), JPEG 2000 Lossless, and

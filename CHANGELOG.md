@@ -10,8 +10,10 @@ All notable changes to DICOMKit are documented here.
   application-specific authentication and networking policies.
 - Added JPEG-LS Lossless plane-interleaved RGB decoding, including
   multi-SOS encapsulated frames.
+- Integrated the vendored BSD-3-Clause CharLS decoder for JPEG-LS Lossless
+  and Near-Lossless sample, line, and plane interleave modes.
 
-## v0.4 — Unreleased
+## v0.4 — Complete
 
 - Added `DICOMWriter` and `DICOMFile.encodedData()` for Explicit and Implicit
   VR Little Endian Part 10 output, defined- and undefined-length Sequences,
@@ -33,6 +35,5 @@ All notable changes to DICOMKit are documented here.
 
 ## Compatibility notes
 
-- JPEG-LS Near-Lossless RGB, JPEG-LS line interleave mode, and
-  multi-component JPEG Lossless remain unsupported.
+- Multi-component JPEG Lossless remains unsupported.
 - Encapsulated multi-frame pixel data requires a Basic Offset Table.
