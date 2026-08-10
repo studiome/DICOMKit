@@ -84,8 +84,7 @@ DICOMKit is defined exclusively by `Package.swift`: it owns the library and
 test targets, platform versions, resources, dependencies, and CI build inputs.
 For normal development, open `DICOMKit.xcworkspace` in Xcode and select the
 `DICOMKit` scheme: it builds the package's library and runs `DICOMKitTests`,
-so ⌘B and ⌘U work against the package itself. The `DICOMKitCloudHost` scheme
-next to it exists only for Xcode Cloud (see below) and isn't needed locally.
+so ⌘B and ⌘U work against the package itself.
 You can also open `Package.swift` directly, or run the test suite from the
 command line:
 
@@ -109,25 +108,6 @@ xcodebuild test \
   -scheme DICOMKit \
   -destination 'platform=iOS Simulator,name=iPhone 17 Pro'
 ```
-
-### Xcode Cloud
-
-`DICOMKit.xcworkspace` includes a minimal framework target that makes the local
-Swift package available to Xcode Cloud, which can't build a standalone Swift
-package. Configure test workflows against the `DICOMKitCloudHost` scheme; its
-test action runs `DICOMKitTests` on macOS and iOS Simulator destinations, and
-its product is named `DICOMKitCloudHost` to keep it distinct from the Swift
-package's `DICOMKit` module.
-
-The framework is empty: linking the package is what makes Xcode Cloud resolve
-and build it. Its target, product, bundle identifier, project file, and scheme
-all use the `DICOMKitCloudHost` name. Reusing `DICOMKit` for the host product
-would collide with the package's module during dependency scanning; naming the
-scheme `DICOMKit` would also make it indistinguishable from the package scheme
-in Xcode's scheme picker.
-
-Commit `Package.resolved` whenever package dependencies create or update it so
-Xcode Cloud resolves the same dependency versions as local development.
 
 ## Roadmap
 
