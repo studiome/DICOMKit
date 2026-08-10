@@ -17,8 +17,10 @@ Pure Swift utilities for reading DICOM Part 10 files on iPadOS and macOS.
 - Provides typed access for common string and `UInt16` values
 - Renders uncompressed 8-bit `MONOCHROME1`, `MONOCHROME2`, and interleaved
   `RGB` Pixel Data as `CGImage`
-- Renders uncompressed 16-bit monochrome Pixel Data with caller-supplied
-  window center and width
+- Renders uncompressed 16-bit monochrome Pixel Data with correct handling of
+  signed (`Pixel Representation`) samples, `Bits Stored` masking, and
+  `Rescale Slope` / `Rescale Intercept`, with caller-supplied or
+  dataset-derived window center and width
 
 ```swift
 let file = try DICOMFile(data: data)
@@ -29,6 +31,14 @@ let columns = file.dataset[.columns]?.uint16Value
 let referencedStudies = file.dataset[.referencedStudySequence]?.sequenceItems
 
 if let pixelData = file.pixelData {
+    // For 16-bit monochrome data, windowCenter/windowWidth are in the
+    // *rescaled* unit (Hounsfield Units for CT), not raw stored values,
+    // since each sample is rescaled as `storedValue * rescaleSlope +
+    // rescaleIntercept` before windowing. 40/400 here is a typical CT
+    // soft-tissue window. If omitted, the window defaults to the dataset's
+    // own Window Center/Width `(0028,1050)`/`(0028,1051)` when present, or
+    // otherwise to a window computed from the rescaled pixel data's
+    // min/max value.
     let image = try pixelData.cgImage(windowCenter: 40, windowWidth: 400)
 }
 ```
@@ -60,7 +70,12 @@ xcodebuild test \
 ## Non-goals for v0.1
 
 Compressed pixel decoding, DICOM networking (DIMSE), DICOMweb, and writing are
-intentionally outside the current release scope.
+intentionally outside the current release scope. Pixel Padding Value
+`(0028,0120)` is also not applied: padding samples are rendered like any
+other sample rather than being excluded or specially colored. The 8-bit and
+`RGB` rendering paths don't apply `Pixel Representation` or rescale, either;
+this is a deliberate simplification, since signed or rescaled 8-bit Pixel
+Data is essentially unused in practice.
 
 ## License
 
