@@ -55,11 +55,17 @@ DIMSE, and DICOMweb remain outside the current scope.
 Pixel Padding Value
 `(0028,0120)` is also not yet applied.
 
+DICOMKit also writes Part 10 files through ``DICOMWriter`` and
+``DICOMFile/encodedData(sequenceLengthEncoding:)``. The writer supports
+Explicit VR Little Endian and Implicit VR Little Endian, defined- and
+undefined-length sequences, and native Pixel Data.
+
 ## Topics
 
 ### File reading
 
 - ``DICOMFile``
+- ``DICOMWriter``
 - ``DICOMDataset``
 - ``DICOMElement``
 - ``DICOMTag``

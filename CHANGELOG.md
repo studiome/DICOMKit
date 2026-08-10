@@ -2,6 +2,12 @@
 
 All notable changes to DICOMKit are documented here.
 
+## v0.4 — Unreleased
+
+- Added `DICOMWriter` and `DICOMFile.encodedData()` for Explicit and Implicit
+  VR Little Endian Part 10 output, defined- and undefined-length Sequences,
+  and native Pixel Data.
+
 ## v0.3 — Unreleased
 
 - Added JPEG Lossless, Non-Hierarchical Process 14 decoding for DICOM

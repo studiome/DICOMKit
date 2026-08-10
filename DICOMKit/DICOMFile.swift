@@ -320,6 +320,11 @@ public struct DICOMFile: Sendable {
 
         dataset = DICOMDataset(elements: try reader.readDataset(transferSyntax: transferSyntax))
     }
+
+    /// Serializes this file as a DICOM Part 10 byte stream.
+    public func encodedData(sequenceLengthEncoding: DICOMWriter.SequenceLengthEncoding = .defined) throws -> Data {
+        try DICOMWriter.write(metaInformation: metaInformation, dataset: dataset, transferSyntax: transferSyntax, sequenceLengthEncoding: sequenceLengthEncoding)
+    }
 }
 
 private func ybrFullToRGB(_ value: Data) -> Data {

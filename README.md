@@ -45,6 +45,9 @@ See the [changelog](CHANGELOG.md) for the v0.3 implementation status.
   Pixel Data via ImageIO, as either interleaved `RGB` (whatever color space
   the JPEG itself uses, including `YBR_FULL_422`) or single-sample
   `MONOCHROME1` / `MONOCHROME2`; multiple frames require a Basic Offset Table
+- Writes DICOM Part 10 files using Explicit VR Little Endian or Implicit VR
+  Little Endian, including defined- or undefined-length Sequences and native
+  Pixel Data
 
 ```swift
 let file = try DICOMFile(data: data)

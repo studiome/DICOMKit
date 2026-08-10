@@ -61,4 +61,12 @@ struct DICOMWriterTests {
 
         #expect(file.pixelData?.value == Data([10, 20]))
     }
+
+    @Test func writesUndefinedLengthSequenceAndDICOMFileConvenienceAPI() throws {
+        let dataset = DICOMDataset(elements: [DICOMElement(tag: .referencedStudySequence, vr: .SQ, value: Data(), sequenceItems: [DICOMDataset(elements: [DICOMElement(tag: .patientName, vr: .PN, value: Data("Doe^Jane".utf8))])])])
+        let original = try DICOMFile(data: DICOMWriter.write(dataset: dataset))
+        let reread = try DICOMFile(data: original.encodedData(sequenceLengthEncoding: .undefined))
+
+        #expect(reread.dataset[.referencedStudySequence]?.sequenceItems?.first?[.patientName]?.stringValue == "Doe^Jane")
+    }
 }
