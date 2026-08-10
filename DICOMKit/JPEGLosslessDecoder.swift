@@ -99,8 +99,6 @@ private extension JPEGLosslessDecoder {
         var offset = 0
         var tables: [Int: HuffmanTable] = [:]
         var precision: Int?
-        var width: Int?
-        var height: Int?
         var componentIdentifier: UInt8?
         var restartInterval = 0
 
@@ -159,8 +157,6 @@ private extension JPEGLosslessDecoder {
             let quantizationTable = try readByte()
             guard sampling == 0x11, quantizationTable == 0 else { throw DICOMImageError.unsupportedPixelFormat }
             precision = parsedPrecision
-            width = parsedWidth
-            height = parsedHeight
             componentIdentifier = identifier
         }
 
