@@ -29,6 +29,8 @@ Pure Swift utilities for reading DICOM Part 10 files on iPadOS and macOS.
   Table, exposed as `DICOMFile.pixelDataFrames`
 - Decodes 8-bit RGB JPEG Baseline (Process 1) Pixel Data via ImageIO; multiple
   frames require a Basic Offset Table
+- Decodes JPEG 2000 Lossless and JPEG 2000 Pixel Data via ImageIO; multiple
+  frames require a Basic Offset Table
 
 ```swift
 let file = try DICOMFile(data: data)
@@ -103,13 +105,13 @@ swift test
 
 ## Roadmap
 
-1. JPEG Lossless, JPEG-LS, and JPEG 2000 transfer syntaxes
+1. JPEG Lossless and JPEG-LS transfer syntaxes
 2. DICOM writing
 3. DICOMweb support
 
 ## Non-goals for v0.1
 
-JPEG Lossless, JPEG-LS, and JPEG 2000 decoding, DICOM networking (DIMSE),
+JPEG Lossless and JPEG-LS decoding, DICOM networking (DIMSE),
 DICOMweb, and writing are intentionally outside the current release scope.
 RLE Lossless currently supports 8-bit and 16-bit monochrome, plus 8-bit RGB
 Pixel Data; multi-frame encapsulated data requires a Basic Offset Table. JPEG

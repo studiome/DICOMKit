@@ -72,7 +72,7 @@ public struct DICOMFile: Sendable {
                 }
             }
             guard values.count == frameCount else { return nil }
-        case .jpegBaseline:
+        case .jpegBaseline, .jpeg2000Lossless, .jpeg2000:
             guard let fragments = pixelElement.encapsulatedFragments,
                   let fragmentOffsets = pixelElement.encapsulatedFragmentOffsets,
                   let basicOffsetTable = pixelElement.basicOffsetTable,
@@ -136,7 +136,7 @@ public struct DICOMFile: Sendable {
             throw DICOMError.missingTransferSyntaxUID
         }
         transferSyntax = TransferSyntax(uid: uid)
-        guard transferSyntax == .explicitVRLittleEndian || transferSyntax == .implicitVRLittleEndian || transferSyntax == .rleLossless || transferSyntax == .jpegBaseline else {
+        guard transferSyntax == .explicitVRLittleEndian || transferSyntax == .implicitVRLittleEndian || transferSyntax == .rleLossless || transferSyntax == .jpegBaseline || transferSyntax == .jpeg2000Lossless || transferSyntax == .jpeg2000 else {
             throw DICOMError.unsupportedTransferSyntax(uid)
         }
 

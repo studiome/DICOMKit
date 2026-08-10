@@ -36,10 +36,11 @@ The library supports defined-length and undefined-length sequences, a focused
 set of uncompressed image formats and 8-bit/16-bit monochrome plus 8-bit RGB
 RLE Lossless decoding. It also supports 8-bit RGB JPEG Baseline (Process 1)
 decoding through ImageIO. Multi-frame encapsulated images require a Basic
-Offset Table and are available through ``DICOMFile/pixelDataFrames``. It
-intentionally excludes other compressed pixel decoding, writing, DIMSE, and
-DICOMweb. Those will be added as isolated capabilities after the file model is
-stable. Pixel Padding Value
+Offset Table and are available through ``DICOMFile/pixelDataFrames``. It also
+decodes JPEG 2000 Lossless and JPEG 2000 Pixel Data through ImageIO. It
+intentionally excludes JPEG Lossless, JPEG-LS, writing, DIMSE, and DICOMweb.
+Those will be added as isolated capabilities after the file model is stable.
+Pixel Padding Value
 `(0028,0120)` is also not yet applied.
 
 ## Topics
