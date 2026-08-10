@@ -187,7 +187,6 @@ struct JPEGFrameDecoderTests {
 
     @Test(arguments: [
         TransferSyntax.jpegLossless,
-        .jpegLosslessSV1,
         .jpegLSLossless,
         .jpegLSNearLossless
     ])
@@ -210,6 +209,100 @@ struct JPEGFrameDecoderTests {
 
         #expect(file.transferSyntax == transferSyntax)
         #expect(file.pixelDataFrames == nil)
+    }
+
+    @Test func decodes8BitJPEGLosslessSV1PixelData() throws {
+        let source = Data([12, 15, 5, 240, 238, 255])
+        let data = imageFile(
+            transferSyntaxUID: TransferSyntax.jpegLosslessSV1.uid,
+            rows: 2,
+            columns: 3,
+            bitsAllocated: 8,
+            pixelDataElement: encapsulatedPixelData(fragments: [
+                jpegLosslessSV1Data(samples: source.map(UInt16.init), width: 3, height: 2, precision: 8)
+            ])
+        )
+
+        let pixelData = try #require(try DICOMFile(data: data).pixelData)
+
+        #expect(pixelData.bitsAllocated == 8)
+        #expect(pixelData.bitsStored == 8)
+        #expect(pixelData.value == source)
+    }
+
+    @Test func decodes12BitJPEGLosslessSV1Into16BitDICOMStorage() throws {
+        let samples: [UInt16] = [0, 1, 2_047, 2_048, 4_095, 2_000]
+        let data = imageFile(
+            transferSyntaxUID: TransferSyntax.jpegLosslessSV1.uid,
+            rows: 2,
+            columns: 3,
+            bitsAllocated: 16,
+            bitsStored: 12,
+            pixelDataElement: encapsulatedPixelData(fragments: [
+                jpegLosslessSV1Data(samples: samples, width: 3, height: 2, precision: 12)
+            ])
+        )
+
+        let pixelData = try #require(try DICOMFile(data: data).pixelData)
+
+        #expect(pixelData.bitsAllocated == 16)
+        #expect(pixelData.bitsStored == 12)
+        #expect(pixelData.value == Data(samples.flatMap { [UInt8($0 & 0xFF), UInt8($0 >> 8)] }))
+    }
+
+    @Test func decodesJPEGLosslessSV1WithRestartMarkers() throws {
+        let samples: [UInt16] = [40, 41, 42, 200, 199, 198]
+        let data = imageFile(
+            transferSyntaxUID: TransferSyntax.jpegLosslessSV1.uid,
+            rows: 1,
+            columns: 6,
+            bitsAllocated: 8,
+            pixelDataElement: encapsulatedPixelData(fragments: [
+                jpegLosslessSV1Data(samples: samples, width: 6, height: 1, precision: 8, restartInterval: 2)
+            ])
+        )
+
+        let pixelData = try #require(try DICOMFile(data: data).pixelData)
+
+        #expect(pixelData.value == Data(samples.map(UInt8.init)))
+    }
+
+    @Test func decodesJPEGLosslessSV1WithPointTransform() throws {
+        let samples: [UInt16] = [0, 16, 128, 240]
+        let data = imageFile(
+            transferSyntaxUID: TransferSyntax.jpegLosslessSV1.uid,
+            rows: 1,
+            columns: 4,
+            bitsAllocated: 8,
+            pixelDataElement: encapsulatedPixelData(fragments: [
+                jpegLosslessSV1Data(samples: samples, width: 4, height: 1, precision: 8, pointTransform: 4)
+            ])
+        )
+
+        let pixelData = try #require(try DICOMFile(data: data).pixelData)
+
+        #expect(pixelData.value == Data(samples.map(UInt8.init)))
+    }
+
+    @Test func decodesMultiFrameJPEGLosslessSV1PixelDataUsingBasicOffsetTable() throws {
+        let firstFrame = jpegLosslessSV1Data(samples: [10], width: 1, height: 1, precision: 8)
+        let secondFrame = jpegLosslessSV1Data(samples: [200], width: 1, height: 1, precision: 8)
+        let secondFrameOffset = 8 + ((firstFrame.count + 1) / 2 * 2)
+        let data = imageFile(
+            transferSyntaxUID: TransferSyntax.jpegLosslessSV1.uid,
+            numberOfFrames: 2,
+            rows: 1,
+            columns: 1,
+            bitsAllocated: 8,
+            pixelDataElement: encapsulatedPixelData(
+                basicOffsetTable: uint32(0) + uint32(UInt32(secondFrameOffset)),
+                fragments: [firstFrame, secondFrame]
+            )
+        )
+
+        let frames = try #require(try DICOMFile(data: data).pixelDataFrames)
+
+        #expect(frames.map(\.value) == [Data([10]), Data([200])])
     }
 
     @Test func rejectsMultiFrameJPEGWithoutBasicOffsetTable() throws {

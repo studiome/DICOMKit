@@ -70,6 +70,7 @@ func imageFile(
     rows: UInt16,
     columns: UInt16,
     bitsAllocated: UInt16,
+    bitsStored: UInt16? = nil,
     windowCenter: String? = nil,
     windowWidth: String? = nil,
     pixelData: Data
@@ -83,6 +84,7 @@ func imageFile(
         rows: rows,
         columns: columns,
         bitsAllocated: bitsAllocated,
+        bitsStored: bitsStored,
         windowCenter: windowCenter,
         windowWidth: windowWidth,
         pixelDataElement: element(tag: .pixelData, vr: bitsAllocated > 8 ? .OW : .OB, value: pixelData)
@@ -104,6 +106,7 @@ func imageFile(
     rows: UInt16,
     columns: UInt16,
     bitsAllocated: UInt16,
+    bitsStored: UInt16? = nil,
     windowCenter: String? = nil,
     windowWidth: String? = nil,
     pixelDataElement: Data
@@ -121,6 +124,9 @@ func imageFile(
     elements.append(element(tag: .rows, vr: .US, value: uint16(rows)))
     elements.append(element(tag: .columns, vr: .US, value: uint16(columns)))
     elements.append(element(tag: .bitsAllocated, vr: .US, value: uint16(bitsAllocated)))
+    if let bitsStored {
+        elements.append(element(tag: .bitsStored, vr: .US, value: uint16(bitsStored)))
+    }
     if let windowCenter {
         elements.append(element(tag: .windowCenter, vr: .DS, value: windowCenter))
     }

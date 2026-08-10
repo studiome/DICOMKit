@@ -10,6 +10,7 @@ private struct DecodedPixelDataFrame {
     let value: Data
     let samplesPerPixel: Int
     let bitsAllocated: Int
+    let bitsStored: Int?
     let photometricInterpretation: PhotometricInterpretation
     let planarConfiguration: Int
 }
@@ -89,6 +90,7 @@ public struct DICOMFile: Sendable {
                     value: value,
                     samplesPerPixel: sourceSamplesPerPixel,
                     bitsAllocated: sourceBitsAllocated,
+                    bitsStored: nil,
                     photometricInterpretation: sourcePhotometric,
                     planarConfiguration: sourcePlanarConfiguration
                 )
@@ -111,6 +113,7 @@ public struct DICOMFile: Sendable {
                         value: value,
                         samplesPerPixel: 3,
                         bitsAllocated: 8,
+                        bitsStored: nil,
                         photometricInterpretation: .rgb,
                         planarConfiguration: 0
                     )
@@ -129,6 +132,7 @@ public struct DICOMFile: Sendable {
                         value: value,
                         samplesPerPixel: 1,
                         bitsAllocated: 8,
+                        bitsStored: nil,
                         photometricInterpretation: sourcePhotometric,
                         planarConfiguration: sourcePlanarConfiguration
                     )
@@ -137,7 +141,36 @@ public struct DICOMFile: Sendable {
                 return nil
             }
 
-        case .jpegLossless, .jpegLosslessSV1, .jpegLSLossless, .jpegLSNearLossless:
+        case .jpegLosslessSV1:
+            guard sourceSamplesPerPixel == 1,
+                  sourcePhotometric == .monochrome1 || sourcePhotometric == .monochrome2,
+                  let fragmentFrames = encapsulatedFrames(of: pixelElement, frameCount: frameCount) else {
+                return nil
+            }
+            frames = fragmentFrames.compactMap { fragments in
+                guard let decoded = try? JPEGLosslessDecoder.decodeSV1(
+                    fragments: fragments,
+                    width: Int(columns),
+                    height: Int(rows),
+                    bitsAllocated: sourceBitsAllocated
+                ) else {
+                    return nil
+                }
+                if let declaredBitsStored = dataset[.bitsStored]?.uint16Value,
+                   Int(declaredBitsStored) != decoded.precision {
+                    return nil
+                }
+                return DecodedPixelDataFrame(
+                    value: decoded.value,
+                    samplesPerPixel: 1,
+                    bitsAllocated: sourceBitsAllocated,
+                    bitsStored: decoded.precision,
+                    photometricInterpretation: sourcePhotometric,
+                    planarConfiguration: sourcePlanarConfiguration
+                )
+            }
+
+        case .jpegLossless, .jpegLSLossless, .jpegLSNearLossless:
             // These syntaxes must never fall through to the raw-data path or
             // ImageIO. Both decoders are intentionally added in later phases.
             return nil
@@ -151,6 +184,7 @@ public struct DICOMFile: Sendable {
                     value: pixelElement.value.subdata(in: frame * bytesPerFrame..<(frame + 1) * bytesPerFrame),
                     samplesPerPixel: sourceSamplesPerPixel,
                     bitsAllocated: sourceBitsAllocated,
+                    bitsStored: nil,
                     photometricInterpretation: sourcePhotometric,
                     planarConfiguration: sourcePlanarConfiguration
                 )
@@ -166,7 +200,7 @@ public struct DICOMFile: Sendable {
             bitsAllocated: frame.bitsAllocated,
             photometricInterpretation: frame.photometricInterpretation,
             planarConfiguration: frame.planarConfiguration,
-            bitsStored: dataset[.bitsStored]?.uint16Value.map(Int.init),
+            bitsStored: frame.bitsStored ?? dataset[.bitsStored]?.uint16Value.map(Int.init),
             pixelRepresentation: Int(dataset[.pixelRepresentation]?.uint16Value ?? 0),
             rescaleSlope: dataset[.rescaleSlope]?.doubleValue ?? 1.0,
             rescaleIntercept: dataset[.rescaleIntercept]?.doubleValue ?? 0.0,
