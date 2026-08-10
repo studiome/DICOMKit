@@ -1,5 +1,19 @@
 import Foundation
 
+/// A decoded encapsulated frame together with the storage attributes that
+/// describe the decoder's output bytes.
+///
+/// Decoders must declare these rather than assuming every compressed syntax
+/// produces 8-bit data. JPEG Lossless and JPEG-LS will use this to return
+/// 16-bit samples without changing the surrounding Pixel Data pipeline.
+private struct DecodedPixelDataFrame {
+    let value: Data
+    let samplesPerPixel: Int
+    let bitsAllocated: Int
+    let photometricInterpretation: PhotometricInterpretation
+    let planarConfiguration: Int
+}
+
 /// A parsed DICOM Part 10 file.
 public struct DICOMFile: Sendable {
     /// The File Meta Information dataset (group `0002`).
@@ -31,11 +45,10 @@ public struct DICOMFile: Sendable {
 
     /// The image frames contained by Pixel Data.
     ///
-    /// For encapsulated pixel data (RLE Lossless, JPEG Baseline, and JPEG
-    /// 2000), this uses the Pixel Data Basic Offset Table to recover fragment
-    /// boundaries. Multi-frame encapsulated images without a Basic Offset
-    /// Table aren't currently supported because their frame boundaries cannot
-    /// be determined reliably.
+    /// For encapsulated pixel data, this uses the Pixel Data Basic Offset
+    /// Table to recover fragment boundaries. Multi-frame encapsulated images
+    /// without a Basic Offset Table aren't currently supported because their
+    /// frame boundaries cannot be determined reliably.
     ///
     /// JPEG Baseline and JPEG 2000 frames are decoded through ImageIO, which
     /// produces 8-bit samples: frames declaring any other Bits Allocated
@@ -55,19 +68,30 @@ public struct DICOMFile: Sendable {
         }
         guard let frameCount = Int(dataset[.numberOfFrames]?.stringValue ?? "1"), frameCount > 0 else { return nil }
         let pixelCount = Int(rows) * Int(columns)
-        let values: [Data]
-        var outputPhotometric = PhotometricInterpretation(name: photometricInterpretation)
-        var outputPlanarConfiguration = Int(dataset[.planarConfiguration]?.uint16Value ?? 0)
+        let sourceSamplesPerPixel = Int(samplesPerPixel)
+        let sourceBitsAllocated = Int(bitsAllocated)
+        let sourcePhotometric = PhotometricInterpretation(name: photometricInterpretation)
+        let sourcePlanarConfiguration = Int(dataset[.planarConfiguration]?.uint16Value ?? 0)
+        let frames: [DecodedPixelDataFrame]
         switch transferSyntax {
         case .rleLossless:
-            guard let frames = encapsulatedFrames(of: pixelElement, frameCount: frameCount) else { return nil }
-            values = frames.compactMap { fragments in
+            guard let fragmentFrames = encapsulatedFrames(of: pixelElement, frameCount: frameCount) else { return nil }
+            frames = fragmentFrames.compactMap { fragments in
+                let value: Data?
                 switch (samplesPerPixel, bitsAllocated) {
-                case (1, 8): try? RLELosslessDecoder.decode8BitMonochrome(fragments: fragments, pixelCount: pixelCount)
-                case (1, 16): try? RLELosslessDecoder.decode16BitMonochrome(fragments: fragments, pixelCount: pixelCount)
-                case (3, 8): try? RLELosslessDecoder.decode8BitRGB(fragments: fragments, pixelCount: pixelCount)
-                default: nil
+                case (1, 8): value = try? RLELosslessDecoder.decode8BitMonochrome(fragments: fragments, pixelCount: pixelCount)
+                case (1, 16): value = try? RLELosslessDecoder.decode16BitMonochrome(fragments: fragments, pixelCount: pixelCount)
+                case (3, 8): value = try? RLELosslessDecoder.decode8BitRGB(fragments: fragments, pixelCount: pixelCount)
+                default: value = nil
                 }
+                guard let value else { return nil }
+                return DecodedPixelDataFrame(
+                    value: value,
+                    samplesPerPixel: sourceSamplesPerPixel,
+                    bitsAllocated: sourceBitsAllocated,
+                    photometricInterpretation: sourcePhotometric,
+                    planarConfiguration: sourcePlanarConfiguration
+                )
             }
 
         case .jpegBaseline, .jpeg2000Lossless, .jpeg2000:
@@ -76,45 +100,72 @@ public struct DICOMFile: Sendable {
             // faithfully; saying so here beats handing back pixel data whose
             // attributes contradict its own bytes.
             guard bitsAllocated == 8,
-                  let frames = encapsulatedFrames(of: pixelElement, frameCount: frameCount) else { return nil }
-            switch (samplesPerPixel, outputPhotometric) {
+                  let fragmentFrames = encapsulatedFrames(of: pixelElement, frameCount: frameCount) else { return nil }
+            switch (samplesPerPixel, sourcePhotometric) {
             case (3, _):
-                values = frames.compactMap {
-                    try? JPEGFrameDecoder.decodeRGB(fragments: $0, width: Int(columns), height: Int(rows))
+                frames = fragmentFrames.compactMap {
+                    guard let value = try? JPEGFrameDecoder.decodeRGB(fragments: $0, width: Int(columns), height: Int(rows)) else {
+                        return nil
+                    }
+                    return DecodedPixelDataFrame(
+                        value: value,
+                        samplesPerPixel: 3,
+                        bitsAllocated: 8,
+                        photometricInterpretation: .rgb,
+                        planarConfiguration: 0
+                    )
                 }
                 // ImageIO converts the JPEG's own color space, so the decoded
                 // frame is interleaved RGB whatever the dataset declared
                 // (JPEG Baseline pixel data is usually `YBR_FULL_422`).
-                outputPhotometric = .rgb
-                outputPlanarConfiguration = 0
             case (1, .monochrome1), (1, .monochrome2):
                 // Decoded as single-sample grayscale, keeping the stored
                 // polarity so `MONOCHROME1` still inverts when rendered.
-                values = frames.compactMap {
-                    try? JPEGFrameDecoder.decodeMonochrome(fragments: $0, width: Int(columns), height: Int(rows))
+                frames = fragmentFrames.compactMap {
+                    guard let value = try? JPEGFrameDecoder.decodeMonochrome(fragments: $0, width: Int(columns), height: Int(rows)) else {
+                        return nil
+                    }
+                    return DecodedPixelDataFrame(
+                        value: value,
+                        samplesPerPixel: 1,
+                        bitsAllocated: 8,
+                        photometricInterpretation: sourcePhotometric,
+                        planarConfiguration: sourcePlanarConfiguration
+                    )
                 }
             default:
                 return nil
             }
 
+        case .jpegLossless, .jpegLosslessSV1, .jpegLSLossless, .jpegLSNearLossless:
+            // These syntaxes must never fall through to the raw-data path or
+            // ImageIO. Both decoders are intentionally added in later phases.
+            return nil
+
         default:
             guard bitsAllocated.isMultiple(of: 8) else { return nil }
             let bytesPerFrame = pixelCount * Int(samplesPerPixel) * (Int(bitsAllocated) / 8)
             guard bytesPerFrame > 0, pixelElement.value.count >= bytesPerFrame * frameCount else { return nil }
-            values = (0..<frameCount).map { frame in
-                pixelElement.value.subdata(in: frame * bytesPerFrame..<(frame + 1) * bytesPerFrame)
+            frames = (0..<frameCount).map { frame in
+                DecodedPixelDataFrame(
+                    value: pixelElement.value.subdata(in: frame * bytesPerFrame..<(frame + 1) * bytesPerFrame),
+                    samplesPerPixel: sourceSamplesPerPixel,
+                    bitsAllocated: sourceBitsAllocated,
+                    photometricInterpretation: sourcePhotometric,
+                    planarConfiguration: sourcePlanarConfiguration
+                )
             }
         }
-        guard values.count == frameCount else { return nil }
+        guard frames.count == frameCount else { return nil }
 
-        return values.map { value in DICOMPixelData(
-            value: value,
+        return frames.map { frame in DICOMPixelData(
+            value: frame.value,
             rows: Int(rows),
             columns: Int(columns),
-            samplesPerPixel: Int(samplesPerPixel),
-            bitsAllocated: Int(bitsAllocated),
-            photometricInterpretation: outputPhotometric,
-            planarConfiguration: outputPlanarConfiguration,
+            samplesPerPixel: frame.samplesPerPixel,
+            bitsAllocated: frame.bitsAllocated,
+            photometricInterpretation: frame.photometricInterpretation,
+            planarConfiguration: frame.planarConfiguration,
             bitsStored: dataset[.bitsStored]?.uint16Value.map(Int.init),
             pixelRepresentation: Int(dataset[.pixelRepresentation]?.uint16Value ?? 0),
             rescaleSlope: dataset[.rescaleSlope]?.doubleValue ?? 1.0,

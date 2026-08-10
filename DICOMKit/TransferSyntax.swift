@@ -10,6 +10,15 @@ public enum TransferSyntax: Sendable, Equatable {
     case rleLossless
     /// JPEG Baseline (Process 1, 8-bit) (`1.2.840.10008.1.2.4.50`).
     case jpegBaseline
+    /// JPEG Lossless, Non-Hierarchical (Process 14) (`1.2.840.10008.1.2.4.57`).
+    case jpegLossless
+    /// JPEG Lossless, Non-Hierarchical, First-Order Prediction (Process 14,
+    /// Selection Value 1) (`1.2.840.10008.1.2.4.70`).
+    case jpegLosslessSV1
+    /// JPEG-LS Lossless Image Compression (`1.2.840.10008.1.2.4.80`).
+    case jpegLSLossless
+    /// JPEG-LS Near-Lossless Image Compression (`1.2.840.10008.1.2.4.81`).
+    case jpegLSNearLossless
     /// JPEG 2000 Image Compression (Lossless Only) (`1.2.840.10008.1.2.4.90`).
     case jpeg2000Lossless
     /// JPEG 2000 Image Compression (`1.2.840.10008.1.2.4.91`).
@@ -25,6 +34,10 @@ public enum TransferSyntax: Sendable, Equatable {
         case .explicitVRBigEndian: "1.2.840.10008.1.2.2"
         case .rleLossless: "1.2.840.10008.1.2.5"
         case .jpegBaseline: "1.2.840.10008.1.2.4.50"
+        case .jpegLossless: "1.2.840.10008.1.2.4.57"
+        case .jpegLosslessSV1: "1.2.840.10008.1.2.4.70"
+        case .jpegLSLossless: "1.2.840.10008.1.2.4.80"
+        case .jpegLSNearLossless: "1.2.840.10008.1.2.4.81"
         case .jpeg2000Lossless: "1.2.840.10008.1.2.4.90"
         case .jpeg2000: "1.2.840.10008.1.2.4.91"
         case .unknown(let uid): uid
@@ -40,7 +53,8 @@ public enum TransferSyntax: Sendable, Equatable {
     var isSupported: Bool {
         switch self {
         case .implicitVRLittleEndian, .explicitVRLittleEndian, .rleLossless,
-             .jpegBaseline, .jpeg2000Lossless, .jpeg2000:
+             .jpegBaseline, .jpegLossless, .jpegLosslessSV1, .jpegLSLossless,
+             .jpegLSNearLossless, .jpeg2000Lossless, .jpeg2000:
             true
         case .explicitVRBigEndian, .unknown:
             false
@@ -54,6 +68,10 @@ public enum TransferSyntax: Sendable, Equatable {
         case Self.explicitVRBigEndian.uid: self = .explicitVRBigEndian
         case Self.rleLossless.uid: self = .rleLossless
         case Self.jpegBaseline.uid: self = .jpegBaseline
+        case Self.jpegLossless.uid: self = .jpegLossless
+        case Self.jpegLosslessSV1.uid: self = .jpegLosslessSV1
+        case Self.jpegLSLossless.uid: self = .jpegLSLossless
+        case Self.jpegLSNearLossless.uid: self = .jpegLSNearLossless
         case Self.jpeg2000Lossless.uid: self = .jpeg2000Lossless
         case Self.jpeg2000.uid: self = .jpeg2000
         default: self = .unknown(uid)

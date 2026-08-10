@@ -185,6 +185,33 @@ struct JPEGFrameDecoderTests {
         #expect(try DICOMFile(data: data).pixelDataFrames == nil)
     }
 
+    @Test(arguments: [
+        TransferSyntax.jpegLossless,
+        .jpegLosslessSV1,
+        .jpegLSLossless,
+        .jpegLSNearLossless
+    ])
+    func recognizesUnimplementedLosslessJPEGSyntaxWithoutUsingImageIO(transferSyntax: TransferSyntax) throws {
+        // This is deliberately a decodable JPEG Baseline bitstream. If an
+        // unimplemented lossless syntax were accidentally routed through
+        // ImageIO, this test would incorrectly produce pixel data rather
+        // than fail safely.
+        let data = imageFile(
+            transferSyntaxUID: transferSyntax.uid,
+            rows: 1,
+            columns: 1,
+            bitsAllocated: 8,
+            pixelDataElement: encapsulatedPixelData(fragments: [
+                jpegData(gray: Data([128]), width: 1, height: 1)
+            ])
+        )
+
+        let file = try DICOMFile(data: data)
+
+        #expect(file.transferSyntax == transferSyntax)
+        #expect(file.pixelDataFrames == nil)
+    }
+
     @Test func rejectsMultiFrameJPEGWithoutBasicOffsetTable() throws {
         // Without a Basic Offset Table there's no reliable way to tell which
         // fragment starts which frame.
