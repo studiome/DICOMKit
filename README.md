@@ -36,7 +36,8 @@ See the [changelog](CHANGELOG.md) for the v0.3 implementation status.
   transfer syntax.
 - Decodes JPEG-LS Lossless (`.80`) monochrome 8-bit and 16-bit Pixel Data,
   plus sample-interleaved 8-bit `RGB` and `YBR_FULL` (returned as `RGB`); supports default and explicit Preset
-  Coding Parameters, restart markers, and multi-frame Basic Offset Tables.
+  Coding Parameters, restart markers, multi-frame Basic Offset Tables, and
+  plane-interleaved 8-bit `RGB` frames.
   JPEG-LS Near-Lossless (`.81`) supports monochrome and sample-interleaved
   `RGB` 8-bit Pixel Data. The
   JPEG-LS coverage is verified with BSD-3-Clause CharLS-generated reference
@@ -151,7 +152,7 @@ pull request:
 
 ## Roadmap
 
-1. JPEG-LS line／plane interleave modes
+1. JPEG-LS line interleave mode
 2. Multi-component JPEG Lossless Process 14
 3. DIMSE networking
 

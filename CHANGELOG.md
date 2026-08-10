@@ -8,6 +8,8 @@ All notable changes to DICOMKit are documented here.
   retrieval, and STOW-RS multipart instance storage.
 - Added injectable `DICOMwebTransport` and response validation for testable
   application-specific authentication and networking policies.
+- Added JPEG-LS Lossless plane-interleaved RGB decoding, including
+  multi-SOS encapsulated frames.
 
 ## v0.4 — Unreleased
 
@@ -31,6 +33,6 @@ All notable changes to DICOMKit are documented here.
 
 ## Compatibility notes
 
-- JPEG-LS Near-Lossless RGB, other JPEG-LS interleave modes, and
+- JPEG-LS Near-Lossless RGB, JPEG-LS line interleave mode, and
   multi-component JPEG Lossless remain unsupported.
 - Encapsulated multi-frame pixel data requires a Basic Offset Table.
