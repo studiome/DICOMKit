@@ -110,11 +110,19 @@ xcodebuild test \
 
 ### Xcode Cloud
 
-`DICOMKit.xcworkspace` includes a minimal `DICOMKitCloudHost` framework target
-that makes the local Swift package available to Xcode Cloud. Select the
-`DICOMKitCloudHost` product and shared scheme when configuring a test workflow.
-Its test action runs `DICOMKitTests` on macOS and iOS Simulator destinations;
-the framework contains no implementation beyond re-exporting `DICOMKit`.
+`DICOMKit.xcworkspace` includes a minimal framework target that makes the local
+Swift package available to Xcode Cloud, which can't build a standalone Swift
+package. Select the `DICOMKit` product and shared scheme when configuring a
+test workflow; its test action runs `DICOMKitTests` on macOS and iOS Simulator
+destinations.
+
+The framework is empty: linking the package is what makes Xcode Cloud resolve
+and build it. Its product, scheme, and bundle identifier are all named
+`DICOMKit` so Xcode Cloud reports that name rather than the host's. Only the
+underlying target and project file keep the `DICOMKitCloudHost` name, because
+naming either of them `DICOMKit` collides with the package's own target
+(`Multiple commands produce …DICOMKit.build/…`) or leaves the workspace unable
+to resolve a run destination.
 
 Commit `Package.resolved` whenever package dependencies create or update it so
 Xcode Cloud resolves the same dependency versions as local development.
