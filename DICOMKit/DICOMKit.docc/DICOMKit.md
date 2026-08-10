@@ -1,6 +1,6 @@
 # ``DICOMKit``
 
-Pure Swift utilities for reading DICOM Part 10 files on iPadOS and macOS.
+Swift-first utilities for reading DICOM Part 10 files on iPadOS and macOS.
 
 ## Overview
 
@@ -51,7 +51,7 @@ samples: `RGB` for three-sample frames and grayscale for `MONOCHROME1` /
 `MONOCHROME2` frames, while frames declaring any other `Bits Allocated` are
 reported as undecodable. Multi-frame encapsulated images require a Basic
 Offset Table and are available through ``DICOMFile/pixelDataFrames``. JPEG
-Multi-component JPEG Lossless, JPEG-LS line interleave mode, and DIMSE
+Multi-component JPEG Lossless and DIMSE
 remain outside the current scope.
 Pixel Padding Value
 `(0028,0120)` is also not yet applied.

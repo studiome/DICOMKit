@@ -2,7 +2,7 @@
 
 [![Tests](https://github.com/studiome/DICOMKit/actions/workflows/tests.yml/badge.svg)](https://github.com/studiome/DICOMKit/actions/workflows/tests.yml)
 
-Pure Swift utilities for reading DICOM Part 10 files on iPadOS and macOS.
+Swift-first utilities for reading DICOM Part 10 files on iPadOS and macOS.
 
 [Read the API documentation](https://studiome.github.io/DICOMKit/documentation/dicomkit/)
 
@@ -52,6 +52,8 @@ See the [changelog](CHANGELOG.md) for the v0.3 implementation status.
 - Provides async DICOMweb clients for QIDO-RS study searches, WADO-RS
   instance retrieval, and STOW-RS multipart instance storage; transports are
   injectable for application authentication and testing
+- Uses the vendored BSD-3-Clause CharLS codec for standards-complete JPEG-LS
+  decoding, including sample, line, and plane interleave modes
 
 ```swift
 let file = try DICOMFile(data: data)
@@ -152,9 +154,8 @@ pull request:
 
 ## Roadmap
 
-1. JPEG-LS line interleave mode
-2. Multi-component JPEG Lossless Process 14
-3. DIMSE networking
+1. Multi-component JPEG Lossless Process 14
+2. DIMSE networking
 
 ## License
 
