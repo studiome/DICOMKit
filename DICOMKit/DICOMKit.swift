@@ -16,6 +16,8 @@ public struct DICOMTag: Hashable, Sendable, CustomStringConvertible {
     public static let rows = DICOMTag(group: 0x0028, element: 0x0010)
     public static let columns = DICOMTag(group: 0x0028, element: 0x0011)
     public static let pixelData = DICOMTag(group: 0x7FE0, element: 0x0010)
+    public static let referencedStudySequence = DICOMTag(group: 0x0008, element: 0x1110)
+    public static let referencedSOPClassUID = DICOMTag(group: 0x0008, element: 0x1150)
 }
 
 public enum DICOMVR: String, Sendable, CaseIterable {
@@ -32,12 +34,21 @@ public enum DICOMVR: String, Sendable, CaseIterable {
     }
 }
 
-public struct DICOMElement: Sendable, Hashable {
+public struct DICOMElement: Sendable {
     public let tag: DICOMTag
     public let vr: DICOMVR
     public let value: Data
+    public let sequenceItems: [DICOMDataset]?
+
+    public init(tag: DICOMTag, vr: DICOMVR, value: Data, sequenceItems: [DICOMDataset]? = nil) {
+        self.tag = tag
+        self.vr = vr
+        self.value = value
+        self.sequenceItems = sequenceItems
+    }
 
     public var stringValue: String? {
+        guard sequenceItems == nil else { return nil }
         var trimmedValue = value
         while let last = trimmedValue.last, last == 0 || last == 0x20 {
             trimmedValue.removeLast()
@@ -95,6 +106,8 @@ public enum DICOMError: Error, Sendable, Equatable {
     case truncatedData
     case invalidVR(String)
     case unsupportedTransferSyntax(String)
+    case unsupportedUndefinedLength(DICOMTag)
+    case invalidSequenceItem(DICOMTag)
 }
 
 public struct DICOMFile: Sendable {
@@ -109,8 +122,8 @@ public struct DICOMFile: Sendable {
 
         var reader = Reader(data: data, offset: 132)
         var metaElements: [DICOMElement] = []
-        while reader.offset + 4 <= data.count, reader.peekGroup() == 0x0002 {
-            metaElements.append(try reader.readExplicitLittleEndianElement())
+        while reader.peekTag()?.group == 0x0002 {
+            metaElements.append(try reader.readElement(transferSyntax: .explicitVRLittleEndian))
         }
         metaInformation = DICOMDataset(elements: metaElements)
 
@@ -118,15 +131,11 @@ public struct DICOMFile: Sendable {
             throw DICOMError.unsupportedTransferSyntax("missing Transfer Syntax UID")
         }
         transferSyntax = TransferSyntax(uid: uid)
-        guard transferSyntax == .explicitVRLittleEndian else {
+        guard transferSyntax == .explicitVRLittleEndian || transferSyntax == .implicitVRLittleEndian else {
             throw DICOMError.unsupportedTransferSyntax(uid)
         }
 
-        var elements: [DICOMElement] = []
-        while reader.offset < data.count {
-            elements.append(try reader.readExplicitLittleEndianElement())
-        }
-        dataset = DICOMDataset(elements: elements)
+        dataset = DICOMDataset(elements: try reader.readDataset(transferSyntax: transferSyntax))
     }
 }
 
@@ -134,23 +143,111 @@ private struct Reader {
     let data: Data
     var offset: Int
 
-    mutating func readExplicitLittleEndianElement() throws -> DICOMElement {
-        let tag = DICOMTag(group: try readUInt16(), element: try readUInt16())
-        let vrText = String(bytes: try readData(count: 2), encoding: .ascii) ?? ""
-        guard let vr = DICOMVR(rawValue: vrText) else { throw DICOMError.invalidVR(vrText) }
-        let length: Int
-        if vr.uses32BitLength {
-            _ = try readUInt16()
-            length = Int(try readUInt32())
-        } else {
-            length = Int(try readUInt16())
+    mutating func readDataset(transferSyntax: TransferSyntax, endingAt endOffset: Int? = nil) throws -> [DICOMElement] {
+        var elements: [DICOMElement] = []
+        while true {
+            if let endOffset {
+                guard offset <= endOffset else { throw DICOMError.truncatedData }
+                if offset == endOffset { return elements }
+            }
+            guard offset < data.count else {
+                guard endOffset == nil else { throw DICOMError.truncatedData }
+                return elements
+            }
+            elements.append(try readElement(transferSyntax: transferSyntax))
         }
-        return DICOMElement(tag: tag, vr: vr, value: try readData(count: length))
     }
 
-    func peekGroup() -> UInt16? {
-        guard offset + 2 <= data.count else { return nil }
-        return UInt16(data[offset]) | (UInt16(data[offset + 1]) << 8)
+    mutating func readElement(transferSyntax: TransferSyntax) throws -> DICOMElement {
+        let tag = try readTag()
+        let vr: DICOMVR
+        let length: UInt32
+
+        switch transferSyntax {
+        case .explicitVRLittleEndian:
+            let vrText = String(bytes: try readData(count: 2), encoding: .ascii) ?? ""
+            guard let parsedVR = DICOMVR(rawValue: vrText) else { throw DICOMError.invalidVR(vrText) }
+            vr = parsedVR
+            if vr.uses32BitLength {
+                _ = try readUInt16()
+                length = try readUInt32()
+            } else {
+                length = UInt32(try readUInt16())
+            }
+        case .implicitVRLittleEndian:
+            vr = DICOMDictionary.vr(for: tag) ?? .UN
+            length = try readUInt32()
+        default:
+            throw DICOMError.unsupportedTransferSyntax(transferSyntax.uid)
+        }
+
+        if vr == .SQ {
+            return DICOMElement(tag: tag, vr: vr, value: Data(), sequenceItems: try readSequence(transferSyntax: transferSyntax, length: length))
+        }
+        guard length != .max else { throw DICOMError.unsupportedUndefinedLength(tag) }
+        return DICOMElement(tag: tag, vr: vr, value: try readData(count: Int(length)))
+    }
+
+    mutating func readSequence(transferSyntax: TransferSyntax, length: UInt32) throws -> [DICOMDataset] {
+        let endOffset: Int?
+        if length == .max {
+            endOffset = nil
+        } else {
+            let candidate = offset + Int(length)
+            guard candidate <= data.count else { throw DICOMError.truncatedData }
+            endOffset = candidate
+        }
+
+        var items: [DICOMDataset] = []
+        while offset < data.count {
+            if let endOffset, offset == endOffset { return items }
+            let itemTag = try readTag()
+            let itemLength = try readUInt32()
+            if itemTag == DICOMTag(group: 0xFFFE, element: 0xE0DD) {
+                guard endOffset == nil, itemLength == 0 else { throw DICOMError.invalidSequenceItem(itemTag) }
+                return items
+            }
+            guard itemTag == DICOMTag(group: 0xFFFE, element: 0xE000) else {
+                throw DICOMError.invalidSequenceItem(itemTag)
+            }
+
+            let itemElements: [DICOMElement]
+            if itemLength == .max {
+                itemElements = try readUndefinedLengthItem(transferSyntax: transferSyntax)
+            } else {
+                let itemEndOffset = offset + Int(itemLength)
+                guard itemEndOffset <= data.count else { throw DICOMError.truncatedData }
+                itemElements = try readDataset(transferSyntax: transferSyntax, endingAt: itemEndOffset)
+            }
+            items.append(DICOMDataset(elements: itemElements))
+        }
+        if let endOffset, offset == endOffset { return items }
+        throw DICOMError.truncatedData
+    }
+
+    mutating func readUndefinedLengthItem(transferSyntax: TransferSyntax) throws -> [DICOMElement] {
+        var elements: [DICOMElement] = []
+        while offset < data.count {
+            if peekTag() == DICOMTag(group: 0xFFFE, element: 0xE00D) {
+                _ = try readTag()
+                guard try readUInt32() == 0 else { throw DICOMError.truncatedData }
+                return elements
+            }
+            elements.append(try readElement(transferSyntax: transferSyntax))
+        }
+        throw DICOMError.truncatedData
+    }
+
+    func peekTag() -> DICOMTag? {
+        guard offset + 4 <= data.count else { return nil }
+        return DICOMTag(
+            group: UInt16(data[offset]) | (UInt16(data[offset + 1]) << 8),
+            element: UInt16(data[offset + 2]) | (UInt16(data[offset + 3]) << 8)
+        )
+    }
+
+    mutating func readTag() throws -> DICOMTag {
+        DICOMTag(group: try readUInt16(), element: try readUInt16())
     }
 
     mutating func readUInt16() throws -> UInt16 {
@@ -167,8 +264,21 @@ private struct Reader {
     }
 
     mutating func readData(count: Int) throws -> Data {
-        guard count >= 0, offset + count <= data.count else { throw DICOMError.truncatedData }
+        guard count >= 0, count <= data.count - offset else { throw DICOMError.truncatedData }
         defer { offset += count }
         return data.subdata(in: offset..<(offset + count))
+    }
+}
+
+private enum DICOMDictionary {
+    static func vr(for tag: DICOMTag) -> DICOMVR? {
+        switch tag {
+        case .transferSyntaxUID, .referencedSOPClassUID: .UI
+        case .patientName: .PN
+        case .rows, .columns: .US
+        case .pixelData: .OW
+        case .referencedStudySequence: .SQ
+        default: nil
+        }
     }
 }
