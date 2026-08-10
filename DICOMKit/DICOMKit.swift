@@ -35,6 +35,21 @@ public struct DICOMTag: Hashable, Sendable, CustomStringConvertible {
     public static let planarConfiguration = DICOMTag(group: 0x0028, element: 0x0006)
     /// Bits Allocated `(0028,0100)`.
     public static let bitsAllocated = DICOMTag(group: 0x0028, element: 0x0100)
+    /// Bits Stored `(0028,0101)`.
+    public static let bitsStored = DICOMTag(group: 0x0028, element: 0x0101)
+    /// High Bit `(0028,0102)`.
+    public static let highBit = DICOMTag(group: 0x0028, element: 0x0102)
+    /// Pixel Representation `(0028,0103)`: `0` for unsigned integer, `1` for
+    /// 2's complement signed integer.
+    public static let pixelRepresentation = DICOMTag(group: 0x0028, element: 0x0103)
+    /// Window Center `(0028,1050)`.
+    public static let windowCenter = DICOMTag(group: 0x0028, element: 0x1050)
+    /// Window Width `(0028,1051)`.
+    public static let windowWidth = DICOMTag(group: 0x0028, element: 0x1051)
+    /// Rescale Intercept `(0028,1052)`.
+    public static let rescaleIntercept = DICOMTag(group: 0x0028, element: 0x1052)
+    /// Rescale Slope `(0028,1053)`.
+    public static let rescaleSlope = DICOMTag(group: 0x0028, element: 0x1053)
     /// Referenced Study Sequence `(0008,1110)`.
     public static let referencedStudySequence = DICOMTag(group: 0x0008, element: 0x1110)
     /// Referenced SOP Class UID `(0008,1150)`.
@@ -95,6 +110,28 @@ public struct DICOMElement: Sendable {
     public var uint16Value: UInt16? {
         guard value.count >= 2 else { return nil }
         return UInt16(value[value.startIndex]) | (UInt16(value[value.startIndex + 1]) << 8)
+    }
+
+    /// The first 16-bit signed little-endian value, if the value contains one.
+    ///
+    /// Intended for the `SS` VR.
+    public var int16Value: Int16? {
+        guard let bitPattern = uint16Value else { return nil }
+        return Int16(bitPattern: bitPattern)
+    }
+
+    /// The first numeric value parsed from a string-encoded numeric VR such as
+    /// `DS` or `IS`.
+    ///
+    /// DICOM allows `DS` (Decimal String) and `IS` (Integer String) values to
+    /// contain multiple backslash-separated values; only the first value is
+    /// returned. Surrounding whitespace is trimmed. Returns `nil` if the value
+    /// is empty, isn't valid UTF-8, or the first component can't be parsed as
+    /// a `Double`.
+    public var doubleValue: Double? {
+        guard let stringValue else { return nil }
+        let firstComponent = stringValue.split(separator: "\\", maxSplits: 1, omittingEmptySubsequences: false)[0]
+        return Double(firstComponent.trimmingCharacters(in: .whitespaces))
     }
 }
 
@@ -197,11 +234,106 @@ public struct DICOMPixelData: Sendable {
     public let photometricInterpretation: String
     /// The planar configuration, when applicable.
     public let planarConfiguration: Int
-
-    /// Creates a Core Graphics image for 8-bit monochrome or interleaved RGB data.
+    /// Number of bits actually meaningful within each allocated sample.
     ///
-    /// For 16-bit monochrome data, supply a window center and width. The rendered
-    /// image is an 8-bit grayscale `CGImage` suitable for display on Apple platforms.
+    /// Defaults to ``bitsAllocated`` when `(0028,0101)` is absent, per the
+    /// DICOM default. Only consulted by the 16-bit monochrome rendering path.
+    public let bitsStored: Int
+    /// `0` if samples are unsigned integers, `1` if samples are 2's
+    /// complement signed integers. Defaults to `0` when `(0028,0103)` is
+    /// absent. Only consulted by the 16-bit monochrome rendering path.
+    public let pixelRepresentation: Int
+    /// The value of `(0028,1053)`, applied as `storedValue * rescaleSlope +
+    /// rescaleIntercept` before windowing. Defaults to `1.0` when absent.
+    /// Only consulted by the 16-bit monochrome rendering path.
+    public let rescaleSlope: Double
+    /// The value of `(0028,1052)`, applied as `storedValue * rescaleSlope +
+    /// rescaleIntercept` before windowing. Defaults to `0.0` when absent.
+    /// Only consulted by the 16-bit monochrome rendering path.
+    public let rescaleIntercept: Double
+    /// The dataset's suggested Window Center `(0028,1050)`, if present.
+    ///
+    /// Used by ``cgImage(windowCenter:windowWidth:)`` when the caller doesn't
+    /// supply an explicit window center. `nil` if `(0028,1050)` is absent or
+    /// unparsable.
+    public let defaultWindowCenter: Double?
+    /// The dataset's suggested Window Width `(0028,1051)`, if present.
+    ///
+    /// Used by ``cgImage(windowCenter:windowWidth:)`` when the caller doesn't
+    /// supply an explicit window width. `nil` if `(0028,1051)` is absent or
+    /// unparsable.
+    public let defaultWindowWidth: Double?
+
+    /// Creates uncompressed pixel data and its rendering attributes.
+    ///
+    /// `bitsStored`, `pixelRepresentation`, `rescaleSlope`, and
+    /// `rescaleIntercept` default to the values DICOM specifies when the
+    /// corresponding attribute is absent from a dataset, so callers that
+    /// don't care about them (for example, 8-bit or `RGB` pixel data) can
+    /// omit them entirely.
+    init(
+        value: Data,
+        rows: Int,
+        columns: Int,
+        samplesPerPixel: Int,
+        bitsAllocated: Int,
+        photometricInterpretation: String,
+        planarConfiguration: Int = 0,
+        bitsStored: Int? = nil,
+        pixelRepresentation: Int = 0,
+        rescaleSlope: Double = 1.0,
+        rescaleIntercept: Double = 0.0,
+        defaultWindowCenter: Double? = nil,
+        defaultWindowWidth: Double? = nil
+    ) {
+        self.value = value
+        self.rows = rows
+        self.columns = columns
+        self.samplesPerPixel = samplesPerPixel
+        self.bitsAllocated = bitsAllocated
+        self.photometricInterpretation = photometricInterpretation
+        self.planarConfiguration = planarConfiguration
+        self.bitsStored = bitsStored ?? bitsAllocated
+        self.pixelRepresentation = pixelRepresentation
+        self.rescaleSlope = rescaleSlope
+        self.rescaleIntercept = rescaleIntercept
+        self.defaultWindowCenter = defaultWindowCenter
+        self.defaultWindowWidth = defaultWindowWidth
+    }
+
+    /// Creates a Core Graphics image for 8-bit monochrome, interleaved RGB,
+    /// or 16-bit monochrome data.
+    ///
+    /// The 8-bit and `RGB` paths render stored bytes directly: they don't
+    /// apply ``pixelRepresentation``, ``rescaleSlope``, or
+    /// ``rescaleIntercept``. This is a deliberate simplification, since
+    /// signed or rescaled 8-bit Pixel Data is essentially unused in
+    /// practice.
+    ///
+    /// For 16-bit monochrome data, each stored sample is masked to
+    /// ``bitsStored`` bits, sign-extended if ``pixelRepresentation`` is `1`,
+    /// and then rescaled as `storedValue * rescaleSlope + rescaleIntercept`
+    /// (for example, to Hounsfield Units for CT) before windowing. `center`
+    /// and `width` are therefore expressed in the *rescaled* unit, not in
+    /// raw stored values.
+    ///
+    /// The window used for 16-bit monochrome data is resolved independently
+    /// for center and width, in this priority order:
+    /// 1. The `windowCenter` / `windowWidth` parameters, if supplied.
+    /// 2. ``defaultWindowCenter`` / ``defaultWindowWidth`` (the dataset's
+    ///    `(0028,1050)` / `(0028,1051)`), if present.
+    /// 3. A window computed from the rescaled data itself: `center =
+    ///    (min+max)/2`, `width = max-min`. If every sample has the same
+    ///    rescaled value, `width` would be `0`; to avoid throwing
+    ///    ``DICOMImageError/invalidWindowWidth`` for that degenerate case,
+    ///    a width of `2` is used instead, producing a single-color image
+    ///    instead of a crash.
+    ///
+    /// A caller may supply only one of `windowCenter` / `windowWidth`; the
+    /// other is resolved independently through the same priority order (for
+    /// example, an explicit `windowCenter` with no `windowWidth` combines
+    /// with the dataset's default width, or the computed width if the
+    /// dataset has none).
     public func cgImage(windowCenter: Double? = nil, windowWidth: Double? = nil) throws -> CGImage {
         let pixelCount = try checkedPixelCount()
         switch (photometricInterpretation, bitsAllocated) {
@@ -222,14 +354,16 @@ public struct DICOMPixelData: Sendable {
 
         case ("MONOCHROME1", 16), ("MONOCHROME2", 16):
             guard samplesPerPixel == 1 else { throw DICOMImageError.invalidImageAttributes }
+            guard bitsStored >= 1, bitsStored <= bitsAllocated else { throw DICOMImageError.invalidImageAttributes }
             let byteCount = try checkedByteCount(pixelCount, bytesPerSample: 2, samples: 1)
             let source = try requiredBytes(byteCount)
-            let center = windowCenter ?? 32_768
-            let width = windowWidth ?? 65_536
+            let samples = rescaledSamples(from: source)
+
+            let (center, width) = resolvedWindow(explicitCenter: windowCenter, explicitWidth: windowWidth, samples: samples)
             guard center.isFinite, width.isFinite else { throw DICOMImageError.invalidWindowSettings }
             guard width > 1 else { throw DICOMImageError.invalidWindowWidth }
-            let pixels = Data(stride(from: 0, to: source.count, by: 2).map { offset in
-                let sample = Double(UInt16(source[offset]) | (UInt16(source[offset + 1]) << 8))
+
+            let pixels = Data(samples.map { sample in
                 let rendered = windowedSample(sample, center: center, width: width)
                 return photometricInterpretation == "MONOCHROME1" ? 255 - rendered : rendered
             })
@@ -238,6 +372,56 @@ public struct DICOMPixelData: Sendable {
         default:
             throw DICOMImageError.unsupportedPixelFormat
         }
+    }
+
+    /// Decodes little-endian 16-bit samples from `source`, masking each to
+    /// ``bitsStored`` bits, sign-extending if ``pixelRepresentation`` is `1`,
+    /// and applying ``rescaleSlope`` / ``rescaleIntercept``.
+    ///
+    /// Callers must have already validated that `bitsStored` is within
+    /// `1...bitsAllocated`.
+    private func rescaledSamples(from source: Data) -> [Double] {
+        let valueMask = (UInt32(1) << bitsStored) - 1
+        let signBitMask = UInt32(1) << (bitsStored - 1)
+        let signedRange = UInt32(1) << bitsStored
+        return stride(from: source.startIndex, to: source.endIndex, by: 2).map { offset in
+            let raw = UInt32(UInt16(source[offset]) | (UInt16(source[offset + 1]) << 8))
+            let masked = raw & valueMask
+            let storedValue: Int64
+            if pixelRepresentation == 1, masked & signBitMask != 0 {
+                storedValue = Int64(masked) - Int64(signedRange)
+            } else {
+                storedValue = Int64(masked)
+            }
+            return Double(storedValue) * rescaleSlope + rescaleIntercept
+        }
+    }
+
+    /// Resolves the effective window center and width from the explicit
+    /// parameters, the dataset defaults, and the rescaled sample data, per
+    /// the priority order documented on ``cgImage(windowCenter:windowWidth:)``.
+    private func resolvedWindow(explicitCenter: Double?, explicitWidth: Double?, samples: [Double]) -> (center: Double, width: Double) {
+        let computed = computedWindow(from: samples)
+        let center = explicitCenter ?? defaultWindowCenter ?? computed.center
+        let width = explicitWidth ?? defaultWindowWidth ?? computed.width
+        return (center, width)
+    }
+
+    /// Computes a fallback window from rescaled sample data: `center =
+    /// (min+max)/2`, `width = max-min`, substituting `2` for a `width` of
+    /// `0` (all samples equal) so the result is always usable without
+    /// crashing or throwing.
+    private func computedWindow(from samples: [Double]) -> (center: Double, width: Double) {
+        guard let first = samples.first else { return (0, 2) }
+        var minValue = first
+        var maxValue = first
+        for sample in samples.dropFirst() {
+            if sample < minValue { minValue = sample }
+            if sample > maxValue { maxValue = sample }
+        }
+        let center = (minValue + maxValue) / 2
+        let width = maxValue > minValue ? maxValue - minValue : 2
+        return (center, width)
     }
 
     private func checkedPixelCount() throws -> Int {
@@ -297,7 +481,22 @@ public struct DICOMFile: Sendable {
     /// The transfer syntax declared by the File Meta Information.
     public let transferSyntax: TransferSyntax
 
-    /// The uncompressed Pixel Data and its rendering attributes, if present and complete.
+    /// The uncompressed Pixel Data and its rendering attributes.
+    ///
+    /// `nil` if `(7FE0,0010)` Pixel Data is absent, or if any of the
+    /// following required attributes is absent: Rows `(0028,0010)`, Columns
+    /// `(0028,0011)`, Samples per Pixel `(0028,0002)`, Bits Allocated
+    /// `(0028,0100)`, or Photometric Interpretation `(0028,0004)`. Because
+    /// both causes produce the same `nil` result, this property alone can't
+    /// distinguish "no Pixel Data in this file" from "Pixel Data is present
+    /// but its metadata is incomplete"; inspect `dataset[.pixelData]`
+    /// directly if that distinction matters.
+    ///
+    /// Planar Configuration, Bits Stored, Pixel Representation, Rescale
+    /// Slope, Rescale Intercept, Window Center, and Window Width are optional
+    /// and fall back to their DICOM default (or `nil`, for the window
+    /// values) when absent, so their absence never causes this property to
+    /// return `nil`.
     public var pixelData: DICOMPixelData? {
         guard let value = dataset[.pixelData]?.value,
               let rows = dataset[.rows]?.uint16Value,
@@ -314,7 +513,13 @@ public struct DICOMFile: Sendable {
             samplesPerPixel: Int(samplesPerPixel),
             bitsAllocated: Int(bitsAllocated),
             photometricInterpretation: photometricInterpretation,
-            planarConfiguration: Int(dataset[.planarConfiguration]?.uint16Value ?? 0)
+            planarConfiguration: Int(dataset[.planarConfiguration]?.uint16Value ?? 0),
+            bitsStored: dataset[.bitsStored]?.uint16Value.map(Int.init),
+            pixelRepresentation: Int(dataset[.pixelRepresentation]?.uint16Value ?? 0),
+            rescaleSlope: dataset[.rescaleSlope]?.doubleValue ?? 1.0,
+            rescaleIntercept: dataset[.rescaleIntercept]?.doubleValue ?? 0.0,
+            defaultWindowCenter: dataset[.windowCenter]?.doubleValue,
+            defaultWindowWidth: dataset[.windowWidth]?.doubleValue
         )
     }
 
@@ -500,9 +705,11 @@ private enum DICOMDictionary {
         switch tag {
         case .transferSyntaxUID, .referencedSOPClassUID: .UI
         case .patientName: .PN
-        case .rows, .columns, .samplesPerPixel, .planarConfiguration, .bitsAllocated: .US
+        case .rows, .columns, .samplesPerPixel, .planarConfiguration, .bitsAllocated,
+             .bitsStored, .highBit, .pixelRepresentation: .US
         case .photometricInterpretation: .CS
         case .pixelData: .OW
+        case .windowCenter, .windowWidth, .rescaleIntercept, .rescaleSlope: .DS
         case .referencedStudySequence: .SQ
         default: nil
         }

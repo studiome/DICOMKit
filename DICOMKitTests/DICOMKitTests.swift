@@ -37,6 +37,53 @@ struct DICOMKitTests {
         #expect(file.dataset[.columns]?.uint16Value == 128)
     }
 
+    @Test func rendersPydicomCTFixtureWithCorrectPolarityAndRescale() throws {
+        // Regression test for the bug this phase fixes: CT_small.dcm is
+        // signed (Pixel Representation 1) with Rescale Intercept -1024, so
+        // its stored values must be sign-extended and rescaled to Hounsfield
+        // Units before windowing. Before the fix, the 16-bit path ignored
+        // both, so the outer corners (low stored values, around -850 HU
+        // after correct rescale) rendered as mid-gray instead of black under
+        // a soft-tissue window, since they were windowed as raw unsigned
+        // storage values with no rescale applied.
+        let fixtureURL = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .appendingPathComponent("Fixtures/CT_small.dcm")
+        let file = try DICOMFile(data: Data(contentsOf: fixtureURL))
+        let pixelData = try #require(file.pixelData)
+
+        #expect(pixelData.pixelRepresentation == 1)
+        #expect(pixelData.bitsStored == 16)
+        #expect(pixelData.rescaleIntercept == -1024)
+        #expect(pixelData.rescaleSlope == 1)
+
+        let image = try pixelData.cgImage(windowCenter: 40, windowWidth: 400)
+        #expect(image.width == 128)
+        #expect(image.height == 128)
+        #expect(image.bitsPerComponent == 8)
+
+        let bytes = try imageBytes(image)
+        func pixel(row: Int, column: Int) -> UInt8 { bytes[row * 128 + column] }
+
+        // The top corners and this background pixel are outside the scan
+        // field (air, well below -160 HU, the soft-tissue window's lower
+        // bound) and must render black. Verified against the fixture's raw
+        // stored values directly: (0,0)=175, (0,127)=216, (10,10)=224, which
+        // rescale to roughly -849, -808, and -800 HU respectively. Before
+        // the fix (no sign extension, no rescale), these rendered as
+        // mid-to-high gray (214, 240, and non-zero) instead of black.
+        #expect(pixel(row: 0, column: 0) == 0)
+        #expect(pixel(row: 0, column: 127) == 0)
+        #expect(pixel(row: 10, column: 10) == 0)
+
+        // (64,61) is the fixture's densest (bone-range) pixel: raw 2191,
+        // which rescales to 1167 HU, well above the window's upper bound.
+        #expect(pixel(row: 64, column: 61) == 255)
+
+        // The body itself must show actual tissue detail, i.e. not be a single flat value.
+        #expect(Set(bytes).count > 1)
+    }
+
     @Test func readsImplicitVRLittleEndianDatasetAndUndefinedLengthSequence() throws {
         let referencedSOPClassUID = "1.2.840.10008.5.1.4.1.1.2"
         let file = try DICOMFile(data: part10File(
@@ -162,6 +209,36 @@ struct DICOMKitTests {
         #expect(file.transferSyntax == .explicitVRLittleEndian)
         #expect(file.dataset[.patientName]?.stringValue == "Doe^Jane")
         #expect(file.dataset[.rows]?.uint16Value == 512)
+    }
+
+    @Test func doubleValueParsesFirstComponentOfMultiValuedDS() {
+        let element = DICOMElement(tag: .windowCenter, vr: .DS, value: Data("40\\400".utf8))
+
+        #expect(element.doubleValue == 40)
+    }
+
+    @Test func doubleValueParsesNegativeNumber() {
+        let element = DICOMElement(tag: .rescaleIntercept, vr: .DS, value: Data("-1024".utf8))
+
+        #expect(element.doubleValue == -1024)
+    }
+
+    @Test func doubleValueReturnsNilForUnparsableValue() {
+        let element = DICOMElement(tag: .rescaleIntercept, vr: .DS, value: Data("abc".utf8))
+
+        #expect(element.doubleValue == nil)
+    }
+
+    @Test func int16ValueDecodesTwosComplementNegativeValue() {
+        let element = DICOMElement(tag: DICOMTag(group: 0x0028, element: 0x0120), vr: .SS, value: Data([0x18, 0xFC]))
+
+        #expect(element.int16Value == -1000)
+    }
+
+    @Test func int16ValueReturnsNilWhenValueIsTooShort() {
+        let element = DICOMElement(tag: DICOMTag(group: 0x0028, element: 0x0120), vr: .SS, value: Data([0x18]))
+
+        #expect(element.int16Value == nil)
     }
 
     @Test func renders8BitMonochromePixelData() throws {
@@ -315,6 +392,162 @@ struct DICOMKitTests {
         let image = try #require(file.pixelData).cgImage(windowCenter: 500, windowWidth: 1_000)
 
         #expect(try imageBytes(image) == Data([0, 255]))
+    }
+
+    @Test func signedSixteenBitSampleIsSignExtendedBeforeWindowing() throws {
+        // 0xFC18 is -1000 as a signed 16-bit two's complement value, but
+        // 64536 if (incorrectly) treated as unsigned. A window centered on
+        // -500 distinguishes the two: -1000 clamps to black, 64536 clamps to
+        // white.
+        let pixelData = DICOMPixelData(
+            value: uint16(0) + Data([0x18, 0xFC]),
+            rows: 1,
+            columns: 2,
+            samplesPerPixel: 1,
+            bitsAllocated: 16,
+            photometricInterpretation: "MONOCHROME2",
+            planarConfiguration: 0,
+            pixelRepresentation: 1
+        )
+
+        let image = try pixelData.cgImage(windowCenter: -500, windowWidth: 1_000)
+
+        #expect(try imageBytes(image) == Data([255, 0]))
+    }
+
+    @Test func appliesRescaleSlopeAndInterceptBeforeWindowing() throws {
+        let pixelData = DICOMPixelData(
+            value: uint16(0) + uint16(150),
+            rows: 1,
+            columns: 2,
+            samplesPerPixel: 1,
+            bitsAllocated: 16,
+            photometricInterpretation: "MONOCHROME2",
+            planarConfiguration: 0,
+            rescaleSlope: 2,
+            rescaleIntercept: -100
+        )
+
+        // Rescaled: 0 * 2 - 100 = -100; 150 * 2 - 100 = 200.
+        let image = try pixelData.cgImage(windowCenter: 0, windowWidth: 200)
+
+        #expect(try imageBytes(image) == Data([0, 255]))
+    }
+
+    @Test func masksGarbageUpperBitsWhenBitsStoredIsNarrowerThanBitsAllocated() throws {
+        // Raw stored word 0xF123 with Bits Stored = 12 must be masked to
+        // 0x123 (291) before use; the garbage high nibble (0xF) must not
+        // leak into the sample value.
+        let pixelData = DICOMPixelData(
+            value: Data([0x23, 0xF1]),
+            rows: 1,
+            columns: 1,
+            samplesPerPixel: 1,
+            bitsAllocated: 16,
+            photometricInterpretation: "MONOCHROME2",
+            planarConfiguration: 0,
+            bitsStored: 12
+        )
+
+        let image = try pixelData.cgImage(windowCenter: 292, windowWidth: 2)
+
+        #expect(try imageBytes(image) == Data([0]))
+    }
+
+    @Test func masksAndSignExtendsSignedBitsStoredNarrowerThanBitsAllocated() throws {
+        // Raw stored word 0xA800 with Bits Stored = 12 masks to 0x800; with
+        // Pixel Representation 1 the 12-bit sign bit is set, so the value
+        // sign-extends to -2048, not the unmasked unsigned 43008.
+        let pixelData = DICOMPixelData(
+            value: Data([0x00, 0xA8]),
+            rows: 1,
+            columns: 1,
+            samplesPerPixel: 1,
+            bitsAllocated: 16,
+            photometricInterpretation: "MONOCHROME2",
+            planarConfiguration: 0,
+            bitsStored: 12,
+            pixelRepresentation: 1
+        )
+
+        let image = try pixelData.cgImage(windowCenter: 0, windowWidth: 4_096)
+
+        #expect(try imageBytes(image) == Data([0]))
+    }
+
+    @Test func datasetDefaultWindowIsUsedWhenCallerOmitsWindow() throws {
+        let file = try DICOMFile(data: part10File(
+            transferSyntaxUID: TransferSyntax.explicitVRLittleEndian.uid,
+            datasetElements: [
+                element(tag: .samplesPerPixel, vr: .US, value: uint16(1)),
+                element(tag: .photometricInterpretation, vr: .CS, value: "MONOCHROME2"),
+                element(tag: .rows, vr: .US, value: uint16(1)),
+                element(tag: .columns, vr: .US, value: uint16(2)),
+                element(tag: .bitsAllocated, vr: .US, value: uint16(16)),
+                element(tag: .windowCenter, vr: .DS, value: "500"),
+                element(tag: .windowWidth, vr: .DS, value: "1000"),
+                element(tag: .pixelData, vr: .OW, value: uint16(0) + uint16(1_000))
+            ]
+        ))
+
+        let image = try #require(file.pixelData).cgImage()
+
+        #expect(try imageBytes(image) == Data([0, 255]))
+    }
+
+    @Test func fallsBackToComputedMinMaxWindowWhenNoDefaultsPresent() throws {
+        let pixelData = DICOMPixelData(
+            value: uint16(100) + uint16(200) + uint16(300),
+            rows: 1,
+            columns: 3,
+            samplesPerPixel: 1,
+            bitsAllocated: 16,
+            photometricInterpretation: "MONOCHROME2",
+            planarConfiguration: 0
+        )
+
+        // No explicit window and no dataset default: falls back to
+        // center = (min+max)/2 = 200, width = max-min = 200.
+        let image = try pixelData.cgImage()
+
+        #expect(try imageBytes(image) == Data([0, 128, 255]))
+    }
+
+    @Test func degenerateAllPixelsSameValueDoesNotCrashAndProducesFlatImage() throws {
+        let pixelData = DICOMPixelData(
+            value: uint16(500) + uint16(500),
+            rows: 1,
+            columns: 2,
+            samplesPerPixel: 1,
+            bitsAllocated: 16,
+            photometricInterpretation: "MONOCHROME2",
+            planarConfiguration: 0
+        )
+
+        // min == max: the computed fallback window must not divide by zero
+        // or throw invalidWindowWidth, and every pixel should render the
+        // same value.
+        let image = try pixelData.cgImage()
+
+        #expect(Set(try imageBytes(image)).count == 1)
+    }
+
+    @Test(arguments: [0, 17])
+    func rejectsBitsStoredOutsideValidRange(bitsStored: Int) {
+        let pixelData = DICOMPixelData(
+            value: uint16(0),
+            rows: 1,
+            columns: 1,
+            samplesPerPixel: 1,
+            bitsAllocated: 16,
+            photometricInterpretation: "MONOCHROME2",
+            planarConfiguration: 0,
+            bitsStored: bitsStored
+        )
+
+        #expect(throws: DICOMImageError.invalidImageAttributes) {
+            _ = try pixelData.cgImage(windowCenter: 0, windowWidth: 10)
+        }
     }
 
     // MARK: - Malformed input error cases
