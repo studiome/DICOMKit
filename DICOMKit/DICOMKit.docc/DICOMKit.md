@@ -1,6 +1,6 @@
 # ``DICOMKit``
 
-Swift-first utilities for reading DICOM Part 10 files on iPadOS and macOS.
+Pure Swift utilities for reading DICOM Part 10 files on iPadOS and macOS.
 
 ## Overview
 
@@ -37,14 +37,13 @@ set of uncompressed image formats and 8-bit/16-bit monochrome plus 8-bit RGB
 RLE Lossless decoding. JPEG Lossless (Transfer Syntaxes `.57` and `.70`)
 supports single-component `MONOCHROME1` / `MONOCHROME2` Process 14 frames with
 Selection Values 1–7, 2–16-bit precision, Point Transform, and restart
-markers; `.70` is limited to Selection Value 1. JPEG-LS Lossless (Transfer
-Syntax `.80`) supports monochrome 8-bit and 16-bit frames and
-sample-interleaved and plane-interleaved 8-bit `RGB` and sample-interleaved
-`YBR_FULL` (returned as `RGB`), with default or explicit Preset Coding
-Parameters and restart markers. The vendored CharLS decoder also supports
-line-interleaved JPEG-LS frames. JPEG-LS Near-Lossless `.81` supports
-single-component monochrome and multi-component JPEG-LS frames supported by
-CharLS.
+markers; `.70` is limited to Selection Value 1. JPEG-LS Lossless and
+Near-Lossless (Transfer Syntaxes `.80` and `.81`) are decoded by a pure
+Swift, dependency-free implementation of ITU-T T.87: monochrome 2- through
+16-bit frames and 8-bit `RGB`/`YBR_FULL` (returned as `RGB`) frames, in all
+three JPEG-LS interleave modes (plane, line, and sample), with default or
+explicit Preset Coding Parameters and restart markers. Near-Lossless
+(`NEAR > 0`) is supported for both monochrome and `RGB`.
 Multi-frame JPEG-LS data requires a Basic Offset Table and is available through
 ``DICOMFile/pixelDataFrames``.
 JPEG Baseline (Process 1), JPEG 2000 Lossless, and

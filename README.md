@@ -2,7 +2,7 @@
 
 [![Tests](https://github.com/studiome/DICOMKit/actions/workflows/tests.yml/badge.svg)](https://github.com/studiome/DICOMKit/actions/workflows/tests.yml)
 
-Swift-first utilities for reading DICOM Part 10 files on iPadOS and macOS.
+Pure Swift utilities for reading DICOM Part 10 files on iPadOS and macOS.
 
 [Read the API documentation](https://studiome.github.io/DICOMKit/documentation/dicomkit/)
 
@@ -34,14 +34,15 @@ See the [changelog](CHANGELOG.md) for the v0.3 implementation status.
   2–16-bit precision, Point Transform, restart markers, and multi-frame Basic
   Offset Tables. `.70` is constrained to Selection Value 1 as required by its
   transfer syntax.
-- Decodes JPEG-LS Lossless (`.80`) monochrome 8-bit and 16-bit Pixel Data,
-  plus sample-interleaved 8-bit `RGB` and `YBR_FULL` (returned as `RGB`); supports default and explicit Preset
-  Coding Parameters, restart markers, multi-frame Basic Offset Tables, and
-  plane-interleaved 8-bit `RGB` frames.
-  JPEG-LS Near-Lossless (`.81`) supports monochrome and sample-interleaved
-  `RGB` 8-bit Pixel Data. The
-  JPEG-LS coverage is verified with BSD-3-Clause CharLS-generated reference
-  streams.
+- Decodes JPEG-LS Lossless (`.80`) and Near-Lossless (`.81`) Pixel Data with a
+  pure Swift, dependency-free implementation of ITU-T T.87: monochrome
+  2–16-bit and 8-bit `RGB`/`YBR_FULL` (returned as `RGB`) in all three
+  interleave modes (plane, line, and sample), default and explicit Preset
+  Coding Parameters, restart markers, and multi-frame Basic Offset Tables.
+  Near-Lossless (`NEAR > 0`) is supported for both monochrome and `RGB`. The
+  JPEG-LS decoder is verified against real-size, BSD-3-Clause
+  CharLS-generated reference streams committed as test fixtures (CharLS
+  itself is not a runtime or build dependency).
 - Decodes 8-bit JPEG Baseline (Process 1), JPEG 2000 Lossless, and JPEG 2000
   Pixel Data via ImageIO, as either interleaved `RGB` (whatever color space
   the JPEG itself uses, including `YBR_FULL_422`) or single-sample
@@ -52,8 +53,6 @@ See the [changelog](CHANGELOG.md) for the v0.3 implementation status.
 - Provides async DICOMweb clients for QIDO-RS study searches, WADO-RS
   instance retrieval, and STOW-RS multipart instance storage; transports are
   injectable for application authentication and testing
-- Uses the vendored BSD-3-Clause CharLS codec for standards-complete JPEG-LS
-  decoding, including sample, line, and plane interleave modes
 
 ```swift
 let file = try DICOMFile(data: data)
@@ -93,7 +92,7 @@ let instance = try await client.retrieveInstance(
 - Xcode 26.6 or later
 - Swift 6 (language mode) / Swift Package Manager 6.0 or later
 - iPadOS 15.0 or later
-- macOS 14.0 or later
+- macOS 11.0 or later
 
 ## Installation
 
