@@ -83,28 +83,20 @@ Alternatively, add `https://github.com/studiome/DICOMKit` via
 ## Development
 
 DICOMKit is defined exclusively by `Package.swift`: it owns the library and
-test targets, platform versions, resources, and dependencies. Open the package
-directly in Xcode for normal development, or run the test suite from the
-command line:
+test targets, platform versions, resources, dependencies, and CI build inputs.
+Open the package directly in Xcode for normal development, or run the test
+suite from the command line:
 
 ```bash
 swift test
 ```
 
-`DICOMKit.xcodeproj` is intentionally only a thin Xcode Cloud host because
-Xcode Cloud can't build a standalone Swift package. It links the local package
-and contains one smoke test; don't add library sources, package tests, platform
-requirements, or package dependencies to the project. Xcode Cloud runs the
-complete package tests from `ci_scripts/ci_post_clone.sh` before it builds the
-host scheme.
-
-To validate the Cloud host locally:
+To compile the package for iOS and iPadOS:
 
 ```bash
-xcodebuild test \
-  -project DICOMKit.xcodeproj \
-  -scheme DICOMKit \
-  -destination 'platform=macOS'
+swift build \
+  --triple arm64-apple-ios15.0 \
+  --sdk "$(xcrun --sdk iphoneos --show-sdk-path)"
 ```
 
 ## Roadmap

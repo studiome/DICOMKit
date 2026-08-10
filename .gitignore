@@ -16,6 +16,3 @@ DerivedData/
 .build/
 .swiftpm/
 Package.resolved
-
-# Keep shared Xcode schemes and workspace data tracked; only the
-# xcuserdata/ pattern above (per-user state) is excluded.
