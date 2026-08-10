@@ -19,25 +19,13 @@ let package = Package(
             path: "Vendor/CharLS",
             exclude: [
                 "benchmark", "cli", "doc", "fuzzing", "samples", "test",
-                "CMakeLists.txt", "CMakePresets.json", "LICENSES", "README.md"
-            ],
-            sources: [
-                "src/charls_jpegls_decoder.cpp",
-                "src/charls_jpegls_encoder.cpp",
-                "src/golomb_lut.cpp",
-                "src/jpeg_stream_reader.cpp",
-                "src/jpeg_stream_writer.cpp",
-                "src/jpegls_error.cpp",
-                "src/make_scan_codec.cpp",
-                "src/pch.cpp",
-                "src/quantization_lut.cpp",
-                "src/validate_spiff_header.cpp",
-                "src/version.cpp"
+                "CMakeLists.txt", "CMakePresets.json", "LICENSES", "README.md",
+                "src/charls.rc", "src/charls-template.pc", "src/charls.vcxproj",
+                "src/charls.vcxproj.filters"
             ],
             publicHeadersPath: "include/charls",
             cxxSettings: [
-                .headerSearchPath("include"),
-                .unsafeFlags(["-std=c++17"])
+                .headerSearchPath("include")
             ]
         ),
         .target(
@@ -62,5 +50,6 @@ let package = Package(
                 .swiftLanguageMode(.v6)
             ]
         )
-    ]
+    ],
+    cxxLanguageStandard: .cxx17
 )

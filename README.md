@@ -160,3 +160,5 @@ pull request:
 ## License
 
 DICOMKit is available under the [MIT License](LICENSE).
+Its vendored JPEG-LS decoder, CharLS, is available under the BSD 3-Clause
+License; see [third-party notices](THIRD_PARTY_NOTICES.md).
