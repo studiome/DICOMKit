@@ -30,8 +30,8 @@ enum JPEGLSDecoder {
         guard header.precision <= bitsAllocated else { throw DICOMImageError.invalidImageAttributes }
 
         let samples: [Int]
-        switch (header.componentCount, header.interleaveMode) {
-        case (1, 0):
+        switch (header.frameComponentCount, header.scanComponentIdentifiers.count, header.interleaveMode) {
+        case (1, 1, 0):
             var decoder = ScanDecoder(
                 reader: EntropyBitReader(data: data, offset: parser.offset),
                 width: expectedWidth,
@@ -43,7 +43,7 @@ enum JPEGLSDecoder {
             )
             samples = try decoder.decode()
             try decoder.finishFrame()
-        case (3, 2):
+        case (3, 3, 2):
             var decoder = RGBScanDecoder(
                 reader: EntropyBitReader(data: data, offset: parser.offset),
                 width: expectedWidth,
@@ -55,6 +55,42 @@ enum JPEGLSDecoder {
             )
             samples = try decoder.decode()
             try decoder.finishFrame()
+        case (3, 1, 0):
+            var planes = [[Int]](repeating: [], count: 3)
+            var scan = header
+            for scanIndex in 0..<3 {
+                var decoder = ScanDecoder(
+                    reader: EntropyBitReader(data: data, offset: parser.offset),
+                    width: expectedWidth,
+                    height: expectedHeight,
+                    precision: header.precision,
+                    parameters: header.parameters,
+                    restartInterval: header.restartInterval,
+                    near: header.near
+                )
+                let plane = try decoder.decode()
+                let nextMarkerOffset = try decoder.finishScan()
+                guard scan.scanComponentIdentifiers.count == 1,
+                      let componentIndex = header.componentIdentifiers.firstIndex(of: scan.scanComponentIdentifiers[0]) else {
+                    throw DICOMImageError.unsupportedPixelFormat
+                }
+                planes[componentIndex] = plane
+                if scanIndex < 2 {
+                    parser.offset = nextMarkerOffset
+                    guard try parser.readMarker() == 0xDA else { throw DICOMImageError.unsupportedPixelFormat }
+                    scan = try parser.readScanHeader()
+                    guard scan.frameComponentCount == 3, scan.scanComponentIdentifiers.count == 1, scan.interleaveMode == 0 else {
+                        throw DICOMImageError.unsupportedPixelFormat
+                    }
+                } else {
+                    parser.offset = nextMarkerOffset
+                    guard try parser.readMarker() == 0xD9 else { throw DICOMImageError.truncatedPixelData }
+                }
+            }
+            guard planes.allSatisfy({ $0.count == expectedWidth * expectedHeight }) else {
+                throw DICOMImageError.truncatedPixelData
+            }
+            samples = (0..<(expectedWidth * expectedHeight)).flatMap { pixel in planes.map { $0[pixel] } }
         default:
             throw DICOMImageError.unsupportedPixelFormat
         }
@@ -69,7 +105,7 @@ enum JPEGLSDecoder {
                 value.append(UInt8(sample >> 8))
             }
         }
-        return DecodedFrame(value: value, precision: header.precision, samplesPerPixel: header.componentCount)
+        return DecodedFrame(value: value, precision: header.precision, samplesPerPixel: header.frameComponentCount)
     }
 }
 
@@ -78,7 +114,9 @@ private extension JPEGLSDecoder {
         let precision: Int
         let parameters: CodingParameters
         let restartInterval: Int
-        let componentCount: Int
+        let frameComponentCount: Int
+        let componentIdentifiers: [UInt8]
+        let scanComponentIdentifiers: [UInt8]
         let interleaveMode: Int
         let near: Int
     }
@@ -149,7 +187,8 @@ private extension JPEGLSDecoder {
                 throw DICOMImageError.unsupportedPixelFormat
             }
             let componentCount = try readByte()
-            guard componentCount == componentIdentifiers.count, end - offset == 3 + componentCount * 2 else {
+            guard componentCount > 0, componentCount <= componentIdentifiers.count,
+                  end - offset == 3 + componentCount * 2 else {
                 throw DICOMImageError.unsupportedPixelFormat
             }
             var scanComponentIdentifiers: [UInt8] = []
@@ -162,8 +201,11 @@ private extension JPEGLSDecoder {
             let near = try readByte()
             let interleaveMode = try readByte()
             let pointTransform = try readByte()
-            guard scanComponentIdentifiers == componentIdentifiers,
-                  (componentCount == 1 && interleaveMode == 0) || (componentCount == 3 && interleaveMode == 2),
+            guard Set(scanComponentIdentifiers).count == scanComponentIdentifiers.count,
+                  scanComponentIdentifiers.allSatisfy(componentIdentifiers.contains),
+                  (componentIdentifiers.count == 1 && componentCount == 1 && interleaveMode == 0) ||
+                  (componentIdentifiers.count == 3 && componentCount == 1 && interleaveMode == 0) ||
+                  (componentIdentifiers.count == 3 && componentCount == 3 && interleaveMode == 2),
                   pointTransform == 0 else {
                 throw DICOMImageError.unsupportedPixelFormat
             }
@@ -186,7 +228,9 @@ private extension JPEGLSDecoder {
                 precision: precision,
                 parameters: parameters,
                 restartInterval: restartInterval,
-                componentCount: Int(componentCount),
+                frameComponentCount: componentIdentifiers.count,
+                componentIdentifiers: componentIdentifiers,
+                scanComponentIdentifiers: scanComponentIdentifiers,
                 interleaveMode: Int(interleaveMode),
                 near: Int(near)
             )
@@ -308,6 +352,26 @@ private extension JPEGLSDecoder {
             offset = data.count
         }
 
+        mutating func finishScan() throws -> Int {
+            bitsRemaining = 0
+            var markerOffset = offset
+            while markerOffset + 1 < data.count {
+                guard data[markerOffset] == 0xFF else {
+                    markerOffset += 1
+                    continue
+                }
+                if data[markerOffset + 1] == 0x00 {
+                    markerOffset += 2
+                    continue
+                }
+                guard data[markerOffset + 1] == 0xDA || data[markerOffset + 1] == 0xD9 else {
+                    throw DICOMImageError.unsupportedPixelFormat
+                }
+                return markerOffset
+            }
+            throw DICOMImageError.truncatedPixelData
+        }
+
         private mutating func loadByte() throws {
             guard offset < data.count else { throw DICOMImageError.truncatedPixelData }
             let byte = data[offset]
@@ -420,6 +484,10 @@ private extension JPEGLSDecoder {
 
         mutating func finishFrame() throws {
             try reader.finishFrame()
+        }
+
+        mutating func finishScan() throws -> Int {
+            try reader.finishScan()
         }
 
         private mutating func resetContexts() {
