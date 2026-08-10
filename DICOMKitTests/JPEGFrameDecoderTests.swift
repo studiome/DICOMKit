@@ -399,6 +399,21 @@ struct JPEGFrameDecoderTests {
         #expect(pixelData.value == Data([9, 21, 30, 39]))
     }
 
+    @Test func rejectsJPEGLSNearLosslessRGBUntilItsNearCodingIsImplemented() throws {
+        let data = imageFile(
+            transferSyntaxUID: TransferSyntax.jpegLSNearLossless.uid,
+            samplesPerPixel: 3,
+            photometricInterpretation: .rgb,
+            planarConfiguration: 0,
+            rows: 1,
+            columns: 1,
+            bitsAllocated: 8,
+            pixelDataElement: encapsulatedPixelData(fragments: [charLSRGBSampleInterleaved1x1])
+        )
+
+        #expect(try DICOMFile(data: data).pixelData == nil)
+    }
+
     @Test func decodesMultiFrameJPEGLSLosslessUsingBasicOffsetTable() throws {
         let firstFrame = charLSMonochrome2x2
         let secondFrame = charLSMonochrome2x2

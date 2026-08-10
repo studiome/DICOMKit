@@ -34,21 +34,24 @@ if let pixelData = file.pixelData {
 
 The library supports defined-length and undefined-length sequences, a focused
 set of uncompressed image formats and 8-bit/16-bit monochrome plus 8-bit RGB
-RLE Lossless decoding. JPEG Lossless SV1 (Transfer Syntax `.70`) supports
-single-component `MONOCHROME1` / `MONOCHROME2` frames with 2–16-bit precision.
-JPEG-LS Lossless (Transfer Syntax `.80`) supports single-component 8-bit and
-16-bit `MONOCHROME1` / `MONOCHROME2` frames with default or explicit Preset
-Coding Parameters. JPEG-LS restart markers and Near-Lossless Transfer Syntax
-`.81` remain unsupported. Multi-frame JPEG-LS data requires a Basic
-Offset Table and is available through ``DICOMFile/pixelDataFrames``.
+RLE Lossless decoding. JPEG Lossless (Transfer Syntaxes `.57` and `.70`)
+supports single-component `MONOCHROME1` / `MONOCHROME2` Process 14 frames with
+Selection Values 1–7, 2–16-bit precision, Point Transform, and restart
+markers; `.70` is limited to Selection Value 1. JPEG-LS Lossless (Transfer
+Syntax `.80`) supports monochrome 8-bit and 16-bit frames and
+sample-interleaved 8-bit `RGB`, with default or explicit Preset Coding
+Parameters and restart markers. JPEG-LS Near-Lossless `.81` supports
+single-component monochrome 8-bit frames. Multi-frame JPEG-LS data requires a
+Basic Offset Table and is available through ``DICOMFile/pixelDataFrames``.
 JPEG Baseline (Process 1), JPEG 2000 Lossless, and
 JPEG 2000 Pixel Data are decoded through ImageIO, which produces 8-bit
 samples: `RGB` for three-sample frames and grayscale for `MONOCHROME1` /
 `MONOCHROME2` frames, while frames declaring any other `Bits Allocated` are
 reported as undecodable. Multi-frame encapsulated images require a Basic
 Offset Table and are available through ``DICOMFile/pixelDataFrames``. JPEG
-Lossless predictors other than SV1, remaining JPEG-LS variants, writing,
-DIMSE, and DICOMweb remain outside the current scope.
+Multi-component JPEG Lossless, JPEG-LS Near-Lossless RGB and other JPEG-LS
+interleave modes, writing, DIMSE, and DICOMweb remain outside the current
+scope.
 Pixel Padding Value
 `(0028,0120)` is also not yet applied.
 

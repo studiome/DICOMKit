@@ -8,6 +8,8 @@ Pure Swift utilities for reading DICOM Part 10 files on iPadOS and macOS.
 
 > **Status: early development.** DICOMKit is not yet suitable for clinical use.
 
+See the [changelog](CHANGELOG.md) for the v0.3 implementation status.
+
 ## Current capabilities
 
 - Validates the DICOM Part 10 preamble and `DICM` prefix
@@ -27,13 +29,17 @@ Pure Swift utilities for reading DICOM Part 10 files on iPadOS and macOS.
   Lossless Pixel Data
 - Decodes multi-frame RLE Lossless Pixel Data when it includes a Basic Offset
   Table, exposed as `DICOMFile.pixelDataFrames`
-- Decodes single-component monochrome JPEG Lossless, Non-Hierarchical,
-  First-Order Prediction (Process 14, Selection Value 1) Pixel Data, including
+- Decodes single-component monochrome JPEG Lossless, Non-Hierarchical
+  (Process 14) Pixel Data for `.57` and `.70`, including Selection Values 1–7,
   2–16-bit precision, Point Transform, restart markers, and multi-frame Basic
-  Offset Tables
-- Decodes baseline JPEG-LS Lossless (`.80`) 8-bit and 16-bit monochrome Pixel
-  Data with default coding parameters; the implementation is verified against a
-  BSD-3-Clause CharLS reference stream
+  Offset Tables. `.70` is constrained to Selection Value 1 as required by its
+  transfer syntax.
+- Decodes JPEG-LS Lossless (`.80`) monochrome 8-bit and 16-bit Pixel Data,
+  plus sample-interleaved 8-bit `RGB`; supports default and explicit Preset
+  Coding Parameters, restart markers, and multi-frame Basic Offset Tables.
+  JPEG-LS Near-Lossless (`.81`) supports monochrome 8-bit Pixel Data. The
+  JPEG-LS coverage is verified with BSD-3-Clause CharLS-generated reference
+  streams.
 - Decodes 8-bit JPEG Baseline (Process 1), JPEG 2000 Lossless, and JPEG 2000
   Pixel Data via ImageIO, as either interleaved `RGB` (whatever color space
   the JPEG itself uses, including `YBR_FULL_422`) or single-sample
@@ -126,23 +132,20 @@ pull request:
 
 ## Roadmap
 
-1. JPEG-LS restart-marker coverage
-2. Remaining JPEG Lossless transfer syntaxes
+1. JPEG-LS Near-Lossless RGB and remaining JPEG-LS interleave modes
+2. Multi-component JPEG Lossless Process 14
 3. DICOM writing
 4. DICOMweb support
 
 ## Non-goals for v0.1
 
-JPEG Lossless `.57` decoding beyond Selection Value 1 and JPEG-LS
-Near-Lossless `.81` decoding are intentionally outside the current release
-scope. JPEG-LS Lossless `.80` currently supports a single-component,
-8-bit or 16-bit `MONOCHROME1` / `MONOCHROME2` frame with default or explicit
-Preset Coding Parameters; restart markers, color images, and
-multi-frame data without a Basic Offset Table remain unsupported. DICOM networking (DIMSE), DICOMweb,
-and writing are also outside the current release scope. JPEG Lossless `.70`
-currently supports only
-single-component `MONOCHROME1` / `MONOCHROME2` frames; color images and other
-Process 14 predictors remain unsupported.
+JPEG-LS Near-Lossless `.81` currently supports only single-component
+`MONOCHROME1` / `MONOCHROME2` frames; Near-Lossless RGB and other JPEG-LS
+interleave modes are intentionally rejected. JPEG Lossless `.57` and `.70`
+currently support only single-component `MONOCHROME1` / `MONOCHROME2` frames;
+multi-component Process 14 streams are unsupported. All encapsulated
+multi-frame paths require a Basic Offset Table. DICOM networking (DIMSE),
+DICOMweb, and writing are also outside the current release scope.
 RLE Lossless currently supports 8-bit and 16-bit monochrome, plus 8-bit RGB
 Pixel Data; multi-frame encapsulated data requires a Basic Offset Table. The
 JPEG Baseline and JPEG 2000 paths decode through ImageIO, which yields 8-bit
