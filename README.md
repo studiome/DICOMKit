@@ -50,3 +50,7 @@ xcodebuild test \
 Compressed pixel decoding, DICOM networking (DIMSE), DICOMweb, writing,
 sequences, and implicit VR decoding are intentionally outside the initial
 release scope.
+
+## License
+
+DICOMKit is available under the [MIT License](LICENSE).
