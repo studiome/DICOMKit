@@ -35,6 +35,11 @@ struct Reader {
             guard let parsedVR = DICOMVR(rawValue: vrText) else { throw DICOMError.invalidVR(vrText) }
             vr = parsedVR
             if vr.uses32BitLength {
+                // These 2 reserved bytes are defined as 0 by DICOM PS3.5,
+                // but some real-world writers don't zero them; rejecting
+                // non-zero reserved bytes would needlessly break
+                // compatibility with such files, so they're discarded
+                // without validation.
                 _ = try readUInt16()
                 length = try readUInt32()
             } else {
