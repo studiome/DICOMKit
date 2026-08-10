@@ -97,4 +97,31 @@ struct JPEGFrameDecoderTests {
         #expect(bytes[3] < 50)
         #expect(bytes[4] > 200)
     }
+
+    @Test func decodesJPEG2000PixelData() throws {
+        let encoded = compressedImageData(
+            rgb: Data([0, 0, 255]),
+            width: 1,
+            height: 1,
+            type: "public.jpeg-2000"
+        )
+        let data = imageFile(
+            transferSyntaxUID: TransferSyntax.jpeg2000.uid,
+            samplesPerPixel: 3,
+            photometricInterpretation: .rgb,
+            planarConfiguration: 0,
+            rows: 1,
+            columns: 1,
+            bitsAllocated: 8,
+            pixelDataElement: encapsulatedPixelData(fragments: [encoded])
+        )
+
+        let image = try #require(try DICOMFile(data: data).pixelData).cgImage()
+        let bytes = try imageBytes(image)
+
+        #expect(bytes.count == 3)
+        #expect(bytes[0] < 50)
+        #expect(bytes[1] < 50)
+        #expect(bytes[2] > 200)
+    }
 }
