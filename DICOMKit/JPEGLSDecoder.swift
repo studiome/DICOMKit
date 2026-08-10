@@ -2,15 +2,20 @@ import Foundation
 
 /// Decodes the JPEG-LS interchange formats used by DICOM Transfer Syntaxes
 /// `1.2.840.10008.1.2.4.80` (Lossless) and `1.2.840.10008.1.2.4.81`
-/// (Near-Lossless).
+/// (Near-Lossless). This is a from-scratch, pure Swift implementation of the
+/// ITU-T T.87 / ISO/IEC 14495-1 decoding process — it has no C/C++
+/// dependency and links no third-party codec.
 ///
 /// Supported: 1- and 3-component scans in all three JPEG-LS interleave
 /// modes (plane, line, and sample), 2- through 16-bit sample precision,
-/// Near-Lossless coding (`NEAR > 0`) for both monochrome and RGB, default
-/// and explicit preset coding parameters, and restart intervals.
+/// Near-Lossless coding (`NEAR > 0`, verified for both monochrome and RGB
+/// against real-size CharLS-encoded reference streams; see
+/// `Fixtures/JPEGLS/` in the test target), default and explicit preset
+/// coding parameters, and restart intervals.
 ///
 /// Not supported: mapping tables (a non-zero mapping table ID is rejected),
-/// SPIFF headers, and more than 3 components per frame.
+/// a non-zero Point Transform, SPIFF headers, and more than 3 components per
+/// frame.
 enum JPEGLSDecoder {
     /// The result of decoding one frame: raw samples in pixel-major order
     /// (component fastest-varying), the bit precision each sample was coded
@@ -829,7 +834,16 @@ private extension JPEGLSDecoder {
             let prediction = clamp(predict(ra, rb, rc) + sign * context.c)
             let k = golombParameter(a: context.a, n: context.n)
             var error = unmap(try decodeMappedError(k: k, limit: limit))
-            if k == 0, 2 * context.b + context.n - 1 < 0 { error = -error - 1 }
+            // T.87 Annex A's k=0 sign-bias correction (code segment A.13) is a
+            // lossless-only refinement of the regular-mode error value: the
+            // standard's own encoder pseudocode gates this correction on k == 0
+            // *and* NEAR == 0 together, not on k == 0 alone. Applying it at
+            // NEAR > 0 corrupts B[Q]/N[Q] for the shared regular context
+            // without necessarily corrupting the immediate reconstructed
+            // sample (near-lossless's coarser quantization step can absorb a
+            // wrong correction for a while), so the divergence only becomes
+            // visible once that context is reused under different B/N state.
+            if near == 0, k == 0, 2 * context.b + context.n - 1 < 0 { error = -error - 1 }
             updateRegular(&context, error: error)
             regularContexts[index] = context
             return reconstruct(prediction: prediction, error: sign * error)
