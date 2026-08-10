@@ -636,19 +636,24 @@ struct DICOMKitTests {
         }
     }
 
-    @Test func rejectsUndefinedLengthOnNonSequenceExplicitVRElement() {
-        // An OB Pixel Data element with an undefined length is how encapsulated
-        // (compressed) Pixel Data is signalled; this reader doesn't support it.
+    @Test func decodesSingleFrame8BitRLELosslessPixelData() throws {
         let data = part10File(
-            transferSyntaxUID: TransferSyntax.explicitVRLittleEndian.uid,
+            transferSyntaxUID: TransferSyntax.rleLossless.uid,
             datasetElements: [
-                explicitVRElementWithDeclaredLength(tag: .pixelData, vr: .OB, length: .max)
+                element(tag: .samplesPerPixel, vr: .US, value: uint16(1)),
+                element(tag: .photometricInterpretation, vr: .CS, value: "MONOCHROME2"),
+                element(tag: .rows, vr: .US, value: uint16(2)),
+                element(tag: .columns, vr: .US, value: uint16(2)),
+                element(tag: .bitsAllocated, vr: .US, value: uint16(8)),
+                encapsulatedPixelData(fragments: [rleFrame(segment: Data([0x03, 0, 64, 128, 255]))])
             ]
         )
 
-        #expect(throws: DICOMError.unsupportedUndefinedLength(.pixelData)) {
-            _ = try DICOMFile(data: data)
-        }
+        let file = try DICOMFile(data: data)
+        let image = try #require(file.pixelData).cgImage()
+
+        #expect(file.transferSyntax == .rleLossless)
+        #expect(try imageBytes(image) == Data([0, 64, 128, 255]))
     }
 
     @Test func rejectsSequenceItemTagThatIsNeitherItemNorDelimiter() {
@@ -794,6 +799,40 @@ private func explicitVRElementWithInvalidVR(tag: DICOMTag, vrText: String, lengt
     data.append(contentsOf: vrText.utf8)
     data.append(uint16(length))
     return data
+}
+
+private func encapsulatedPixelData(fragments: [Data]) -> Data {
+    var data = uint16(DICOMTag.pixelData.group)
+    data.append(uint16(DICOMTag.pixelData.element))
+    data.append(contentsOf: "OB".utf8)
+    data.append(uint16(0))
+    data.append(uint32(.max))
+
+    // The first item is the Basic Offset Table. An empty table is valid for a
+    // single-frame image, which is exactly what this fixture exercises.
+    data.append(uint16(0xFFFE))
+    data.append(uint16(0xE000))
+    data.append(uint32(0))
+    for fragment in fragments {
+        var padded = fragment
+        if !padded.count.isMultiple(of: 2) { padded.append(0) }
+        data.append(uint16(0xFFFE))
+        data.append(uint16(0xE000))
+        data.append(uint32(UInt32(padded.count)))
+        data.append(padded)
+    }
+    data.append(uint16(0xFFFE))
+    data.append(uint16(0xE0DD))
+    data.append(uint32(0))
+    return data
+}
+
+private func rleFrame(segment: Data) -> Data {
+    var frame = uint32(1)
+    frame.append(uint32(64))
+    frame.append(Data(repeating: 0, count: 56))
+    frame.append(segment)
+    return frame
 }
 
 private func implicitElement(tag: DICOMTag, value: String) -> Data {

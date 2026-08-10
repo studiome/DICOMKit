@@ -12,13 +12,17 @@ public struct DICOMElement: Sendable, Equatable {
     public let value: Data
     /// The datasets contained by a sequence element, or `nil` for a non-sequence element.
     public let sequenceItems: [DICOMDataset]?
+    /// The compressed fragments of encapsulated Pixel Data, or `nil` for all
+    /// other elements. The Basic Offset Table is not included.
+    public let encapsulatedFragments: [Data]?
 
     /// Creates an element from its tag, VR, raw value, and optional sequence items.
-    public init(tag: DICOMTag, vr: DICOMVR, value: Data, sequenceItems: [DICOMDataset]? = nil) {
+    public init(tag: DICOMTag, vr: DICOMVR, value: Data, sequenceItems: [DICOMDataset]? = nil, encapsulatedFragments: [Data]? = nil) {
         self.tag = tag
         self.vr = vr
         self.value = value
         self.sequenceItems = sequenceItems
+        self.encapsulatedFragments = encapsulatedFragments
     }
 
     /// The UTF-8 string value with DICOM space and NUL padding removed.

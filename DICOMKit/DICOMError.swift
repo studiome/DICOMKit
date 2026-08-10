@@ -14,4 +14,6 @@ public enum DICOMError: Error, Sendable, Equatable {
     case unsupportedUndefinedLength(DICOMTag)
     /// A sequence contains an invalid Item or Sequence Delimitation Item.
     case invalidSequenceItem(DICOMTag)
+    /// Encapsulated Pixel Data does not contain valid fragments.
+    case invalidEncapsulatedPixelData
 }

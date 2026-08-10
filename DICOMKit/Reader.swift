@@ -30,7 +30,7 @@ struct Reader {
         let length: UInt32
 
         switch transferSyntax {
-        case .explicitVRLittleEndian:
+        case .explicitVRLittleEndian, .rleLossless:
             let vrText = String(bytes: try readData(count: 2), encoding: .ascii) ?? ""
             guard let parsedVR = DICOMVR(rawValue: vrText) else { throw DICOMError.invalidVR(vrText) }
             vr = parsedVR
@@ -62,8 +62,36 @@ struct Reader {
         if vr == .SQ {
             return DICOMElement(tag: tag, vr: vr, value: Data(), sequenceItems: try readSequence(transferSyntax: transferSyntax, length: length))
         }
+        if tag == .pixelData, length == .max {
+            return DICOMElement(tag: tag, vr: vr, value: Data(), encapsulatedFragments: try readEncapsulatedPixelData())
+        }
         guard length != .max else { throw DICOMError.unsupportedUndefinedLength(tag) }
         return DICOMElement(tag: tag, vr: vr, value: try readData(count: Int(length)))
+    }
+
+    /// Reads the item sequence used by compressed Pixel Data. The first item
+    /// is the Basic Offset Table and isn't returned with the frame fragments.
+    mutating func readEncapsulatedPixelData() throws -> [Data] {
+        var fragments: [Data] = []
+        var isBasicOffsetTable = true
+        while offset < data.count {
+            let itemTag = try readTag()
+            let itemLength = try readUInt32()
+            if itemTag == DICOMTag(group: 0xFFFE, element: 0xE0DD) {
+                guard itemLength == 0, !isBasicOffsetTable else { throw DICOMError.invalidEncapsulatedPixelData }
+                return fragments
+            }
+            guard itemTag == DICOMTag(group: 0xFFFE, element: 0xE000), itemLength != .max else {
+                throw DICOMError.invalidEncapsulatedPixelData
+            }
+            let item = try readData(count: Int(itemLength))
+            if isBasicOffsetTable {
+                isBasicOffsetTable = false
+            } else {
+                fragments.append(item)
+            }
+        }
+        throw DICOMError.truncatedData
     }
 
     mutating func readSequence(transferSyntax: TransferSyntax, length: UInt32) throws -> [DICOMDataset] {

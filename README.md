@@ -23,6 +23,7 @@ Pure Swift utilities for reading DICOM Part 10 files on iPadOS and macOS.
   signed (`Pixel Representation`) samples, `Bits Stored` masking, and
   `Rescale Slope` / `Rescale Intercept`, with caller-supplied or
   dataset-derived window center and width
+- Decodes single-frame, 8-bit monochrome RLE Lossless Pixel Data
 
 ```swift
 let file = try DICOMFile(data: data)
@@ -97,14 +98,15 @@ swift test
 
 ## Roadmap
 
-1. RLE and compressed transfer syntaxes
-2. DICOM writing
-3. DICOMweb support
+1. Multi-frame, 16-bit, and RGB RLE Lossless Pixel Data
+2. JPEG-family and JPEG 2000 transfer syntaxes
+3. DICOM writing and DICOMweb support
 
 ## Non-goals for v0.1
 
-Compressed pixel decoding, DICOM networking (DIMSE), DICOMweb, and writing are
-intentionally outside the current release scope. Pixel Padding Value
+JPEG-family and JPEG 2000 decoding, DICOM networking (DIMSE), DICOMweb, and
+writing are intentionally outside the current release scope. RLE Lossless is
+currently limited to single-frame, 8-bit monochrome Pixel Data. Pixel Padding Value
 `(0028,0120)` is also not applied: padding samples are rendered like any
 other sample rather than being excluded or specially colored. The 8-bit and
 `RGB` rendering paths don't apply `Pixel Representation` or rescale, either;

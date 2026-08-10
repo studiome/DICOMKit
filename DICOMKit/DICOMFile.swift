@@ -26,13 +26,26 @@ public struct DICOMFile: Sendable {
     /// values) when absent, so their absence never causes this property to
     /// return `nil`.
     public var pixelData: DICOMPixelData? {
-        guard let value = dataset[.pixelData]?.value,
+        guard let pixelElement = dataset[.pixelData],
               let rows = dataset[.rows]?.uint16Value,
               let columns = dataset[.columns]?.uint16Value,
               let samplesPerPixel = dataset[.samplesPerPixel]?.uint16Value,
               let bitsAllocated = dataset[.bitsAllocated]?.uint16Value,
               let photometricInterpretation = dataset[.photometricInterpretation]?.stringValue else {
             return nil
+        }
+        let pixelCount = Int(rows) * Int(columns)
+        let value: Data
+        switch transferSyntax {
+        case .rleLossless:
+            guard samplesPerPixel == 1, bitsAllocated == 8,
+                  let fragments = pixelElement.encapsulatedFragments,
+                  let decoded = try? RLELosslessDecoder.decode8BitMonochrome(fragments: fragments, pixelCount: pixelCount) else {
+                return nil
+            }
+            value = decoded
+        default:
+            value = pixelElement.value
         }
         return DICOMPixelData(
             value: value,
@@ -82,7 +95,7 @@ public struct DICOMFile: Sendable {
             throw DICOMError.missingTransferSyntaxUID
         }
         transferSyntax = TransferSyntax(uid: uid)
-        guard transferSyntax == .explicitVRLittleEndian || transferSyntax == .implicitVRLittleEndian else {
+        guard transferSyntax == .explicitVRLittleEndian || transferSyntax == .implicitVRLittleEndian || transferSyntax == .rleLossless else {
             throw DICOMError.unsupportedTransferSyntax(uid)
         }
 
