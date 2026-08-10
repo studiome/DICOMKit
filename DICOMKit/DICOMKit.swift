@@ -50,7 +50,7 @@ public enum DICOMVR: String, Sendable, CaseIterable {
 
     var uses32BitLength: Bool {
         switch self {
-        case .OB, .OD, .OF, .OL, .OV, .OW, .SQ, .UC, .UN, .UR, .UT:
+        case .OB, .OD, .OF, .OL, .OV, .OW, .SQ, .SV, .UC, .UN, .UR, .UT, .UV:
             true
         default:
             false
@@ -106,7 +106,7 @@ public struct DICOMDataset: Sendable, Sequence {
     ///
     /// If multiple elements use the same tag, the last element is retained.
     public init(elements: [DICOMElement] = []) {
-        storage = Dictionary(uniqueKeysWithValues: elements.map { ($0.tag, $0) })
+        storage = Dictionary(elements.map { ($0.tag, $0) }, uniquingKeysWith: { _, latest in latest })
     }
 
     /// Returns the element for `tag`, if present.
@@ -159,6 +159,8 @@ public enum DICOMError: Error, Sendable, Equatable {
     case invalidVR(String)
     /// The file uses a transfer syntax that the reader doesn't support.
     case unsupportedTransferSyntax(String)
+    /// The File Meta Information doesn't contain a Transfer Syntax UID `(0002,0010)`.
+    case missingTransferSyntaxUID
     /// A non-sequence element declares an undefined length.
     case unsupportedUndefinedLength(DICOMTag)
     /// A sequence contains an invalid Item or Sequence Delimitation Item.
@@ -175,6 +177,8 @@ public enum DICOMImageError: Error, Sendable, Equatable {
     case truncatedPixelData
     /// A window width of one or less was supplied.
     case invalidWindowWidth
+    /// A window center or width that isn't a finite number (`NaN` or infinite) was supplied.
+    case invalidWindowSettings
 }
 
 /// Uncompressed image data and the DICOM attributes required to render it.
@@ -222,6 +226,7 @@ public struct DICOMPixelData: Sendable {
             let source = try requiredBytes(byteCount)
             let center = windowCenter ?? 32_768
             let width = windowWidth ?? 65_536
+            guard center.isFinite, width.isFinite else { throw DICOMImageError.invalidWindowSettings }
             guard width > 1 else { throw DICOMImageError.invalidWindowWidth }
             let pixels = Data(stride(from: 0, to: source.count, by: 2).map { offset in
                 let sample = Double(UInt16(source[offset]) | (UInt16(source[offset + 1]) << 8))
@@ -320,7 +325,15 @@ public struct DICOMFile: Sendable {
     ///
     /// - Parameter data: The complete contents of a DICOM Part 10 file.
     /// - Throws: ``DICOMError`` if the file is malformed or uses an unsupported syntax.
-    public init(data: Data) throws {
+    public init(data input: Data) throws {
+        // `Data` slices retain the absolute indices of their underlying buffer,
+        // so a slice such as `buffer[500...]` has `startIndex == 500`. Reading
+        // it with fixed offsets (like the preamble check below, or the `Reader`
+        // that follows) would either trap on an out-of-bounds index or silently
+        // read the wrong bytes. Copying into a fresh, zero-based buffer here
+        // makes every subsequent offset in this initializer and in `Reader`
+        // safe regardless of what kind of `Data` the caller passed in.
+        let data = Data(input)
         guard data.count >= 132, data[128...131] == Data("DICM".utf8) else {
             throw DICOMError.missingPart10Preamble
         }
@@ -333,7 +346,7 @@ public struct DICOMFile: Sendable {
         metaInformation = DICOMDataset(elements: metaElements)
 
         guard let uid = metaInformation[.transferSyntaxUID]?.stringValue else {
-            throw DICOMError.unsupportedTransferSyntax("missing Transfer Syntax UID")
+            throw DICOMError.missingTransferSyntaxUID
         }
         transferSyntax = TransferSyntax(uid: uid)
         guard transferSyntax == .explicitVRLittleEndian || transferSyntax == .implicitVRLittleEndian else {
@@ -380,8 +393,15 @@ private struct Reader {
                 length = UInt32(try readUInt16())
             }
         case .implicitVRLittleEndian:
-            vr = DICOMDictionary.vr(for: tag) ?? .UN
+            // Read the length before resolving the VR: when a tag isn't in
+            // DICOMDictionary and its length is undefined (0xFFFFFFFF), the
+            // Implicit VR convention is to treat it as a sequence (SQ) rather
+            // than as unknown (UN), since UN elements cannot have undefined
+            // length under this reader (see `unsupportedUndefinedLength`).
+            // This lets sequences outside the small built-in dictionary
+            // (e.g. Referenced Image Sequence) still be parsed.
             length = try readUInt32()
+            vr = DICOMDictionary.vr(for: tag) ?? (length == .max ? .SQ : .UN)
         default:
             throw DICOMError.unsupportedTransferSyntax(transferSyntax.uid)
         }
