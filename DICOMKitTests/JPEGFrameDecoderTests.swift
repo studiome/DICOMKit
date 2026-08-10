@@ -253,6 +253,24 @@ struct JPEGFrameDecoderTests {
         #expect(pixelData.value == Data([1, 2, 3, 4]))
     }
 
+    @Test func decodesReference12BitJPEGLSLosslessFrameInto16BitDICOMStorage() throws {
+        let expected: [UInt16] = [1, 2, 4_095, 1_024]
+        let data = imageFile(
+            transferSyntaxUID: TransferSyntax.jpegLSLossless.uid,
+            rows: 2,
+            columns: 2,
+            bitsAllocated: 16,
+            bitsStored: 12,
+            pixelDataElement: encapsulatedPixelData(fragments: [charLS12BitMonochrome2x2])
+        )
+
+        let pixelData = try #require(try DICOMFile(data: data).pixelData)
+
+        #expect(pixelData.bitsAllocated == 16)
+        #expect(pixelData.bitsStored == 12)
+        #expect(pixelData.value == Data(expected.flatMap { [UInt8($0 & 0xFF), UInt8($0 >> 8)] }))
+    }
+
     @Test func decodes12BitJPEGLosslessSV1Into16BitDICOMStorage() throws {
         let samples: [UInt16] = [0, 1, 2_047, 2_048, 4_095, 2_000]
         let data = imageFile(

@@ -19,7 +19,7 @@ enum JPEGLSDecoder {
         height expectedHeight: Int,
         bitsAllocated: Int
     ) throws -> DecodedFrame {
-        guard expectedWidth > 0, expectedHeight > 0, bitsAllocated == 8 else {
+        guard expectedWidth > 0, expectedHeight > 0, bitsAllocated == 8 || bitsAllocated == 16 else {
             throw DICOMImageError.invalidImageAttributes
         }
 

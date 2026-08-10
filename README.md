@@ -31,8 +31,8 @@ Pure Swift utilities for reading DICOM Part 10 files on iPadOS and macOS.
   First-Order Prediction (Process 14, Selection Value 1) Pixel Data, including
   2–16-bit precision, Point Transform, restart markers, and multi-frame Basic
   Offset Tables
-- Decodes baseline JPEG-LS Lossless (`.80`) 8-bit monochrome Pixel Data with
-  default coding parameters; the implementation is verified against a
+- Decodes baseline JPEG-LS Lossless (`.80`) 8-bit and 16-bit monochrome Pixel
+  Data with default coding parameters; the implementation is verified against a
   BSD-3-Clause CharLS reference stream
 - Decodes 8-bit JPEG Baseline (Process 1), JPEG 2000 Lossless, and JPEG 2000
   Pixel Data via ImageIO, as either interleaved `RGB` (whatever color space
@@ -126,7 +126,7 @@ pull request:
 
 ## Roadmap
 
-1. JPEG-LS 16-bit, custom parameter, restart-marker, and multi-frame coverage
+1. JPEG-LS custom parameter, restart-marker, and multi-frame coverage
 2. Remaining JPEG Lossless transfer syntaxes
 3. DICOM writing
 4. DICOMweb support
@@ -136,8 +136,8 @@ pull request:
 JPEG Lossless `.57` decoding beyond Selection Value 1 and JPEG-LS
 Near-Lossless `.81` decoding are intentionally outside the current release
 scope. JPEG-LS Lossless `.80` currently supports a single-component,
-8-bit `MONOCHROME1` / `MONOCHROME2` frame with default coding parameters only;
-16-bit streams, custom preset parameters, restart markers, color images, and
+8-bit or 16-bit `MONOCHROME1` / `MONOCHROME2` frame with default coding
+parameters only; custom preset parameters, restart markers, color images, and
 multi-frame coverage remain unsupported. DICOM networking (DIMSE), DICOMweb,
 and writing are also outside the current release scope. JPEG Lossless `.70`
 currently supports only

@@ -43,6 +43,18 @@ CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
 OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+## `charLS12BitMonochrome2x2`
+
+This 35-byte JPEG-LS stream was generated using the source-pinned CharLS
+encoder noted above, with a 2 × 2, single-component, 12-bit input containing
+the little-endian samples `1, 2, 4095, 1024`. It is retained as a byte array
+in `Support/JPEGLSTestSupport.swift` so the test suite has a compact,
+independent encoder-derived 16-bit DICOM storage vector.
+
+- Generator source commit: `c0bae6496fa5d787fbb4698debd1e5decb40cf3a`
+- SHA-256: `1e874c8127b683bc13949b3160a500e5a8a6aa6c099a178276ac0d8412069e1a`
+- License: BSD-3-Clause, reproduced in the preceding notice
+
 ## `CT_small.dcm`
 
 Source: [`pydicom/pydicom`](https://github.com/pydicom/pydicom),
