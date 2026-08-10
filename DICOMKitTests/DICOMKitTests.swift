@@ -24,6 +24,18 @@ struct DICOMKitTests {
         #expect(file.dataset[.columns]?.uint16Value == 256)
     }
 
+    @Test func readsPydicomExplicitVRLittleEndianCTFixture() throws {
+        let fixtureURL = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .appendingPathComponent("Fixtures/CT_small.dcm")
+
+        let file = try DICOMFile(data: Data(contentsOf: fixtureURL))
+
+        #expect(file.transferSyntax == .explicitVRLittleEndian)
+        #expect(file.dataset[.rows]?.uint16Value == 128)
+        #expect(file.dataset[.columns]?.uint16Value == 128)
+    }
+
     @Test func rejectsDataWithoutPart10Preamble() {
         #expect(throws: DICOMError.self) {
             _ = try DICOMFile(data: Data())
