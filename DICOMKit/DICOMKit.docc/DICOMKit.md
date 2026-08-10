@@ -41,17 +41,17 @@ markers; `.70` is limited to Selection Value 1. JPEG-LS Lossless (Transfer
 Syntax `.80`) supports monochrome 8-bit and 16-bit frames and
 sample-interleaved 8-bit `RGB`, with default or explicit Preset Coding
 Parameters and restart markers. JPEG-LS Near-Lossless `.81` supports
-single-component monochrome 8-bit frames. Multi-frame JPEG-LS data requires a
-Basic Offset Table and is available through ``DICOMFile/pixelDataFrames``.
+single-component monochrome and sample-interleaved `RGB` 8-bit frames.
+Multi-frame JPEG-LS data requires a Basic Offset Table and is available through
+``DICOMFile/pixelDataFrames``.
 JPEG Baseline (Process 1), JPEG 2000 Lossless, and
 JPEG 2000 Pixel Data are decoded through ImageIO, which produces 8-bit
 samples: `RGB` for three-sample frames and grayscale for `MONOCHROME1` /
 `MONOCHROME2` frames, while frames declaring any other `Bits Allocated` are
 reported as undecodable. Multi-frame encapsulated images require a Basic
 Offset Table and are available through ``DICOMFile/pixelDataFrames``. JPEG
-Multi-component JPEG Lossless, JPEG-LS Near-Lossless RGB and other JPEG-LS
-interleave modes, writing, DIMSE, and DICOMweb remain outside the current
-scope.
+Multi-component JPEG Lossless, JPEG-LS line／plane interleave modes, writing,
+DIMSE, and DICOMweb remain outside the current scope.
 Pixel Padding Value
 `(0028,0120)` is also not yet applied.
 

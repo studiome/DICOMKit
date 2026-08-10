@@ -173,9 +173,7 @@ public struct DICOMFile: Sendable {
 
         case .jpegLSLossless, .jpegLSNearLossless:
             let isMonochrome = sourceSamplesPerPixel == 1 && (sourcePhotometric == .monochrome1 || sourcePhotometric == .monochrome2)
-            // RGB support currently implements the lossless JPEG-LS coding
-            // path only. Near-Lossless RGB needs its own NEAR-aware contexts.
-            let isRGB = transferSyntax == .jpegLSLossless && sourceSamplesPerPixel == 3 && sourcePhotometric == .rgb && sourcePlanarConfiguration == 0
+            let isRGB = sourceSamplesPerPixel == 3 && sourcePhotometric == .rgb && sourcePlanarConfiguration == 0
             guard isMonochrome || isRGB,
                   let fragmentFrames = encapsulatedFrames(of: pixelElement, frameCount: frameCount) else {
                 return nil

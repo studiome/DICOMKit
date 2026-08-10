@@ -2,6 +2,11 @@
 
 All notable changes to DICOMKit are documented here.
 
+## v0.4 — Unreleased
+
+- Added sample-interleaved 8-bit `RGB` JPEG-LS Near-Lossless `.81` decoding,
+  including streams with a nonzero `NEAR` error bound.
+
 ## v0.3 — Unreleased
 
 - Added JPEG Lossless, Non-Hierarchical Process 14 decoding for DICOM

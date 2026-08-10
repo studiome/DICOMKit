@@ -50,7 +50,8 @@ enum JPEGLSDecoder {
                 height: expectedHeight,
                 precision: header.precision,
                 parameters: header.parameters,
-                restartInterval: header.restartInterval
+                restartInterval: header.restartInterval,
+                near: header.near
             )
             samples = try decoder.decode()
             try decoder.finishFrame()
@@ -578,17 +579,26 @@ private extension JPEGLSDecoder {
         let limit: Int
         let parameters: CodingParameters
         let restartInterval: Int
+        let near: Int
+        let range: Int
+        let quantizedBits: Int
         var regularContexts: [RegularContext]
         var runContexts: [RunContext]
         var runIndex = 0
 
-        init(reader: EntropyBitReader, width: Int, height: Int, precision: Int, parameters: CodingParameters, restartInterval: Int) {
+        init(reader: EntropyBitReader, width: Int, height: Int, precision: Int, parameters: CodingParameters, restartInterval: Int, near: Int) {
             self.reader = reader
             self.width = width
             self.height = height
             self.precision = precision
             maximumValue = (1 << precision) - 1
-            initialA = max(2, (parameters.maximumValue + 1 + 32) / 64)
+            self.near = near
+            range = (maximumValue + 2 * near) / (2 * near + 1) + 1
+            var bitCount = 0
+            var bitLimit = 1
+            while bitLimit < range { bitCount += 1; bitLimit <<= 1 }
+            quantizedBits = bitCount
+            initialA = max(2, (range + 32) / 64)
             limit = 2 * (precision + max(8, precision))
             self.parameters = parameters
             self.restartInterval = restartInterval
@@ -706,8 +716,8 @@ private extension JPEGLSDecoder {
 
         private mutating func decodeMappedError(k: Int, limit: Int) throws -> Int {
             let unary = try reader.readUnaryCode()
-            if unary < limit - precision - 1 { return k == 0 ? unary : (unary << k) + (try reader.readBits(count: k)) }
-            return (try reader.readBits(count: precision)) + 1
+            if unary < limit - quantizedBits - 1 { return k == 0 ? unary : (unary << k) + (try reader.readBits(count: k)) }
+            return (try reader.readBits(count: quantizedBits)) + 1
         }
         private func quantize(_ value: Int) -> Int {
             if value <= -parameters.threshold3 { return -4 }; if value <= -parameters.threshold2 { return -3 }; if value <= -parameters.threshold1 { return -2 }; if value < 0 { return -1 }; if value == 0 { return 0 }; if value < parameters.threshold1 { return 1 }; if value < parameters.threshold2 { return 2 }; if value < parameters.threshold3 { return 3 }; return 4
@@ -716,9 +726,9 @@ private extension JPEGLSDecoder {
         private func golombParameter(a: Int, n: Int) -> Int { var k = 0; while n << k < a { k += 1 }; return k }
         private func unmap(_ value: Int) -> Int { value.isMultiple(of: 2) ? value / 2 : -(value + 1) / 2 }
         private func runInterruptionError(mapped: Int, k: Int, context: RunContext) -> Int { let map = !mapped.isMultiple(of: 2); let magnitude = (mapped + (map ? 1 : 0)) / 2; return (k != 0 || 2 * context.nn >= context.n) == map ? -magnitude : magnitude }
-        private mutating func updateRegular(_ context: inout RegularContext, error: Int) { context.a += abs(error); context.b += error; if context.n == parameters.resetValue { context.a >>= 1; context.b >>= 1; context.n >>= 1 }; context.n += 1; if context.b + context.n <= 0 { context.b += context.n; if context.b <= -context.n { context.b = -context.n + 1 }; context.c = max(-128, context.c - 1) } else if context.b > 0 { context.b -= context.n; if context.b > 0 { context.b = 0 }; context.c = min(127, context.c + 1) } }
+        private mutating func updateRegular(_ context: inout RegularContext, error: Int) { context.a += abs(error); context.b += error * (2 * near + 1); if context.n == parameters.resetValue { context.a >>= 1; context.b >>= 1; context.n >>= 1 }; context.n += 1; if context.b + context.n <= 0 { context.b += context.n; if context.b <= -context.n { context.b = -context.n + 1 }; context.c = max(-128, context.c - 1) } else if context.b > 0 { context.b -= context.n; if context.b > 0 { context.b = 0 }; context.c = min(127, context.c + 1) } }
         private func updateRun(_ context: inout RunContext, error: Int, mapped: Int) { if error < 0 { context.nn += 1 }; context.a += (mapped + 1 - context.interruptionType) >> 1; if context.n == parameters.resetValue { context.a >>= 1; context.n >>= 1; context.nn >>= 1 }; context.n += 1 }
-        private func reconstruct(prediction: Int, error: Int) -> Int { let value = prediction + error; if value < 0 { return value + maximumValue + 1 }; if value > maximumValue { return value - maximumValue - 1 }; return value }
+        private func reconstruct(prediction: Int, error: Int) -> Int { let value = prediction + error * (2 * near + 1); if value < -near { return value + range * (2 * near + 1) }; if value > maximumValue + near { return value - range * (2 * near + 1) }; return clamp(value) }
         private func clamp(_ value: Int) -> Int { min(max(0, value), maximumValue) }
         private func sign(of value: Int) -> Int { value < 0 ? -1 : 1 }
         private mutating func resetContexts() { regularContexts = Array(repeating: RegularContext(a: initialA), count: 365); runContexts = [RunContext(interruptionType: 0, a: initialA), RunContext(interruptionType: 1, a: initialA)]; runIndex = 0 }

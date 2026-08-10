@@ -399,7 +399,7 @@ struct JPEGFrameDecoderTests {
         #expect(pixelData.value == Data([9, 21, 30, 39]))
     }
 
-    @Test func rejectsJPEGLSNearLosslessRGBUntilItsNearCodingIsImplemented() throws {
+    @Test func decodesJPEGLSNearLosslessRGBWithZeroErrorBound() throws {
         let data = imageFile(
             transferSyntaxUID: TransferSyntax.jpegLSNearLossless.uid,
             samplesPerPixel: 3,
@@ -411,7 +411,30 @@ struct JPEGFrameDecoderTests {
             pixelDataElement: encapsulatedPixelData(fragments: [charLSRGBSampleInterleaved1x1])
         )
 
-        #expect(try DICOMFile(data: data).pixelData == nil)
+        let pixelData = try #require(try DICOMFile(data: data).pixelData)
+
+        #expect(pixelData.value == Data([10, 20, 30]))
+    }
+
+    @Test func decodesJPEGLSNearLosslessRGBWithinDeclaredErrorBound() throws {
+        let data = imageFile(
+            transferSyntaxUID: TransferSyntax.jpegLSNearLossless.uid,
+            samplesPerPixel: 3,
+            photometricInterpretation: .rgb,
+            planarConfiguration: 0,
+            rows: 1,
+            columns: 1,
+            bitsAllocated: 8,
+            pixelDataElement: encapsulatedPixelData(fragments: [charLSNearLosslessRGBSampleInterleaved1x1])
+        )
+
+        let reconstructed = try #require(try DICOMFile(data: data).pixelData).value
+        let source = [10, 20, 30]
+
+        #expect(reconstructed.count == source.count)
+        for (decoded, original) in zip(reconstructed, source) {
+            #expect(abs(Int(decoded) - original) <= 1)
+        }
     }
 
     @Test func decodesMultiFrameJPEGLSLosslessUsingBasicOffsetTable() throws {

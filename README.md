@@ -37,7 +37,8 @@ See the [changelog](CHANGELOG.md) for the v0.3 implementation status.
 - Decodes JPEG-LS Lossless (`.80`) monochrome 8-bit and 16-bit Pixel Data,
   plus sample-interleaved 8-bit `RGB`; supports default and explicit Preset
   Coding Parameters, restart markers, and multi-frame Basic Offset Tables.
-  JPEG-LS Near-Lossless (`.81`) supports monochrome 8-bit Pixel Data. The
+  JPEG-LS Near-Lossless (`.81`) supports monochrome and sample-interleaved
+  `RGB` 8-bit Pixel Data. The
   JPEG-LS coverage is verified with BSD-3-Clause CharLS-generated reference
   streams.
 - Decodes 8-bit JPEG Baseline (Process 1), JPEG 2000 Lossless, and JPEG 2000
@@ -132,16 +133,16 @@ pull request:
 
 ## Roadmap
 
-1. JPEG-LS Near-Lossless RGB and remaining JPEG-LS interleave modes
+1. JPEG-LS line／plane interleave modes
 2. Multi-component JPEG Lossless Process 14
 3. DICOM writing
 4. DICOMweb support
 
-## Non-goals for v0.3
+## Non-goals for v0.4
 
-JPEG-LS Near-Lossless `.81` currently supports only single-component
-`MONOCHROME1` / `MONOCHROME2` frames; Near-Lossless RGB and other JPEG-LS
-interleave modes are intentionally rejected. JPEG Lossless `.57` and `.70`
+JPEG-LS currently supports component-interleaved monochrome and
+sample-interleaved `RGB`; line／plane interleave modes remain unsupported.
+JPEG Lossless `.57` and `.70`
 currently support only single-component `MONOCHROME1` / `MONOCHROME2` frames;
 multi-component Process 14 streams are unsupported. All encapsulated
 multi-frame paths require a Basic Offset Table. DICOM networking (DIMSE),
