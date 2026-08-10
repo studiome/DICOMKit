@@ -1,0 +1,46 @@
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: macos-26
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v6
+
+      - name: Build package for macOS
+        run: swift build
+
+      - name: Test package on macOS
+        run: swift test
+
+      - name: Build package for iOS and iPadOS
+        run: |
+          ios_sdk="$(xcrun --sdk iphoneos --show-sdk-path)"
+          swift build --triple arm64-apple-ios15.0 --sdk "$ios_sdk"
+
+      - name: Test package on iOS Simulator
+        run: |
+          # The device set follows the pinned Xcode, so resolve a simulator by
+          # what's installed instead of hardcoding a model that a future
+          # runner image may drop.
+          simulator="$(xcrun simctl list devices available | grep -m1 -oE 'iPhone [^(]+' | sed 's/ *$//')"
+          echo "Testing on $simulator"
+          xcodebuild test \
+            -scheme DICOMKit \
+            -destination "platform=iOS Simulator,name=$simulator" \
+            CODE_SIGNING_ALLOWED=NO

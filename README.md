@@ -1,5 +1,7 @@
 # DICOMKit
 
+[![Tests](https://github.com/studiome/DICOMKit/actions/workflows/tests.yml/badge.svg)](https://github.com/studiome/DICOMKit/actions/workflows/tests.yml)
+
 Pure Swift utilities for reading DICOM Part 10 files on iPadOS and macOS.
 
 [Read the API documentation](https://studiome.github.io/DICOMKit/documentation/dicomkit/)
@@ -82,11 +84,8 @@ Alternatively, add `https://github.com/studiome/DICOMKit` via
 
 DICOMKit is defined exclusively by `Package.swift`: it owns the library and
 test targets, platform versions, resources, dependencies, and CI build inputs.
-For normal development, open `DICOMKit.xcworkspace` in Xcode and select the
-`DICOMKit` scheme: it builds the package's library and runs `DICOMKitTests`,
-so ⌘B and ⌘U work against the package itself.
-You can also open `Package.swift` directly, or run the test suite from the
-command line:
+Open `Package.swift` directly in Xcode for normal development, or run the test
+suite from the command line:
 
 ```bash
 swift test
@@ -104,10 +103,19 @@ To run the same test suite on the iOS Simulator:
 
 ```bash
 xcodebuild test \
-  -workspace DICOMKit.xcworkspace \
   -scheme DICOMKit \
   -destination 'platform=iOS Simulator,name=iPhone 17 Pro'
 ```
+
+### Continuous integration
+
+GitHub Actions runs the same commands on every push to `main` and on every
+pull request:
+
+- `.github/workflows/tests.yml` builds and tests the package on macOS, builds
+  it for iOS and iPadOS, and runs `DICOMKitTests` on the iOS Simulator.
+- `.github/workflows/publish-docs.yml` builds the DocC catalog and publishes
+  it to GitHub Pages on every push to `main`.
 
 ## Roadmap
 
