@@ -461,7 +461,7 @@ private extension JPEGLSDecoder {
                 bitsRemaining = 7
             } else {
                 currentByte = Int(byte)
-                bitsRemaining = byte == 0xFF ? 7 : 8
+                bitsRemaining = 8
             }
             previousByteWasFF = byte == 0xFF
         }
@@ -848,8 +848,8 @@ private extension JPEGLSDecoder {
             case ...(-parameters.threshold3): -4
             case ...(-parameters.threshold2): -3
             case ...(-parameters.threshold1): -2
-            case ..<0: -1
-            case 0: 0
+            case ..<(-near): -1
+            case ...near: 0
             case ..<parameters.threshold1: 1
             case ..<parameters.threshold2: 2
             case ..<parameters.threshold3: 3
@@ -909,9 +909,12 @@ private extension JPEGLSDecoder {
         }
 
         private func reconstruct(prediction: Int, error: Int) -> Int {
-            let value = prediction + error * (2 * near + 1)
-            if value < -near { return value + range * (2 * near + 1) }
-            if value > maximumValue + near { return value - range * (2 * near + 1) }
+            var value = prediction + error * (2 * near + 1)
+            if value < -near {
+                value += range * (2 * near + 1)
+            } else if value > maximumValue + near {
+                value -= range * (2 * near + 1)
+            }
             return clamp(value)
         }
 
