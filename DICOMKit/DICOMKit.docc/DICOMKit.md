@@ -14,6 +14,14 @@ let name = file.dataset[.patientName]?.stringValue
 let rows = file.dataset[.rows]?.uint16Value
 ```
 
+## Essentials
+
+- ``DICOMFile`` — Parse a DICOM Part 10 file.
+- ``DICOMDataset`` — Look up and iterate over data elements.
+- ``DICOMElement`` — Access a value, its VR, or its sequence items.
+- ``DICOMTag`` — Use a named tag or create a custom tag.
+- ``DICOMError`` — Handle malformed or unsupported input.
+
 The initial release supports defined-length and undefined-length sequences.
 It intentionally excludes pixel decoding, compressed transfer syntaxes,
 writing, DIMSE, and DICOMweb. Those will be added as isolated capabilities
@@ -27,3 +35,6 @@ after the file model is stable.
 - ``DICOMDataset``
 - ``DICOMElement``
 - ``DICOMTag``
+- ``DICOMVR``
+- ``TransferSyntax``
+- ``DICOMError``
