@@ -1,17 +1,17 @@
 import Foundation
 
-/// Writes uncompressed DICOM Part 10 files using Explicit VR Little Endian.
+/// Writes uncompressed DICOM Part 10 files using Little Endian transfer syntaxes.
 public enum DICOMWriter {
     /// Serializes File Meta Information and a dataset into a Part 10 file.
     ///
-    /// The v0.4 writer supports Explicit VR Little Endian datasets, including
+    /// The v0.4 writer supports Explicit and Implicit VR Little Endian datasets, including
     /// recursively defined-length sequences and native Pixel Data.
     public static func write(
         metaInformation: DICOMDataset = DICOMDataset(),
         dataset: DICOMDataset,
         transferSyntax: TransferSyntax = .explicitVRLittleEndian
     ) throws -> Data {
-        guard transferSyntax == .explicitVRLittleEndian else {
+        guard transferSyntax == .explicitVRLittleEndian || transferSyntax == .implicitVRLittleEndian else {
             throw DICOMError.unsupportedTransferSyntax(transferSyntax.uid)
         }
 
@@ -24,7 +24,7 @@ public enum DICOMWriter {
             try append(element, to: &output, explicitVR: true)
         }
         for element in dataset where element.tag.group != 0x0002 {
-            try append(element, to: &output, explicitVR: true)
+            try append(element, to: &output, explicitVR: transferSyntax == .explicitVRLittleEndian)
         }
         return output
     }
@@ -38,11 +38,14 @@ public enum DICOMWriter {
         } else {
             value = paddedValue(element.value, vr: element.vr)
         }
-        output.append(contentsOf: element.vr.rawValue.utf8)
-        if element.vr.uses32BitLength {
+        if !explicitVR {
+            appendUInt32(UInt32(value.count), to: &output)
+        } else if element.vr.uses32BitLength {
+            output.append(contentsOf: element.vr.rawValue.utf8)
             output.append(contentsOf: [0, 0])
             appendUInt32(UInt32(value.count), to: &output)
         } else {
+            output.append(contentsOf: element.vr.rawValue.utf8)
             guard value.count <= Int(UInt16.max) else { throw DICOMError.truncatedData }
             appendUInt16(UInt16(value.count), to: &output)
         }
