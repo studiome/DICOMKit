@@ -116,15 +116,15 @@ xcodebuild test \
 Swift package available to Xcode Cloud, which can't build a standalone Swift
 package. Configure test workflows against the `DICOMKitCloudHost` scheme; its
 test action runs `DICOMKitTests` on macOS and iOS Simulator destinations, and
-its product is named `DICOMKit` so Xcode Cloud reports that name.
+its product is named `DICOMKitCloudHost` to keep it distinct from the Swift
+package's `DICOMKit` module.
 
 The framework is empty: linking the package is what makes Xcode Cloud resolve
-and build it. Its product name and bundle identifier are `DICOMKit`, while the
-target, project file, and this scheme keep the `DICOMKitCloudHost` name.
-Naming the target or project file `DICOMKit` collides with the package's own
-target (`Multiple commands produce …DICOMKit.build/…`) or leaves the workspace
-unable to resolve a run destination; naming this scheme `DICOMKit` makes it
-indistinguishable from the package's own scheme in Xcode's scheme picker.
+and build it. Its target, product, bundle identifier, project file, and scheme
+all use the `DICOMKitCloudHost` name. Reusing `DICOMKit` for the host product
+would collide with the package's module during dependency scanning; naming the
+scheme `DICOMKit` would also make it indistinguishable from the package scheme
+in Xcode's scheme picker.
 
 Commit `Package.resolved` whenever package dependencies create or update it so
 Xcode Cloud resolves the same dependency versions as local development.

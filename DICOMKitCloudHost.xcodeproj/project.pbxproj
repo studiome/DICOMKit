@@ -13,7 +13,7 @@
 
 /* Begin PBXFileReference section */
 		A23000000000000000000001 /* DICOMKitCloudHost.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DICOMKitCloudHost.swift; sourceTree = "<group>"; };
-		A24000000000000000000001 /* DICOMKit.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = DICOMKit.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		A24000000000000000000001 /* DICOMKitCloudHost.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = DICOMKitCloudHost.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -39,7 +39,7 @@
 		A21000000000000000000001 /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				A24000000000000000000001 /* DICOMKit.framework */,
+				A24000000000000000000001 /* DICOMKitCloudHost.framework */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -72,7 +72,7 @@
 				A51000000000000000000001 /* DICOMKit */,
 			);
 			productName = DICOMKitCloudHost;
-			productReference = A24000000000000000000001 /* DICOMKit.framework */;
+			productReference = A24000000000000000000001 /* DICOMKitCloudHost.framework */;
 			productType = "com.apple.product-type.framework";
 		};
 /* End PBXNativeTarget section */
@@ -241,8 +241,8 @@
 				MACOSX_DEPLOYMENT_TARGET = 11.0;
 				MARKETING_VERSION = 1.0;
 				MODULE_VERIFIER_SUPPORTED_LANGUAGE_STANDARDS = "gnu17 gnu++14";
-				PRODUCT_BUNDLE_IDENTIFIER = org.studiome.DICOMKit;
-				PRODUCT_NAME = DICOMKit;
+				PRODUCT_BUNDLE_IDENTIFIER = org.studiome.DICOMKitCloudHost;
+				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
 				SUPPORTS_MACCATALYST = NO;
@@ -272,8 +272,8 @@
 				MACOSX_DEPLOYMENT_TARGET = 11.0;
 				MARKETING_VERSION = 1.0;
 				MODULE_VERIFIER_SUPPORTED_LANGUAGE_STANDARDS = "gnu17 gnu++14";
-				PRODUCT_BUNDLE_IDENTIFIER = org.studiome.DICOMKit;
-				PRODUCT_NAME = DICOMKit;
+				PRODUCT_BUNDLE_IDENTIFIER = org.studiome.DICOMKitCloudHost;
+				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
 				SUPPORTS_MACCATALYST = NO;
