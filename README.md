@@ -99,6 +99,12 @@ swift build \
   --sdk "$(xcrun --sdk iphoneos --show-sdk-path)"
 ```
 
+To run the same test suite on the iOS Simulator:
+
+```bash
+xcodebuild test -scheme DICOMKit -destination 'platform=iOS Simulator,name=iPhone 17 Pro'
+```
+
 ## Roadmap
 
 1. JPEG Lossless and JPEG-LS transfer syntaxes

@@ -25,9 +25,9 @@ let package = Package(
             name: "DICOMKitTests",
             dependencies: ["DICOMKit"],
             path: "DICOMKitTests",
-            // Fixtures are resolved from the test bundle, which also makes
-            // them available in Xcode Cloud rather than depending on a
-            // source-tree path.
+            // Copied as a directory so fixtures resolve from the test bundle
+            // rather than from a source-tree path, which CI checkouts don't
+            // share.
             resources: [
                 .copy("Fixtures")
             ],

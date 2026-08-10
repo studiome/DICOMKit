@@ -32,3 +32,15 @@ jobs:
         run: |
           ios_sdk="$(xcrun --sdk iphoneos --show-sdk-path)"
           swift build --triple arm64-apple-ios15.0 --sdk "$ios_sdk"
+
+      - name: Test package on iOS Simulator
+        run: |
+          # The device set follows the pinned Xcode, so resolve a simulator by
+          # what's installed instead of hardcoding a model that a future
+          # runner image may drop.
+          simulator="$(xcrun simctl list devices available | grep -m1 -oE 'iPhone [^(]+' | sed 's/ *$//')"
+          echo "Testing on $simulator"
+          xcodebuild test \
+            -scheme DICOMKit \
+            -destination "platform=iOS Simulator,name=$simulator" \
+            CODE_SIGNING_ALLOWED=NO
