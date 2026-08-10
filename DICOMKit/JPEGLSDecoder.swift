@@ -32,10 +32,12 @@ enum JPEGLSDecoder {
         let samples: [Int]
         switch (header.frameComponentCount, header.scanComponentIdentifiers.count, header.interleaveMode) {
         case (1, 1, 0):
-            var decoder = ScanDecoder(
+            var decoder = SampleDecoder(
                 reader: EntropyBitReader(data: data, offset: parser.offset),
                 width: expectedWidth,
                 height: expectedHeight,
+                componentCount: 1,
+                interleaveMode: 0,
                 precision: header.precision,
                 parameters: header.parameters,
                 restartInterval: header.restartInterval,
@@ -44,10 +46,12 @@ enum JPEGLSDecoder {
             samples = try decoder.decode()
             try decoder.finishFrame()
         case (3, 3, 2):
-            var decoder = RGBScanDecoder(
+            var decoder = SampleDecoder(
                 reader: EntropyBitReader(data: data, offset: parser.offset),
                 width: expectedWidth,
                 height: expectedHeight,
+                componentCount: 3,
+                interleaveMode: header.interleaveMode,
                 precision: header.precision,
                 parameters: header.parameters,
                 restartInterval: header.restartInterval,
@@ -59,10 +63,12 @@ enum JPEGLSDecoder {
             var planes = [[Int]](repeating: [], count: 3)
             var scan = header
             for scanIndex in 0..<3 {
-                var decoder = ScanDecoder(
+                var decoder = SampleDecoder(
                     reader: EntropyBitReader(data: data, offset: parser.offset),
                     width: expectedWidth,
                     height: expectedHeight,
+                    componentCount: 1,
+                    interleaveMode: 0,
                     precision: header.precision,
                     parameters: header.parameters,
                     restartInterval: header.restartInterval,
@@ -233,13 +239,6 @@ private extension JPEGLSDecoder {
         /// thresholds (3, 7, 21) *down* by an integer factor derived from
         /// how many bits narrower than 8 the alphabet is; at or above 128 it
         /// scales them *up* by a factor derived from how many bits wider.
-        /// The previous formula here approximated this with a single
-        /// large-alphabet-shaped calculation applied unconditionally, which
-        /// silently picked the wrong thresholds whenever a gradient's
-        /// magnitude fell between the two formulas' results (e.g. threshold1
-        /// = 6 instead of 3 for 8-bit samples) — invisible on tiny fixtures
-        /// where no gradient ever got that large, but wrong for any
-        /// realistically sized image.
         private static func defaultCodingParameters(maximumValue: Int, near: Int) -> CodingParameters {
             func clamp(_ value: Int, _ low: Int, _ high: Int) -> Int {
                 value > high || value < low ? low : value
@@ -432,12 +431,27 @@ private extension JPEGLSDecoder {
         var nn = 0
     }
 
-    struct ScanDecoder {
+    /// Decodes one JPEG-LS scan: a single monochrome component, a plane of a
+    /// plane-interleaved (interleave mode 0, 3 scans) RGB frame, or a
+    /// sample-interleaved (interleave mode 2) RGB frame. `componentCount` is
+    /// 1 for the first two cases and 3 for sample-interleaved RGB; every
+    /// component of a pixel is decoded together, entering run mode only
+    /// when all components agree (T.87's triplet/quad coding).
+    ///
+    /// Regular-mode and run-mode statistics (`regularContexts`/`runContexts`)
+    /// are shared across components: JPEG-LS keeps one set of adaptive
+    /// contexts per scan, not per component. There is exactly one shared run
+    /// index (`runIndex`, sized `componentCount` for a future line-interleave
+    /// path but with only slot 0 ever touched here) because all components
+    /// of a pixel run and interrupt together.
+    struct SampleDecoder {
         fileprivate static let runIndexJ = [0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 9, 10, 11, 12, 13, 14, 15]
 
         var reader: EntropyBitReader
         let width: Int
         let height: Int
+        let componentCount: Int
+        let interleaveMode: Int
         let precision: Int
         let maximumValue: Int
         let initialA: Int
@@ -449,19 +463,24 @@ private extension JPEGLSDecoder {
         let quantizedBits: Int
         var regularContexts: [RegularContext]
         var runContexts: [RunContext]
-        var runIndex = 0
-        // T.87 extends every line with a virtual sample before column 0.
-        // For Ra at column 0 that virtual sample equals Rb of the same row
-        // (leftEdgeA); for Rc at column 0 it equals whatever the virtual
-        // sample was one row earlier (leftEdgeC). Both start at 0, matching
-        // the all-zero virtual line above the first row of a scan.
-        var leftEdgeA = 0
-        var leftEdgeC = 0
+        var runIndex: [Int]
 
-        init(reader: EntropyBitReader, width: Int, height: Int, precision: Int, parameters: CodingParameters, restartInterval: Int = 0, near: Int = 0) {
+        init(
+            reader: EntropyBitReader,
+            width: Int,
+            height: Int,
+            componentCount: Int,
+            interleaveMode: Int,
+            precision: Int,
+            parameters: CodingParameters,
+            restartInterval: Int = 0,
+            near: Int = 0
+        ) {
             self.reader = reader
             self.width = width
             self.height = height
+            self.componentCount = componentCount
+            self.interleaveMode = interleaveMode
             self.precision = precision
             self.parameters = parameters
             self.restartInterval = restartInterval
@@ -476,50 +495,11 @@ private extension JPEGLSDecoder {
                 RunContext(interruptionType: 0, a: initialA),
                 RunContext(interruptionType: 1, a: initialA)
             ]
+            runIndex = Array(repeating: 0, count: componentCount)
         }
 
         mutating func decode() throws -> [Int] {
-            var previous = [Int](repeating: 0, count: width)
-            var output = [Int]()
-            output.reserveCapacity(width * height)
-
-            var decodedCount = 0
-            var restartIndex = 0
-            var resetPreviousLine = false
-            for _ in 0..<height {
-                var current = [Int](repeating: 0, count: width)
-                var x = 0
-                while x < width {
-                    let ra = x > 0 ? current[x - 1] : leftEdgeA
-                    let rb = previous[x]
-                    let rc = x > 0 ? previous[x - 1] : leftEdgeC
-                    let rd = x + 1 < width ? previous[x + 1] : rb
-                    let q1 = quantize(rd - rb)
-                    let q2 = quantize(rb - rc)
-                    let q3 = quantize(rc - ra)
-                    if q1 == 0, q2 == 0, q3 == 0 {
-                        let nextX = try decodeRun(from: x, ra: ra, previous: previous, into: &current)
-                        decodedCount += nextX - x
-                        x = nextX
-                    } else {
-                        current[x] = try decodeRegular(ra: ra, rb: rb, rc: rc, q1: q1, q2: q2, q3: q3)
-                        x += 1
-                        decodedCount += 1
-                    }
-                    if restartInterval > 0, decodedCount.isMultiple(of: restartInterval), decodedCount < width * height {
-                        try reader.consumeRestartMarker(expectedIndex: restartIndex)
-                        restartIndex = (restartIndex + 1) % 8
-                        resetContexts()
-                        resetPreviousLine = true
-                    }
-                }
-                output.append(contentsOf: current)
-                leftEdgeC = resetPreviousLine ? 0 : leftEdgeA
-                leftEdgeA = resetPreviousLine ? 0 : current[0]
-                previous = resetPreviousLine ? [Int](repeating: 0, count: width) : current
-                resetPreviousLine = false
-            }
-            return output
+            try decodePixelInterleaved()
         }
 
         mutating func finishFrame() throws {
@@ -530,13 +510,143 @@ private extension JPEGLSDecoder {
             try reader.finishScan()
         }
 
-        private mutating func resetContexts() {
-            regularContexts = Array(repeating: RegularContext(a: initialA), count: 365)
-            runContexts = [
-                RunContext(interruptionType: 0, a: initialA),
-                RunContext(interruptionType: 1, a: initialA)
-            ]
-            runIndex = 0
+        // MARK: - Pixel-interleaved decoding (mode 0: single component; mode 2: sample-interleaved RGB)
+
+        /// Decodes a scan whose samples are grouped by pixel: for a single
+        /// component this is a plain raster scan, and for sample-interleaved
+        /// RGB every component of a pixel is decoded together (entering run
+        /// mode only when all components agree, per T.87's triplet coding).
+        /// Returns samples in pixel-major order (component fastest-varying).
+        private mutating func decodePixelInterleaved() throws -> [Int] {
+            var previous = Array(repeating: [Int](repeating: 0, count: width), count: componentCount)
+            var leftEdgeA = Array(repeating: 0, count: componentCount)
+            var leftEdgeC = Array(repeating: 0, count: componentCount)
+            var output = [Int]()
+            output.reserveCapacity(width * height * componentCount)
+
+            var decodedPixels = 0
+            var restartIndex = 0
+            var resetPreviousLine = false
+            for _ in 0..<height {
+                var current = Array(repeating: [Int](repeating: 0, count: width), count: componentCount)
+                var x = 0
+                while x < width {
+                    var q1s = [Int](repeating: 0, count: componentCount)
+                    var q2s = [Int](repeating: 0, count: componentCount)
+                    var q3s = [Int](repeating: 0, count: componentCount)
+                    var allZero = true
+                    for component in 0..<componentCount {
+                        let ra = x > 0 ? current[component][x - 1] : leftEdgeA[component]
+                        let rb = previous[component][x]
+                        let rc = x > 0 ? previous[component][x - 1] : leftEdgeC[component]
+                        let rd = x + 1 < width ? previous[component][x + 1] : rb
+                        let q1 = quantize(rd - rb)
+                        let q2 = quantize(rb - rc)
+                        let q3 = quantize(rc - ra)
+                        q1s[component] = q1
+                        q2s[component] = q2
+                        q3s[component] = q3
+                        if q1 != 0 || q2 != 0 || q3 != 0 { allZero = false }
+                    }
+                    if allZero {
+                        let nextX = try decodeRunPixel(from: x, leftEdgeA: leftEdgeA, previous: previous, current: &current)
+                        decodedPixels += nextX - x
+                        x = nextX
+                    } else {
+                        for component in 0..<componentCount {
+                            let ra = x > 0 ? current[component][x - 1] : leftEdgeA[component]
+                            let rb = previous[component][x]
+                            let rc = x > 0 ? previous[component][x - 1] : leftEdgeC[component]
+                            current[component][x] = try decodeRegular(ra: ra, rb: rb, rc: rc, q1: q1s[component], q2: q2s[component], q3: q3s[component])
+                        }
+                        x += 1
+                        decodedPixels += 1
+                    }
+                    if restartInterval > 0, decodedPixels.isMultiple(of: restartInterval), decodedPixels < width * height {
+                        try reader.consumeRestartMarker(expectedIndex: restartIndex)
+                        restartIndex = (restartIndex + 1) % 8
+                        resetContexts()
+                        resetPreviousLine = true
+                    }
+                }
+                for pixel in 0..<width {
+                    for component in 0..<componentCount {
+                        output.append(current[component][pixel])
+                    }
+                }
+                for component in 0..<componentCount {
+                    leftEdgeC[component] = resetPreviousLine ? 0 : leftEdgeA[component]
+                    leftEdgeA[component] = resetPreviousLine ? 0 : current[component][0]
+                }
+                previous = resetPreviousLine ? Array(repeating: [Int](repeating: 0, count: width), count: componentCount) : current
+                resetPreviousLine = false
+            }
+            return output
+        }
+
+        /// Decodes a run whose length and continuation are shared by every
+        /// component of the pixel group, using run index slot 0. The
+        /// run-interruption sample's context is chosen dynamically
+        /// (`|Ra-Rb| <= NEAR`) only for a lone component; T.87 fixes it to
+        /// context 0 for every component of a multi-component pixel, since
+        /// the run's all-components-equal-Ra condition already captures the
+        /// smoothness that the dynamic check exists to detect.
+        private mutating func decodeRunPixel(from start: Int, leftEdgeA: [Int], previous: [[Int]], current: inout [[Int]]) throws -> Int {
+            let startRa = (0..<componentCount).map { component in
+                start > 0 ? current[component][start - 1] : leftEdgeA[component]
+            }
+            let length = try decodeRunLength(runIndexSlot: 0, remaining: width - start)
+            if length > 0 {
+                for component in 0..<componentCount {
+                    for index in start..<(start + length) { current[component][index] = startRa[component] }
+                }
+            }
+            let interruption = start + length
+            guard interruption < width else { return width }
+            for component in 0..<componentCount {
+                let ra = startRa[component]
+                let rb = previous[component][interruption]
+                let contextIndex = componentCount == 1 ? (abs(ra - rb) <= near ? 1 : 0) : 0
+                current[component][interruption] = try decodeRunInterruptionSample(ra: ra, rb: rb, contextIndex: contextIndex, runIndexSlot: 0)
+            }
+            if runIndex[0] > 0 { runIndex[0] -= 1 }
+            return interruption + 1
+        }
+
+        // MARK: - Shared run/regular decoding primitives
+
+        /// Reads the run-length prefix code from the bitstream (T.87's
+        /// melcode over the run-index table), advancing `runIndex[slot]` as
+        /// runs of increasing length are confirmed. Shared by both
+        /// interleave paths; they differ only in which run index slot
+        /// advances and in how many components fill with `Ra` afterward.
+        private mutating func decodeRunLength(runIndexSlot: Int, remaining: Int) throws -> Int {
+            var length = 0
+            while try reader.readBit() == 1 {
+                let count = min(1 << Self.runIndexJ[runIndex[runIndexSlot]], remaining - length)
+                length += count
+                if count == 1 << Self.runIndexJ[runIndex[runIndexSlot]], runIndex[runIndexSlot] < Self.runIndexJ.count - 1 {
+                    runIndex[runIndexSlot] += 1
+                }
+                if length == remaining { break }
+            }
+            if length < remaining, Self.runIndexJ[runIndex[runIndexSlot]] > 0 {
+                length += try reader.readBits(count: Self.runIndexJ[runIndex[runIndexSlot]])
+            }
+            guard length <= remaining else { throw DICOMImageError.unsupportedPixelFormat }
+            return length
+        }
+
+        /// Decodes the single sample that interrupts a run, given the
+        /// already-chosen run-interruption context.
+        private mutating func decodeRunInterruptionSample(ra: Int, rb: Int, contextIndex: Int, runIndexSlot: Int) throws -> Int {
+            var context = runContexts[contextIndex]
+            let k = golombParameter(a: context.a + (context.n >> 1) * context.interruptionType, n: context.n)
+            let mapped = try decodeMappedError(k: k, limit: limit - Self.runIndexJ[runIndex[runIndexSlot]] - 1)
+            let error = runInterruptionError(mapped: mapped + context.interruptionType, k: k, context: context)
+            updateRun(&context, error: error, mapped: mapped)
+            runContexts[contextIndex] = context
+            return reconstruct(prediction: contextIndex == 1 ? ra : rb, error: contextIndex == 1 ? error : error * sign(of: rb - ra))
         }
 
         private mutating func decodeRegular(ra: Int, rb: Int, rc: Int, q1: Int, q2: Int, q3: Int) throws -> Int {
@@ -551,40 +661,6 @@ private extension JPEGLSDecoder {
             updateRegular(&context, error: error)
             regularContexts[index] = context
             return reconstruct(prediction: prediction, error: sign * error)
-        }
-
-        private mutating func decodeRun(from start: Int, ra: Int, previous: [Int], into line: inout [Int]) throws -> Int {
-            var length = 0
-            let remaining = width - start
-            while try reader.readBit() == 1 {
-                let count = min(1 << Self.runIndexJ[runIndex], remaining - length)
-                length += count
-                if count == 1 << Self.runIndexJ[runIndex], runIndex < Self.runIndexJ.count - 1 { runIndex += 1 }
-                if length == remaining { break }
-            }
-            if length < remaining, Self.runIndexJ[runIndex] > 0 {
-                length += try reader.readBits(count: Self.runIndexJ[runIndex])
-            }
-            guard length <= remaining else { throw DICOMImageError.unsupportedPixelFormat }
-            if length > 0 {
-                for index in start..<(start + length) { line[index] = ra }
-            }
-            let interruption = start + length
-            guard interruption < width else { return width }
-            // Per T.87 the run-interruption sample's north neighbor Rb is the
-            // previous line's sample at the interruption column, not at the
-            // run's start column: the two coincide only for zero-length runs.
-            let rb = previous[interruption]
-            let contextIndex = abs(ra - rb) <= near ? 1 : 0
-            var context = runContexts[contextIndex]
-            let k = golombParameter(a: context.a + (context.n >> 1) * context.interruptionType, n: context.n)
-            let mapped = try decodeMappedError(k: k, limit: limit - Self.runIndexJ[runIndex] - 1)
-            let error = runInterruptionError(mapped: mapped + context.interruptionType, k: k, context: context)
-            updateRun(&context, error: error, mapped: mapped)
-            runContexts[contextIndex] = context
-            line[interruption] = reconstruct(prediction: contextIndex == 1 ? ra : rb, error: contextIndex == 1 ? error : error * sign(of: rb - ra))
-            if runIndex > 0 { runIndex -= 1 }
-            return interruption + 1
         }
 
         private mutating func decodeMappedError(k: Int, limit: Int) throws -> Int {
@@ -670,187 +746,20 @@ private extension JPEGLSDecoder {
         private func clamp(_ value: Int) -> Int { min(max(0, value), maximumValue) }
         private func sign(of value: Int) -> Int { value < 0 ? -1 : 1 }
 
+        private mutating func resetContexts() {
+            regularContexts = Array(repeating: RegularContext(a: initialA), count: 365)
+            runContexts = [
+                RunContext(interruptionType: 0, a: initialA),
+                RunContext(interruptionType: 1, a: initialA)
+            ]
+            runIndex = Array(repeating: 0, count: componentCount)
+        }
+
         private static func bitsRequired(_ value: Int) -> Int {
             var bits = 0
             var limit = 1
             while limit < value { bits += 1; limit <<= 1 }
             return bits
         }
-    }
-
-    /// Baseline JPEG-LS sample-interleaved RGB scan decoder. Each component
-    /// maintains independent regular and run-interruption contexts; run length
-    /// state is shared by the interleaved pixel triplet.
-    struct RGBScanDecoder {
-        var reader: EntropyBitReader
-        let width: Int
-        let height: Int
-        let precision: Int
-        let maximumValue: Int
-        let initialA: Int
-        let limit: Int
-        let parameters: CodingParameters
-        let restartInterval: Int
-        let near: Int
-        let range: Int
-        let quantizedBits: Int
-        var regularContexts: [RegularContext]
-        var runContexts: [RunContext]
-        var runIndex = 0
-        // See ScanDecoder's leftEdgeA/leftEdgeC: the same per-component
-        // column-0 edge convention applies to each of the three components.
-        var leftEdgeA = [0, 0, 0]
-        var leftEdgeC = [0, 0, 0]
-
-        init(reader: EntropyBitReader, width: Int, height: Int, precision: Int, parameters: CodingParameters, restartInterval: Int, near: Int) {
-            self.reader = reader
-            self.width = width
-            self.height = height
-            self.precision = precision
-            maximumValue = (1 << precision) - 1
-            self.near = near
-            range = (maximumValue + 2 * near) / (2 * near + 1) + 1
-            var bitCount = 0
-            var bitLimit = 1
-            while bitLimit < range { bitCount += 1; bitLimit <<= 1 }
-            quantizedBits = bitCount
-            initialA = max(2, (range + 32) / 64)
-            limit = 2 * (precision + max(8, precision))
-            self.parameters = parameters
-            self.restartInterval = restartInterval
-            regularContexts = Array(repeating: RegularContext(a: initialA), count: 365)
-            runContexts = [RunContext(interruptionType: 0, a: initialA), RunContext(interruptionType: 1, a: initialA)]
-        }
-
-        mutating func decode() throws -> [Int] {
-            var previous = Array(repeating: [Int](repeating: 0, count: width), count: 3)
-            var output: [Int] = []
-            output.reserveCapacity(width * height * 3)
-            var decodedPixels = 0
-            var restartMarker = 0
-            var resetPreviousLine = false
-
-            for _ in 0..<height {
-                var current = Array(repeating: [Int](repeating: 0, count: width), count: 3)
-                var x = 0
-                while x < width {
-                    let gradients = (0..<3).map { component -> (Int, Int, Int) in
-                        let ra = x > 0 ? current[component][x - 1] : leftEdgeA[component]
-                        let rb = previous[component][x]
-                        let rc = x > 0 ? previous[component][x - 1] : leftEdgeC[component]
-                        let rd = x + 1 < width ? previous[component][x + 1] : rb
-                        return (quantize(rd - rb), quantize(rb - rc), quantize(rc - ra))
-                    }
-                    if gradients.allSatisfy({ $0.0 == 0 && $0.1 == 0 && $0.2 == 0 }) {
-                        let nextX = try decodeRun(from: x, leftEdgeA: leftEdgeA, previous: previous, current: &current)
-                        decodedPixels += nextX - x
-                        x = nextX
-                    } else {
-                        for component in 0..<3 {
-                            let ra = x > 0 ? current[component][x - 1] : leftEdgeA[component]
-                            let rb = previous[component][x]
-                            let rc = x > 0 ? previous[component][x - 1] : leftEdgeC[component]
-                            current[component][x] = try decodeRegular(component: component, ra: ra, rb: rb, rc: rc, gradients: gradients[component])
-                        }
-                        x += 1
-                        decodedPixels += 1
-                    }
-                    if restartInterval > 0, decodedPixels.isMultiple(of: restartInterval), decodedPixels < width * height {
-                        try reader.consumeRestartMarker(expectedIndex: restartMarker)
-                        restartMarker = (restartMarker + 1) % 8
-                        resetContexts()
-                        resetPreviousLine = true
-                    }
-                }
-                for pixel in 0..<width {
-                    output.append(current[0][pixel])
-                    output.append(current[1][pixel])
-                    output.append(current[2][pixel])
-                }
-                for component in 0..<3 {
-                    leftEdgeC[component] = resetPreviousLine ? 0 : leftEdgeA[component]
-                    leftEdgeA[component] = resetPreviousLine ? 0 : current[component][0]
-                }
-                previous = resetPreviousLine ? Array(repeating: [Int](repeating: 0, count: width), count: 3) : current
-                resetPreviousLine = false
-            }
-            return output
-        }
-
-        mutating func finishFrame() throws {
-            try reader.finishFrame()
-        }
-
-        private mutating func decodeRegular(component: Int, ra: Int, rb: Int, rc: Int, gradients: (Int, Int, Int)) throws -> Int {
-            let signedContext = (gradients.0 * 9 + gradients.1) * 9 + gradients.2
-            let sign = signedContext < 0 ? -1 : 1
-            let index = abs(signedContext)
-            var context = regularContexts[index]
-            let prediction = clamp(predict(ra, rb, rc) + sign * context.c)
-            let k = golombParameter(a: context.a, n: context.n)
-            var error = unmap(try decodeMappedError(k: k, limit: limit))
-            if k == 0, 2 * context.b + context.n - 1 < 0 { error = -error - 1 }
-            updateRegular(&context, error: error)
-            regularContexts[index] = context
-            return reconstruct(prediction: prediction, error: sign * error)
-        }
-
-        private mutating func decodeRun(from start: Int, leftEdgeA: [Int], previous: [[Int]], current: inout [[Int]]) throws -> Int {
-            var length = 0
-            let remaining = width - start
-            while try reader.readBit() == 1 {
-                let count = min(1 << ScanDecoder.runIndexJ[runIndex], remaining - length)
-                length += count
-                if count == 1 << ScanDecoder.runIndexJ[runIndex], runIndex < ScanDecoder.runIndexJ.count - 1 { runIndex += 1 }
-                if length == remaining { break }
-            }
-            if length < remaining, ScanDecoder.runIndexJ[runIndex] > 0 {
-                length += try reader.readBits(count: ScanDecoder.runIndexJ[runIndex])
-            }
-            guard length <= remaining else { throw DICOMImageError.unsupportedPixelFormat }
-            for component in 0..<3 {
-                let ra = start > 0 ? current[component][start - 1] : leftEdgeA[component]
-                if length > 0 {
-                    for index in start..<(start + length) { current[component][index] = ra }
-                }
-            }
-            let interruption = start + length
-            guard interruption < width else { return width }
-            for component in 0..<3 {
-                let ra = interruption > 0 ? current[component][interruption - 1] : leftEdgeA[component]
-                let rb = previous[component][interruption]
-                // JPEG-LS sample-interleaved components always use the
-                // component run-interruption context (RI type 0).
-                let contextIndex = 0
-                var context = runContexts[contextIndex]
-                let k = golombParameter(a: context.a + (context.n >> 1) * context.interruptionType, n: context.n)
-                let mapped = try decodeMappedError(k: k, limit: limit - ScanDecoder.runIndexJ[runIndex] - 1)
-                let error = runInterruptionError(mapped: mapped + context.interruptionType, k: k, context: context)
-                updateRun(&context, error: error, mapped: mapped)
-                runContexts[contextIndex] = context
-                current[component][interruption] = reconstruct(prediction: rb, error: error * sign(of: rb - ra))
-            }
-            if runIndex > 0 { runIndex -= 1 }
-            return interruption + 1
-        }
-
-        private mutating func decodeMappedError(k: Int, limit: Int) throws -> Int {
-            let unary = try reader.readUnaryCode()
-            if unary < limit - quantizedBits - 1 { return k == 0 ? unary : (unary << k) + (try reader.readBits(count: k)) }
-            return (try reader.readBits(count: quantizedBits)) + 1
-        }
-        private func quantize(_ value: Int) -> Int {
-            if value <= -parameters.threshold3 { return -4 }; if value <= -parameters.threshold2 { return -3 }; if value <= -parameters.threshold1 { return -2 }; if value < 0 { return -1 }; if value == 0 { return 0 }; if value < parameters.threshold1 { return 1 }; if value < parameters.threshold2 { return 2 }; if value < parameters.threshold3 { return 3 }; return 4
-        }
-        private func predict(_ ra: Int, _ rb: Int, _ rc: Int) -> Int { rc >= max(ra, rb) ? min(ra, rb) : (rc <= min(ra, rb) ? max(ra, rb) : ra + rb - rc) }
-        private func golombParameter(a: Int, n: Int) -> Int { var k = 0; while n << k < a { k += 1 }; return k }
-        private func unmap(_ value: Int) -> Int { value.isMultiple(of: 2) ? value / 2 : -(value + 1) / 2 }
-        private func runInterruptionError(mapped: Int, k: Int, context: RunContext) -> Int { let map = !mapped.isMultiple(of: 2); let magnitude = (mapped + (map ? 1 : 0)) / 2; return (k != 0 || 2 * context.nn >= context.n) == map ? -magnitude : magnitude }
-        private mutating func updateRegular(_ context: inout RegularContext, error: Int) { context.a += abs(error); context.b += error * (2 * near + 1); if context.n == parameters.resetValue { context.a >>= 1; context.b >>= 1; context.n >>= 1 }; context.n += 1; if context.b + context.n <= 0 { context.b += context.n; if context.b <= -context.n { context.b = -context.n + 1 }; context.c = max(-128, context.c - 1) } else if context.b > 0 { context.b -= context.n; if context.b > 0 { context.b = 0 }; context.c = min(127, context.c + 1) } }
-        private func updateRun(_ context: inout RunContext, error: Int, mapped: Int) { if error < 0 { context.nn += 1 }; context.a += (mapped + 1 - context.interruptionType) >> 1; if context.n == parameters.resetValue { context.a >>= 1; context.n >>= 1; context.nn >>= 1 }; context.n += 1 }
-        private func reconstruct(prediction: Int, error: Int) -> Int { let value = prediction + error * (2 * near + 1); if value < -near { return value + range * (2 * near + 1) }; if value > maximumValue + near { return value - range * (2 * near + 1) }; return clamp(value) }
-        private func clamp(_ value: Int) -> Int { min(max(0, value), maximumValue) }
-        private func sign(of value: Int) -> Int { value < 0 ? -1 : 1 }
-        private mutating func resetContexts() { regularContexts = Array(repeating: RegularContext(a: initialA), count: 365); runContexts = [RunContext(interruptionType: 0, a: initialA), RunContext(interruptionType: 1, a: initialA)]; runIndex = 0 }
     }
 }
