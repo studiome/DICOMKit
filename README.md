@@ -141,30 +141,6 @@ pull request:
 3. DICOMweb support
 4. DIMSE networking
 
-## Non-goals for v0.4
-
-JPEG-LS currently supports component-interleaved monochrome and
-sample-interleaved `RGB`; line／plane interleave modes remain unsupported.
-JPEG Lossless `.57` and `.70`
-currently support only single-component `MONOCHROME1` / `MONOCHROME2` frames;
-multi-component Process 14 streams are unsupported. All encapsulated
-multi-frame paths require a Basic Offset Table. DICOMweb and DIMSE networking
-are outside the current release scope. The Writer emits native Pixel Data;
-compressed Pixel Data re-encoding is not supported.
-RLE Lossless currently supports 8-bit and 16-bit monochrome, plus 8-bit RGB
-Pixel Data; multi-frame encapsulated data requires a Basic Offset Table. The
-JPEG Baseline and JPEG 2000 paths decode through ImageIO, which yields 8-bit
-samples, so frames declaring any other `Bits Allocated` — including the
-16-bit monochrome data typical of JPEG 2000 CT and MR images — are reported
-as undecodable (`DICOMFile.pixelDataFrames` is `nil`) rather than rendered
-from samples whose precision was silently dropped. Pixel Padding
-Value
-`(0028,0120)` is also not applied: padding samples are rendered like any
-other sample rather than being excluded or specially colored. The 8-bit and
-`RGB` rendering paths don't apply `Pixel Representation` or rescale, either;
-this is a deliberate simplification, since signed or rescaled 8-bit Pixel
-Data is essentially unused in practice.
-
 ## License
 
 DICOMKit is available under the [MIT License](LICENSE).
