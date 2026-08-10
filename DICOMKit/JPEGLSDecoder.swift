@@ -211,15 +211,7 @@ private extension JPEGLSDecoder {
             }
             guard Int(near) <= ((1 << precision) - 1) / 2 else { throw DICOMImageError.unsupportedPixelFormat }
             let maximumValue = (1 << precision) - 1
-            let range = (maximumValue + 2 * Int(near)) / (2 * Int(near) + 1) + 1
-            let factor = min(max(2, (range + 32) / 64), 64)
-            let defaultParameters = CodingParameters(
-                maximumValue: maximumValue,
-                threshold1: min(maximumValue, factor + 2 + 3 * Int(near)),
-                threshold2: min(maximumValue, 4 * factor + 3 + 5 * Int(near)),
-                threshold3: min(maximumValue, 17 * factor + 4 + 7 * Int(near)),
-                resetValue: 64
-            )
+            let defaultParameters = Self.defaultCodingParameters(maximumValue: maximumValue, near: Int(near))
             let parameters = parameters ?? defaultParameters
             guard parameters.maximumValue == defaultParameters.maximumValue else {
                 throw DICOMImageError.unsupportedPixelFormat
@@ -233,6 +225,45 @@ private extension JPEGLSDecoder {
                 scanComponentIdentifiers: scanComponentIdentifiers,
                 interleaveMode: Int(interleaveMode),
                 near: Int(near)
+            )
+        }
+
+        /// Default coding threshold values, per T.87 C.2.4.1.1.1. Below a
+        /// maximum sample value of 128 the standard scales the basic
+        /// thresholds (3, 7, 21) *down* by an integer factor derived from
+        /// how many bits narrower than 8 the alphabet is; at or above 128 it
+        /// scales them *up* by a factor derived from how many bits wider.
+        /// The previous formula here approximated this with a single
+        /// large-alphabet-shaped calculation applied unconditionally, which
+        /// silently picked the wrong thresholds whenever a gradient's
+        /// magnitude fell between the two formulas' results (e.g. threshold1
+        /// = 6 instead of 3 for 8-bit samples) — invisible on tiny fixtures
+        /// where no gradient ever got that large, but wrong for any
+        /// realistically sized image.
+        private static func defaultCodingParameters(maximumValue: Int, near: Int) -> CodingParameters {
+            func clamp(_ value: Int, _ low: Int, _ high: Int) -> Int {
+                value > high || value < low ? low : value
+            }
+            let threshold1: Int
+            let threshold2: Int
+            let threshold3: Int
+            if maximumValue >= 128 {
+                let factor = (min(maximumValue, 4095) + 128) / 256
+                threshold1 = clamp(factor * 1 + 2 + 3 * near, near + 1, maximumValue)
+                threshold2 = clamp(factor * 4 + 3 + 5 * near, threshold1, maximumValue)
+                threshold3 = clamp(factor * 17 + 4 + 7 * near, threshold2, maximumValue)
+            } else {
+                let factor = 256 / (maximumValue + 1)
+                threshold1 = clamp(max(2, 3 / factor + 3 * near), near + 1, maximumValue)
+                threshold2 = clamp(max(3, 7 / factor + 5 * near), threshold1, maximumValue)
+                threshold3 = clamp(max(4, 21 / factor + 7 * near), threshold2, maximumValue)
+            }
+            return CodingParameters(
+                maximumValue: maximumValue,
+                threshold1: threshold1,
+                threshold2: threshold2,
+                threshold3: threshold3,
+                resetValue: 64
             )
         }
 
@@ -419,6 +450,13 @@ private extension JPEGLSDecoder {
         var regularContexts: [RegularContext]
         var runContexts: [RunContext]
         var runIndex = 0
+        // T.87 extends every line with a virtual sample before column 0.
+        // For Ra at column 0 that virtual sample equals Rb of the same row
+        // (leftEdgeA); for Rc at column 0 it equals whatever the virtual
+        // sample was one row earlier (leftEdgeC). Both start at 0, matching
+        // the all-zero virtual line above the first row of a scan.
+        var leftEdgeA = 0
+        var leftEdgeC = 0
 
         init(reader: EntropyBitReader, width: Int, height: Int, precision: Int, parameters: CodingParameters, restartInterval: Int = 0, near: Int = 0) {
             self.reader = reader
@@ -452,15 +490,15 @@ private extension JPEGLSDecoder {
                 var current = [Int](repeating: 0, count: width)
                 var x = 0
                 while x < width {
-                    let ra = x > 0 ? current[x - 1] : previous[x]
+                    let ra = x > 0 ? current[x - 1] : leftEdgeA
                     let rb = previous[x]
-                    let rc = x > 0 ? previous[x - 1] : rb
+                    let rc = x > 0 ? previous[x - 1] : leftEdgeC
                     let rd = x + 1 < width ? previous[x + 1] : rb
                     let q1 = quantize(rd - rb)
                     let q2 = quantize(rb - rc)
                     let q3 = quantize(rc - ra)
                     if q1 == 0, q2 == 0, q3 == 0 {
-                        let nextX = try decodeRun(from: x, ra: ra, rb: rb, into: &current)
+                        let nextX = try decodeRun(from: x, ra: ra, previous: previous, into: &current)
                         decodedCount += nextX - x
                         x = nextX
                     } else {
@@ -476,6 +514,8 @@ private extension JPEGLSDecoder {
                     }
                 }
                 output.append(contentsOf: current)
+                leftEdgeC = resetPreviousLine ? 0 : leftEdgeA
+                leftEdgeA = resetPreviousLine ? 0 : current[0]
                 previous = resetPreviousLine ? [Int](repeating: 0, count: width) : current
                 resetPreviousLine = false
             }
@@ -513,7 +553,7 @@ private extension JPEGLSDecoder {
             return reconstruct(prediction: prediction, error: sign * error)
         }
 
-        private mutating func decodeRun(from start: Int, ra: Int, rb: Int, into line: inout [Int]) throws -> Int {
+        private mutating func decodeRun(from start: Int, ra: Int, previous: [Int], into line: inout [Int]) throws -> Int {
             var length = 0
             let remaining = width - start
             while try reader.readBit() == 1 {
@@ -531,6 +571,10 @@ private extension JPEGLSDecoder {
             }
             let interruption = start + length
             guard interruption < width else { return width }
+            // Per T.87 the run-interruption sample's north neighbor Rb is the
+            // previous line's sample at the interruption column, not at the
+            // run's start column: the two coincide only for zero-length runs.
+            let rb = previous[interruption]
             let contextIndex = abs(ra - rb) <= near ? 1 : 0
             var context = runContexts[contextIndex]
             let k = golombParameter(a: context.a + (context.n >> 1) * context.interruptionType, n: context.n)
@@ -653,6 +697,10 @@ private extension JPEGLSDecoder {
         var regularContexts: [RegularContext]
         var runContexts: [RunContext]
         var runIndex = 0
+        // See ScanDecoder's leftEdgeA/leftEdgeC: the same per-component
+        // column-0 edge convention applies to each of the three components.
+        var leftEdgeA = [0, 0, 0]
+        var leftEdgeC = [0, 0, 0]
 
         init(reader: EntropyBitReader, width: Int, height: Int, precision: Int, parameters: CodingParameters, restartInterval: Int, near: Int) {
             self.reader = reader
@@ -687,21 +735,21 @@ private extension JPEGLSDecoder {
                 var x = 0
                 while x < width {
                     let gradients = (0..<3).map { component -> (Int, Int, Int) in
-                        let ra = x > 0 ? current[component][x - 1] : previous[component][x]
+                        let ra = x > 0 ? current[component][x - 1] : leftEdgeA[component]
                         let rb = previous[component][x]
-                        let rc = x > 0 ? previous[component][x - 1] : rb
+                        let rc = x > 0 ? previous[component][x - 1] : leftEdgeC[component]
                         let rd = x + 1 < width ? previous[component][x + 1] : rb
                         return (quantize(rd - rb), quantize(rb - rc), quantize(rc - ra))
                     }
                     if gradients.allSatisfy({ $0.0 == 0 && $0.1 == 0 && $0.2 == 0 }) {
-                        let nextX = try decodeRun(from: x, previous: previous, current: &current)
+                        let nextX = try decodeRun(from: x, leftEdgeA: leftEdgeA, previous: previous, current: &current)
                         decodedPixels += nextX - x
                         x = nextX
                     } else {
                         for component in 0..<3 {
-                            let ra = x > 0 ? current[component][x - 1] : previous[component][x]
+                            let ra = x > 0 ? current[component][x - 1] : leftEdgeA[component]
                             let rb = previous[component][x]
-                            let rc = x > 0 ? previous[component][x - 1] : rb
+                            let rc = x > 0 ? previous[component][x - 1] : leftEdgeC[component]
                             current[component][x] = try decodeRegular(component: component, ra: ra, rb: rb, rc: rc, gradients: gradients[component])
                         }
                         x += 1
@@ -718,6 +766,10 @@ private extension JPEGLSDecoder {
                     output.append(current[0][pixel])
                     output.append(current[1][pixel])
                     output.append(current[2][pixel])
+                }
+                for component in 0..<3 {
+                    leftEdgeC[component] = resetPreviousLine ? 0 : leftEdgeA[component]
+                    leftEdgeA[component] = resetPreviousLine ? 0 : current[component][0]
                 }
                 previous = resetPreviousLine ? Array(repeating: [Int](repeating: 0, count: width), count: 3) : current
                 resetPreviousLine = false
@@ -743,7 +795,7 @@ private extension JPEGLSDecoder {
             return reconstruct(prediction: prediction, error: sign * error)
         }
 
-        private mutating func decodeRun(from start: Int, previous: [[Int]], current: inout [[Int]]) throws -> Int {
+        private mutating func decodeRun(from start: Int, leftEdgeA: [Int], previous: [[Int]], current: inout [[Int]]) throws -> Int {
             var length = 0
             let remaining = width - start
             while try reader.readBit() == 1 {
@@ -757,7 +809,7 @@ private extension JPEGLSDecoder {
             }
             guard length <= remaining else { throw DICOMImageError.unsupportedPixelFormat }
             for component in 0..<3 {
-                let ra = start > 0 ? current[component][start - 1] : previous[component][start]
+                let ra = start > 0 ? current[component][start - 1] : leftEdgeA[component]
                 if length > 0 {
                     for index in start..<(start + length) { current[component][index] = ra }
                 }
@@ -765,7 +817,7 @@ private extension JPEGLSDecoder {
             let interruption = start + length
             guard interruption < width else { return width }
             for component in 0..<3 {
-                let ra = interruption > 0 ? current[component][interruption - 1] : previous[component][interruption]
+                let ra = interruption > 0 ? current[component][interruption - 1] : leftEdgeA[component]
                 let rb = previous[component][interruption]
                 // JPEG-LS sample-interleaved components always use the
                 // component run-interruption context (RI type 0).
