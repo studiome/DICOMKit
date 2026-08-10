@@ -1,5 +1,6 @@
 import Foundation
 import CoreGraphics
+import ImageIO
 import Testing
 @testable import DICOMKit
 
@@ -739,6 +740,27 @@ struct DICOMKitTests {
         #expect(file.transferSyntax == .jpegBaseline)
     }
 
+    @Test func decodesSingleFrameJPEGBaselinePixelData() throws {
+        let data = part10File(
+            transferSyntaxUID: TransferSyntax.jpegBaseline.uid,
+            datasetElements: [
+                element(tag: .samplesPerPixel, vr: .US, value: uint16(3)),
+                element(tag: .photometricInterpretation, vr: .CS, value: "RGB"),
+                element(tag: .planarConfiguration, vr: .US, value: uint16(0)),
+                element(tag: .rows, vr: .US, value: uint16(1)),
+                element(tag: .columns, vr: .US, value: uint16(1)),
+                element(tag: .bitsAllocated, vr: .US, value: uint16(8)),
+                encapsulatedPixelData(fragments: [jpegData(rgb: Data([255, 0, 0]))])
+            ]
+        )
+
+        let image = try #require(try DICOMFile(data: data).pixelData).cgImage()
+        let pixel = try imageBytes(image)
+        #expect(image.width == 1)
+        #expect(image.height == 1)
+        #expect(pixel.count == 3)
+    }
+
     @Test func rejectsSequenceItemTagThatIsNeitherItemNorDelimiter() {
         let data = part10File(
             transferSyntaxUID: TransferSyntax.explicitVRLittleEndian.uid,
@@ -925,6 +947,16 @@ private func rleFrame(segments: [Data]) -> Data {
     frame.append(Data(repeating: 0, count: 64 - frame.count))
     for segment in segments { frame.append(segment) }
     return frame
+}
+
+private func jpegData(rgb: Data) -> Data {
+    let provider = CGDataProvider(data: rgb as CFData)!
+    let image = CGImage(width: 1, height: 1, bitsPerComponent: 8, bitsPerPixel: 24, bytesPerRow: 3, space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: .byteOrderDefault, provider: provider, decode: nil, shouldInterpolate: false, intent: .defaultIntent)!
+    let data = NSMutableData()
+    let destination = CGImageDestinationCreateWithData(data, "public.jpeg" as CFString, 1, nil)!
+    CGImageDestinationAddImage(destination, image, [kCGImageDestinationLossyCompressionQuality: 1.0] as CFDictionary)
+    precondition(CGImageDestinationFinalize(destination))
+    return data as Data
 }
 
 private func implicitElement(tag: DICOMTag, value: String) -> Data {

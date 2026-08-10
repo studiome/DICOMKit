@@ -11,7 +11,7 @@ enum JPEGFrameDecoder {
               let context = CGContext(
                 data: nil, width: width, height: height, bitsPerComponent: 8,
                 bytesPerRow: width * 4, space: CGColorSpaceCreateDeviceRGB(),
-                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+                bitmapInfo: CGBitmapInfo.byteOrder32Big.rawValue | CGImageAlphaInfo.premultipliedLast.rawValue
               ) else { throw DICOMImageError.unsupportedPixelFormat }
         context.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
         guard let bytes = context.data else { throw DICOMImageError.imageCreationFailed }
