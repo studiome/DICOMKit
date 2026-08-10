@@ -1,5 +1,7 @@
 # DICOMKit
 
+[![Tests](https://github.com/studiome/DICOMKit/actions/workflows/tests.yml/badge.svg)](https://github.com/studiome/DICOMKit/actions/workflows/tests.yml)
+
 Pure Swift utilities for reading DICOM Part 10 files on iPadOS and macOS.
 
 [Read the API documentation](https://studiome.github.io/DICOMKit/)
@@ -46,19 +48,51 @@ if let pixelData = file.pixelData {
 ## Requirements
 
 - Xcode 26.6 or later
+- Swift 6 (language mode) / Swift Package Manager 6.0 or later
 - iPadOS 15.0 or later
 - macOS 11.0 or later
 
+## Installation
+
+### Swift Package Manager
+
+Add DICOMKit as a dependency in `Package.swift`:
+
+```swift
+dependencies: [
+    // No tagged release yet; pin to a commit once DICOMKit cuts one.
+    .package(url: "https://github.com/studiome/DICOMKit", branch: "main")
+]
+```
+
+Then add `"DICOMKit"` to your target's `dependencies`.
+
+### Xcode
+
+Alternatively, add `https://github.com/studiome/DICOMKit` via
+**File > Add Package Dependencies…** in Xcode.
+
 ## Development
 
+DICOMKit ships both an Xcode project and a `Package.swift`, kept in sync and
+targeting the same sources under `DICOMKit/`. Use whichever fits your
+workflow.
+
 Open [DICOMKit.xcodeproj](DICOMKit.xcodeproj) in Xcode and run the `DICOMKit`
-scheme. To run the test suite from the command line:
+scheme, or open the package directly from `Package.swift`. To run the test
+suite from the command line:
 
 ```bash
 xcodebuild test \
   -project DICOMKit.xcodeproj \
   -scheme DICOMKit \
   -destination 'platform=macOS'
+```
+
+or, using Swift Package Manager:
+
+```bash
+swift test
 ```
 
 ## Roadmap
