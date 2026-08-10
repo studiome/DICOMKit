@@ -1,7 +1,5 @@
 # DICOMKit
 
-[![Tests](https://github.com/studiome/DICOMKit/actions/workflows/tests.yml/badge.svg)](https://github.com/studiome/DICOMKit/actions/workflows/tests.yml)
-
 Pure Swift utilities for reading DICOM Part 10 files on iPadOS and macOS.
 
 [Read the API documentation](https://studiome.github.io/DICOMKit/documentation/dicomkit/)
@@ -84,8 +82,10 @@ Alternatively, add `https://github.com/studiome/DICOMKit` via
 
 DICOMKit is defined exclusively by `Package.swift`: it owns the library and
 test targets, platform versions, resources, dependencies, and CI build inputs.
-Open the package directly in Xcode for normal development, or run the test
-suite from the command line:
+For normal development, open `DICOMKit.xcworkspace` in Xcode. It is a small
+workspace entry point that lets Xcode load the Swift package and its
+`DICOMKit` scheme reliably. You can also open `Package.swift` directly, or
+run the test suite from the command line:
 
 ```bash
 swift test
@@ -102,8 +102,21 @@ swift build \
 To run the same test suite on the iOS Simulator:
 
 ```bash
-xcodebuild test -scheme DICOMKit -destination 'platform=iOS Simulator,name=iPhone 17 Pro'
+xcodebuild test \
+  -workspace DICOMKit.xcworkspace \
+  -scheme DICOMKit \
+  -destination 'platform=iOS Simulator,name=iPhone 17 Pro'
 ```
+
+### Xcode Cloud
+
+`DICOMKit.xcworkspace` includes a shared `DICOMKit` scheme whose test action
+runs `DICOMKitTests`. Select that workspace and scheme when configuring an
+Xcode Cloud test workflow. The scheme supports macOS and iOS Simulator test
+destinations without requiring a host app target.
+
+Commit `Package.resolved` whenever package dependencies create or update it so
+Xcode Cloud resolves the same dependency versions as local development.
 
 ## Roadmap
 
