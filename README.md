@@ -15,6 +15,10 @@ Pure Swift utilities for reading DICOM Part 10 files on iPadOS and macOS.
 - Exposes a lightweight Swift object model: `DICOMFile`, `DICOMDataset`,
   `DICOMElement`, `DICOMTag`, and `DICOMVR`
 - Provides typed access for common string and `UInt16` values
+- Renders uncompressed 8-bit `MONOCHROME1`, `MONOCHROME2`, and interleaved
+  `RGB` Pixel Data as `CGImage`
+- Renders uncompressed 16-bit monochrome Pixel Data with caller-supplied
+  window center and width
 
 ```swift
 let file = try DICOMFile(data: data)
@@ -23,6 +27,10 @@ let patientName = file.dataset[.patientName]?.stringValue
 let rows = file.dataset[.rows]?.uint16Value
 let columns = file.dataset[.columns]?.uint16Value
 let referencedStudies = file.dataset[.referencedStudySequence]?.sequenceItems
+
+if let pixelData = file.pixelData {
+    let image = try pixelData.cgImage(windowCenter: 40, windowWidth: 400)
+}
 ```
 
 ## Requirements
@@ -45,14 +53,14 @@ xcodebuild test \
 
 ## Roadmap
 
-1. Native pixel data, windowing, and `CGImage` output
-2. RLE and compressed transfer syntaxes
-3. DICOM writing and DICOMweb support
+1. RLE and compressed transfer syntaxes
+2. DICOM writing
+3. DICOMweb support
 
 ## Non-goals for v0.1
 
 Compressed pixel decoding, DICOM networking (DIMSE), DICOMweb, and writing are
-intentionally outside the initial release scope.
+intentionally outside the current release scope.
 
 ## License
 

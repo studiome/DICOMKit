@@ -1,4 +1,5 @@
 import Foundation
+import CoreGraphics
 
 /// A DICOM data-element identifier consisting of a group and element number.
 public struct DICOMTag: Hashable, Sendable, CustomStringConvertible {
@@ -26,6 +27,14 @@ public struct DICOMTag: Hashable, Sendable, CustomStringConvertible {
     public static let columns = DICOMTag(group: 0x0028, element: 0x0011)
     /// Pixel Data `(7FE0,0010)`.
     public static let pixelData = DICOMTag(group: 0x7FE0, element: 0x0010)
+    /// Samples per Pixel `(0028,0002)`.
+    public static let samplesPerPixel = DICOMTag(group: 0x0028, element: 0x0002)
+    /// Photometric Interpretation `(0028,0004)`.
+    public static let photometricInterpretation = DICOMTag(group: 0x0028, element: 0x0004)
+    /// Planar Configuration `(0028,0006)`.
+    public static let planarConfiguration = DICOMTag(group: 0x0028, element: 0x0006)
+    /// Bits Allocated `(0028,0100)`.
+    public static let bitsAllocated = DICOMTag(group: 0x0028, element: 0x0100)
     /// Referenced Study Sequence `(0008,1110)`.
     public static let referencedStudySequence = DICOMTag(group: 0x0008, element: 0x1110)
     /// Referenced SOP Class UID `(0008,1150)`.
@@ -156,6 +165,124 @@ public enum DICOMError: Error, Sendable, Equatable {
     case invalidSequenceItem(DICOMTag)
 }
 
+/// Errors produced while creating an image from uncompressed DICOM Pixel Data.
+public enum DICOMImageError: Error, Sendable, Equatable {
+    /// Required image metadata is absent or inconsistent.
+    case invalidImageAttributes
+    /// The image format is not currently supported by the renderer.
+    case unsupportedPixelFormat
+    /// The Pixel Data value is shorter than required by its image metadata.
+    case truncatedPixelData
+    /// A window width of one or less was supplied.
+    case invalidWindowWidth
+}
+
+/// Uncompressed image data and the DICOM attributes required to render it.
+public struct DICOMPixelData: Sendable {
+    /// The raw value of `(7FE0,0010)`, including any DICOM padding byte.
+    public let value: Data
+    /// Image height in pixels.
+    public let rows: Int
+    /// Image width in pixels.
+    public let columns: Int
+    /// Number of samples per pixel.
+    public let samplesPerPixel: Int
+    /// Number of bits allocated for each sample.
+    public let bitsAllocated: Int
+    /// The photometric interpretation, for example `MONOCHROME2` or `RGB`.
+    public let photometricInterpretation: String
+    /// The planar configuration, when applicable.
+    public let planarConfiguration: Int
+
+    /// Creates a Core Graphics image for 8-bit monochrome or interleaved RGB data.
+    ///
+    /// For 16-bit monochrome data, supply a window center and width. The rendered
+    /// image is an 8-bit grayscale `CGImage` suitable for display on Apple platforms.
+    public func cgImage(windowCenter: Double? = nil, windowWidth: Double? = nil) throws -> CGImage {
+        let pixelCount = try checkedPixelCount()
+        switch (photometricInterpretation, bitsAllocated) {
+        case ("MONOCHROME1", 8), ("MONOCHROME2", 8):
+            guard samplesPerPixel == 1 else { throw DICOMImageError.invalidImageAttributes }
+            let source = try requiredBytes(pixelCount)
+            let pixels = photometricInterpretation == "MONOCHROME1"
+                ? Data(source.map { 255 - $0 })
+                : source
+            return try makeImage(data: pixels, colorSpace: CGColorSpaceCreateDeviceGray(), bitsPerPixel: 8, bytesPerRow: columns)
+
+        case ("RGB", 8):
+            guard samplesPerPixel == 3, planarConfiguration == 0 else {
+                throw DICOMImageError.unsupportedPixelFormat
+            }
+            let byteCount = try checkedByteCount(pixelCount, bytesPerSample: 1, samples: 3)
+            return try makeImage(data: requiredBytes(byteCount), colorSpace: CGColorSpaceCreateDeviceRGB(), bitsPerPixel: 24, bytesPerRow: columns * 3)
+
+        case ("MONOCHROME1", 16), ("MONOCHROME2", 16):
+            guard samplesPerPixel == 1 else { throw DICOMImageError.invalidImageAttributes }
+            let byteCount = try checkedByteCount(pixelCount, bytesPerSample: 2, samples: 1)
+            let source = try requiredBytes(byteCount)
+            let center = windowCenter ?? 32_768
+            let width = windowWidth ?? 65_536
+            guard width > 1 else { throw DICOMImageError.invalidWindowWidth }
+            let pixels = Data(stride(from: 0, to: source.count, by: 2).map { offset in
+                let sample = Double(UInt16(source[offset]) | (UInt16(source[offset + 1]) << 8))
+                let rendered = windowedSample(sample, center: center, width: width)
+                return photometricInterpretation == "MONOCHROME1" ? 255 - rendered : rendered
+            })
+            return try makeImage(data: pixels, colorSpace: CGColorSpaceCreateDeviceGray(), bitsPerPixel: 8, bytesPerRow: columns)
+
+        default:
+            throw DICOMImageError.unsupportedPixelFormat
+        }
+    }
+
+    private func checkedPixelCount() throws -> Int {
+        guard rows > 0, columns > 0, samplesPerPixel > 0, bitsAllocated > 0 else {
+            throw DICOMImageError.invalidImageAttributes
+        }
+        let result = rows.multipliedReportingOverflow(by: columns)
+        guard !result.overflow else { throw DICOMImageError.invalidImageAttributes }
+        return result.partialValue
+    }
+
+    private func checkedByteCount(_ pixelCount: Int, bytesPerSample: Int, samples: Int) throws -> Int {
+        let samplesResult = pixelCount.multipliedReportingOverflow(by: samples)
+        let bytesResult = samplesResult.partialValue.multipliedReportingOverflow(by: bytesPerSample)
+        guard !samplesResult.overflow, !bytesResult.overflow else { throw DICOMImageError.invalidImageAttributes }
+        return bytesResult.partialValue
+    }
+
+    private func requiredBytes(_ count: Int) throws -> Data {
+        guard value.count >= count else { throw DICOMImageError.truncatedPixelData }
+        return value.prefix(count)
+    }
+
+    private func makeImage(data: Data, colorSpace: CGColorSpace, bitsPerPixel: Int, bytesPerRow: Int) throws -> CGImage {
+        guard let provider = CGDataProvider(data: data as CFData),
+              let image = CGImage(
+                width: columns,
+                height: rows,
+                bitsPerComponent: 8,
+                bitsPerPixel: bitsPerPixel,
+                bytesPerRow: bytesPerRow,
+                space: colorSpace,
+                bitmapInfo: CGBitmapInfo.byteOrderDefault,
+                provider: provider,
+                decode: nil,
+                shouldInterpolate: false,
+                intent: .defaultIntent
+              ) else { throw DICOMImageError.invalidImageAttributes }
+        return image
+    }
+
+    private func windowedSample(_ sample: Double, center: Double, width: Double) -> UInt8 {
+        let lower = center - 0.5 - (width - 1) / 2
+        let upper = center - 0.5 + (width - 1) / 2
+        if sample <= lower { return 0 }
+        if sample > upper { return 255 }
+        return UInt8(((((sample - (center - 0.5)) / (width - 1)) + 0.5) * 255).rounded())
+    }
+}
+
 /// A parsed DICOM Part 10 file.
 public struct DICOMFile: Sendable {
     /// The File Meta Information dataset (group `0002`).
@@ -164,6 +291,27 @@ public struct DICOMFile: Sendable {
     public let dataset: DICOMDataset
     /// The transfer syntax declared by the File Meta Information.
     public let transferSyntax: TransferSyntax
+
+    /// The uncompressed Pixel Data and its rendering attributes, if present and complete.
+    public var pixelData: DICOMPixelData? {
+        guard let value = dataset[.pixelData]?.value,
+              let rows = dataset[.rows]?.uint16Value,
+              let columns = dataset[.columns]?.uint16Value,
+              let samplesPerPixel = dataset[.samplesPerPixel]?.uint16Value,
+              let bitsAllocated = dataset[.bitsAllocated]?.uint16Value,
+              let photometricInterpretation = dataset[.photometricInterpretation]?.stringValue else {
+            return nil
+        }
+        return DICOMPixelData(
+            value: value,
+            rows: Int(rows),
+            columns: Int(columns),
+            samplesPerPixel: Int(samplesPerPixel),
+            bitsAllocated: Int(bitsAllocated),
+            photometricInterpretation: photometricInterpretation,
+            planarConfiguration: Int(dataset[.planarConfiguration]?.uint16Value ?? 0)
+        )
+    }
 
     /// Parses a DICOM Part 10 file from memory.
     ///
@@ -332,7 +480,8 @@ private enum DICOMDictionary {
         switch tag {
         case .transferSyntaxUID, .referencedSOPClassUID: .UI
         case .patientName: .PN
-        case .rows, .columns: .US
+        case .rows, .columns, .samplesPerPixel, .planarConfiguration, .bitsAllocated: .US
+        case .photometricInterpretation: .CS
         case .pixelData: .OW
         case .referencedStudySequence: .SQ
         default: nil

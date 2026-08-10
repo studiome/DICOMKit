@@ -1,4 +1,5 @@
 import Foundation
+import CoreGraphics
 import Testing
 @testable import DICOMKit
 
@@ -76,6 +77,66 @@ struct DICOMKitTests {
             _ = try DICOMFile(data: Data())
         }
     }
+
+    @Test func renders8BitMonochromePixelData() throws {
+        let file = try DICOMFile(data: part10File(
+            transferSyntaxUID: TransferSyntax.explicitVRLittleEndian.uid,
+            datasetElements: [
+                element(tag: DICOMTag(group: 0x0028, element: 0x0002), vr: .US, value: uint16(1)),
+                element(tag: DICOMTag(group: 0x0028, element: 0x0004), vr: .CS, value: "MONOCHROME2"),
+                element(tag: .rows, vr: .US, value: uint16(2)),
+                element(tag: .columns, vr: .US, value: uint16(2)),
+                element(tag: DICOMTag(group: 0x0028, element: 0x0100), vr: .US, value: uint16(8)),
+                element(tag: .pixelData, vr: .OB, value: Data([0, 64, 128, 255]))
+            ]
+        ))
+
+        let image = try #require(file.pixelData).cgImage()
+
+        #expect(image.width == 2)
+        #expect(image.height == 2)
+        #expect(image.bitsPerComponent == 8)
+        #expect(imageBytes(image) == Data([0, 64, 128, 255]))
+    }
+
+    @Test func rendersInterleavedRGBPixelData() throws {
+        let file = try DICOMFile(data: part10File(
+            transferSyntaxUID: TransferSyntax.explicitVRLittleEndian.uid,
+            datasetElements: [
+                element(tag: DICOMTag(group: 0x0028, element: 0x0002), vr: .US, value: uint16(3)),
+                element(tag: DICOMTag(group: 0x0028, element: 0x0004), vr: .CS, value: "RGB"),
+                element(tag: DICOMTag(group: 0x0028, element: 0x0006), vr: .US, value: uint16(0)),
+                element(tag: .rows, vr: .US, value: uint16(1)),
+                element(tag: .columns, vr: .US, value: uint16(2)),
+                element(tag: DICOMTag(group: 0x0028, element: 0x0100), vr: .US, value: uint16(8)),
+                element(tag: .pixelData, vr: .OB, value: Data([255, 0, 0, 0, 255, 0]))
+            ]
+        ))
+
+        let image = try #require(file.pixelData).cgImage()
+
+        #expect(image.width == 2)
+        #expect(image.height == 1)
+        #expect(imageBytes(image) == Data([255, 0, 0, 0, 255, 0]))
+    }
+
+    @Test func appliesWindowLevelTo16BitMonochromePixelData() throws {
+        let file = try DICOMFile(data: part10File(
+            transferSyntaxUID: TransferSyntax.explicitVRLittleEndian.uid,
+            datasetElements: [
+                element(tag: DICOMTag(group: 0x0028, element: 0x0002), vr: .US, value: uint16(1)),
+                element(tag: DICOMTag(group: 0x0028, element: 0x0004), vr: .CS, value: "MONOCHROME2"),
+                element(tag: .rows, vr: .US, value: uint16(1)),
+                element(tag: .columns, vr: .US, value: uint16(2)),
+                element(tag: DICOMTag(group: 0x0028, element: 0x0100), vr: .US, value: uint16(16)),
+                element(tag: .pixelData, vr: .OW, value: uint16(0) + uint16(1_000))
+            ]
+        ))
+
+        let image = try #require(file.pixelData).cgImage(windowCenter: 500, windowWidth: 1_000)
+
+        #expect(imageBytes(image) == Data([0, 255]))
+    }
 }
 
 private func part10File(transferSyntaxUID: String, datasetElements: [Data]) -> Data {
@@ -96,7 +157,12 @@ private func element(tag: DICOMTag, vr: DICOMVR, value: Data) -> Data {
     var data = uint16(tag.group)
     data.append(uint16(tag.element))
     data.append(contentsOf: vr.rawValue.utf8)
-    data.append(uint16(UInt16(value.count)))
+    if vr.uses32BitLength {
+        data.append(uint16(0))
+        data.append(uint32(UInt32(value.count)))
+    } else {
+        data.append(uint16(UInt16(value.count)))
+    }
     data.append(value)
     return data
 }
@@ -155,4 +221,8 @@ private func uint32(_ value: UInt32) -> Data {
         UInt8((value >> 16) & 0xFF),
         UInt8((value >> 24) & 0xFF)
     ])
+}
+
+private func imageBytes(_ image: CGImage) -> Data {
+    Data(image.dataProvider!.data! as Data)
 }
