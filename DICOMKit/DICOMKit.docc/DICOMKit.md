@@ -39,7 +39,7 @@ supports single-component `MONOCHROME1` / `MONOCHROME2` Process 14 frames with
 Selection Values 1–7, 2–16-bit precision, Point Transform, and restart
 markers; `.70` is limited to Selection Value 1. JPEG-LS Lossless (Transfer
 Syntax `.80`) supports monochrome 8-bit and 16-bit frames and
-sample-interleaved 8-bit `RGB`, with default or explicit Preset Coding
+sample-interleaved 8-bit `RGB` and `YBR_FULL` (returned as `RGB`), with default or explicit Preset Coding
 Parameters and restart markers. JPEG-LS Near-Lossless `.81` supports
 single-component monochrome and sample-interleaved `RGB` 8-bit frames.
 Multi-frame JPEG-LS data requires a Basic Offset Table and is available through

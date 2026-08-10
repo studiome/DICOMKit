@@ -35,7 +35,7 @@ See the [changelog](CHANGELOG.md) for the v0.3 implementation status.
   Offset Tables. `.70` is constrained to Selection Value 1 as required by its
   transfer syntax.
 - Decodes JPEG-LS Lossless (`.80`) monochrome 8-bit and 16-bit Pixel Data,
-  plus sample-interleaved 8-bit `RGB`; supports default and explicit Preset
+  plus sample-interleaved 8-bit `RGB` and `YBR_FULL` (returned as `RGB`); supports default and explicit Preset
   Coding Parameters, restart markers, and multi-frame Basic Offset Tables.
   JPEG-LS Near-Lossless (`.81`) supports monochrome and sample-interleaved
   `RGB` 8-bit Pixel Data. The

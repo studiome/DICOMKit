@@ -9,6 +9,8 @@ public enum PhotometricInterpretation: Sendable, Equatable {
     case monochrome2
     /// `RGB`: three interleaved or planar red, green, and blue samples.
     case rgb
+    /// `YBR_FULL`: three full-resolution Y, Cb, and Cr samples.
+    case ybrFull
     /// A Photometric Interpretation not modelled by DICOMKit.
     case other(String)
 
@@ -18,6 +20,7 @@ public enum PhotometricInterpretation: Sendable, Equatable {
         case .monochrome1: "MONOCHROME1"
         case .monochrome2: "MONOCHROME2"
         case .rgb: "RGB"
+        case .ybrFull: "YBR_FULL"
         case .other(let name): name
         }
     }
@@ -33,6 +36,7 @@ public enum PhotometricInterpretation: Sendable, Equatable {
         case Self.monochrome1.name: self = .monochrome1
         case Self.monochrome2.name: self = .monochrome2
         case Self.rgb.name: self = .rgb
+        case Self.ybrFull.name: self = .ybrFull
         default: self = .other(name)
         }
     }

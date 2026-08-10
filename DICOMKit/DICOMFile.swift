@@ -173,7 +173,7 @@ public struct DICOMFile: Sendable {
 
         case .jpegLSLossless, .jpegLSNearLossless:
             let isMonochrome = sourceSamplesPerPixel == 1 && (sourcePhotometric == .monochrome1 || sourcePhotometric == .monochrome2)
-            let isRGB = sourceSamplesPerPixel == 3 && sourcePhotometric == .rgb && sourcePlanarConfiguration == 0
+            let isRGB = sourceSamplesPerPixel == 3 && (sourcePhotometric == .rgb || sourcePhotometric == .ybrFull) && sourcePlanarConfiguration == 0
             guard isMonochrome || isRGB,
                   let fragmentFrames = encapsulatedFrames(of: pixelElement, frameCount: frameCount) else {
                 return nil
@@ -192,12 +192,13 @@ public struct DICOMFile: Sendable {
                     return nil
                 }
                 guard decoded.samplesPerPixel == sourceSamplesPerPixel else { return nil }
+                let value = sourcePhotometric == .ybrFull ? ybrFullToRGB(decoded.value) : decoded.value
                 return DecodedPixelDataFrame(
-                    value: decoded.value,
+                    value: value,
                     samplesPerPixel: decoded.samplesPerPixel,
                     bitsAllocated: sourceBitsAllocated,
                     bitsStored: decoded.precision,
-                    photometricInterpretation: sourcePhotometric,
+                    photometricInterpretation: sourcePhotometric == .ybrFull ? .rgb : sourcePhotometric,
                     planarConfiguration: sourcePlanarConfiguration
                 )
             }
@@ -319,4 +320,18 @@ public struct DICOMFile: Sendable {
 
         dataset = DICOMDataset(elements: try reader.readDataset(transferSyntax: transferSyntax))
     }
+}
+
+private func ybrFullToRGB(_ value: Data) -> Data {
+    var output = Data()
+    output.reserveCapacity(value.count)
+    for index in stride(from: 0, to: value.count, by: 3) where index + 2 < value.count {
+        let y = Double(value[index])
+        let cb = Double(value[index + 1]) - 128
+        let cr = Double(value[index + 2]) - 128
+        output.append(UInt8(clamping: Int((y + 1.402 * cr).rounded())))
+        output.append(UInt8(clamping: Int((y - 0.344_136 * cb - 0.714_136 * cr).rounded())))
+        output.append(UInt8(clamping: Int((y + 1.772 * cb).rounded())))
+    }
+    return output
 }

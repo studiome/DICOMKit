@@ -387,6 +387,24 @@ struct JPEGFrameDecoderTests {
         #expect(pixelData.value == Data([10, 20, 30]))
     }
 
+    @Test func decodesYBRFullJPEGLSLosslessAsRGB() throws {
+        let data = imageFile(
+            transferSyntaxUID: TransferSyntax.jpegLSLossless.uid,
+            samplesPerPixel: 3,
+            photometricInterpretation: .ybrFull,
+            planarConfiguration: 0,
+            rows: 1,
+            columns: 1,
+            bitsAllocated: 8,
+            pixelDataElement: encapsulatedPixelData(fragments: [charLSRGBSampleInterleaved1x1])
+        )
+
+        let pixelData = try #require(try DICOMFile(data: data).pixelData)
+
+        #expect(pixelData.photometricInterpretation == .rgb)
+        #expect(pixelData.value == Data([0, 117, 0]))
+    }
+
     @Test func decodesJPEGLSNearLosslessMonochrome() throws {
         let data = imageFile(
             transferSyntaxUID: TransferSyntax.jpegLSNearLossless.uid,
