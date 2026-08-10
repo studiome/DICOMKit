@@ -55,6 +55,16 @@ independent encoder-derived 16-bit DICOM storage vector.
 - SHA-256: `1e874c8127b683bc13949b3160a500e5a8a6aa6c099a178276ac0d8412069e1a`
 - License: BSD-3-Clause, reproduced in the preceding notice
 
+## `charLSCustomParametersMonochrome2x2`
+
+This 44-byte JPEG-LS stream was generated using the source-pinned CharLS
+encoder, with 8-bit samples `1, 2, 3, 4` and explicit Preset Coding
+Parameters `MAXVAL=255`, `T1=4`, `T2=8`, `T3=22`, and `RESET=64`.
+
+- Generator source commit: `c0bae6496fa5d787fbb4698debd1e5decb40cf3a`
+- SHA-256: `4f82d4fbb6931a79b530c42fe9e1de2ea25f1a44c1ee9442f1d4604f1268008c`
+- License: BSD-3-Clause, reproduced above
+
 ## `CT_small.dcm`
 
 Source: [`pydicom/pydicom`](https://github.com/pydicom/pydicom),

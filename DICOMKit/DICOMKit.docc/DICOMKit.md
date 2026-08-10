@@ -37,9 +37,9 @@ set of uncompressed image formats and 8-bit/16-bit monochrome plus 8-bit RGB
 RLE Lossless decoding. JPEG Lossless SV1 (Transfer Syntax `.70`) supports
 single-component `MONOCHROME1` / `MONOCHROME2` frames with 2–16-bit precision.
 JPEG-LS Lossless (Transfer Syntax `.80`) supports single-component 8-bit and
-16-bit `MONOCHROME1` / `MONOCHROME2` frames with default coding parameters.
-JPEG-LS custom preset parameters, restart markers, and Near-Lossless Transfer
-Syntax `.81` remain unsupported. Multi-frame JPEG-LS data requires a Basic
+16-bit `MONOCHROME1` / `MONOCHROME2` frames with default or explicit Preset
+Coding Parameters. JPEG-LS restart markers and Near-Lossless Transfer Syntax
+`.81` remain unsupported. Multi-frame JPEG-LS data requires a Basic
 Offset Table and is available through ``DICOMFile/pixelDataFrames``.
 JPEG Baseline (Process 1), JPEG 2000 Lossless, and
 JPEG 2000 Pixel Data are decoded through ImageIO, which produces 8-bit

@@ -32,7 +32,8 @@ enum JPEGLSDecoder {
             reader: EntropyBitReader(data: data, offset: parser.offset),
             width: expectedWidth,
             height: expectedHeight,
-            precision: header.precision
+            precision: header.precision,
+            parameters: header.parameters
         )
         let samples = try decoder.decode()
 
@@ -53,6 +54,15 @@ enum JPEGLSDecoder {
 private extension JPEGLSDecoder {
     struct Header {
         let precision: Int
+        let parameters: CodingParameters
+    }
+
+    struct CodingParameters {
+        let maximumValue: Int
+        let threshold1: Int
+        let threshold2: Int
+        let threshold3: Int
+        let resetValue: Int
     }
 
     struct Parser {
@@ -60,6 +70,7 @@ private extension JPEGLSDecoder {
         var offset = 0
         var precision: Int?
         var componentIdentifier: UInt8?
+        var parameters: CodingParameters?
 
         mutating func readHeader(expectedWidth: Int, expectedHeight: Int) throws -> Header {
             guard try readMarker() == 0xD8 else { throw DICOMImageError.unsupportedPixelFormat }
@@ -69,9 +80,11 @@ private extension JPEGLSDecoder {
                     try readFrameHeader(expectedWidth: expectedWidth, expectedHeight: expectedHeight)
                 case 0xDA:
                     return try readScanHeader()
-                // JPEG-LS preset coding parameters and restart intervals are
-                // deliberately postponed until they have independent vectors.
-                case 0xF8, 0xDD:
+                case 0xF8:
+                    try readPresetCodingParameters()
+                // Restart intervals are deliberately postponed until they
+                // have independent vectors.
+                case 0xDD:
                     throw DICOMImageError.unsupportedPixelFormat
                 case 0xD8, 0xD9, 0xD0...0xD7, 0x01:
                     throw DICOMImageError.unsupportedPixelFormat
@@ -115,7 +128,41 @@ private extension JPEGLSDecoder {
                   mappingTable == 0, near == 0, interleaveMode == 0, pointTransform == 0 else {
                 throw DICOMImageError.unsupportedPixelFormat
             }
-            return Header(precision: precision)
+            let defaultParameters = CodingParameters(
+                maximumValue: (1 << precision) - 1,
+                threshold1: 3,
+                threshold2: 7,
+                threshold3: 21,
+                resetValue: 64
+            )
+            let parameters = parameters ?? defaultParameters
+            guard parameters.maximumValue == defaultParameters.maximumValue else {
+                throw DICOMImageError.unsupportedPixelFormat
+            }
+            return Header(precision: precision, parameters: parameters)
+        }
+
+        mutating func readPresetCodingParameters() throws {
+            let end = try readSegmentEnd()
+            guard end - offset == 11, try readByte() == 1 else {
+                throw DICOMImageError.unsupportedPixelFormat
+            }
+            let maximumValue = Int(try readUInt16())
+            let threshold1 = Int(try readUInt16())
+            let threshold2 = Int(try readUInt16())
+            let threshold3 = Int(try readUInt16())
+            let resetValue = Int(try readUInt16())
+            guard parameters == nil, threshold1 >= 0, threshold1 <= threshold2,
+                  threshold2 <= threshold3, resetValue >= 3, resetValue <= 64 else {
+                throw DICOMImageError.unsupportedPixelFormat
+            }
+            parameters = CodingParameters(
+                maximumValue: maximumValue,
+                threshold1: threshold1,
+                threshold2: threshold2,
+                threshold3: threshold3,
+                resetValue: resetValue
+            )
         }
 
         mutating func skipVariableLengthSegment() throws { offset = try readSegmentEnd() }
@@ -219,17 +266,19 @@ private extension JPEGLSDecoder {
         let maximumValue: Int
         let initialA: Int
         let limit: Int
+        let parameters: CodingParameters
         var regularContexts: [RegularContext]
         var runContexts: [RunContext]
         var runIndex = 0
 
-        init(reader: EntropyBitReader, width: Int, height: Int, precision: Int) {
+        init(reader: EntropyBitReader, width: Int, height: Int, precision: Int, parameters: CodingParameters) {
             self.reader = reader
             self.width = width
             self.height = height
             self.precision = precision
+            self.parameters = parameters
             maximumValue = (1 << precision) - 1
-            initialA = max(2, ((1 << precision) + 32) / 64)
+            initialA = max(2, (parameters.maximumValue + 1 + 32) / 64)
             limit = 2 * (precision + max(8, precision))
             regularContexts = Array(repeating: RegularContext(a: initialA), count: 365)
             runContexts = [
@@ -321,14 +370,14 @@ private extension JPEGLSDecoder {
 
         private func quantize(_ gradient: Int) -> Int {
             switch gradient {
-            case ...(-21): -4
-            case ...(-7): -3
-            case ...(-3): -2
+            case ...(-parameters.threshold3): -4
+            case ...(-parameters.threshold2): -3
+            case ...(-parameters.threshold1): -2
             case ..<0: -1
             case 0: 0
-            case ..<3: 1
-            case ..<7: 2
-            case ..<21: 3
+            case ..<parameters.threshold1: 1
+            case ..<parameters.threshold2: 2
+            case ..<parameters.threshold3: 3
             default: 4
             }
         }
@@ -356,7 +405,7 @@ private extension JPEGLSDecoder {
         private mutating func updateRegular(_ context: inout RegularContext, error: Int) {
             context.a += abs(error)
             context.b += error
-            if context.n == 64 {
+            if context.n == parameters.resetValue {
                 context.a >>= 1
                 context.b >>= 1
                 context.n >>= 1
@@ -376,7 +425,7 @@ private extension JPEGLSDecoder {
         private func updateRun(_ context: inout RunContext, error: Int, mapped: Int) {
             if error < 0 { context.nn += 1 }
             context.a += (mapped + 1 - context.interruptionType) >> 1
-            if context.n == 64 {
+            if context.n == parameters.resetValue {
                 context.a >>= 1
                 context.n >>= 1
                 context.nn >>= 1

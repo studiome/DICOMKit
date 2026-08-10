@@ -126,7 +126,7 @@ pull request:
 
 ## Roadmap
 
-1. JPEG-LS custom parameter and restart-marker coverage
+1. JPEG-LS restart-marker coverage
 2. Remaining JPEG Lossless transfer syntaxes
 3. DICOM writing
 4. DICOMweb support
@@ -136,8 +136,8 @@ pull request:
 JPEG Lossless `.57` decoding beyond Selection Value 1 and JPEG-LS
 Near-Lossless `.81` decoding are intentionally outside the current release
 scope. JPEG-LS Lossless `.80` currently supports a single-component,
-8-bit or 16-bit `MONOCHROME1` / `MONOCHROME2` frame with default coding
-parameters only; custom preset parameters, restart markers, color images, and
+8-bit or 16-bit `MONOCHROME1` / `MONOCHROME2` frame with default or explicit
+Preset Coding Parameters; restart markers, color images, and
 multi-frame data without a Basic Offset Table remain unsupported. DICOM networking (DIMSE), DICOMweb,
 and writing are also outside the current release scope. JPEG Lossless `.70`
 currently supports only

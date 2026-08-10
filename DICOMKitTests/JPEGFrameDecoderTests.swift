@@ -271,6 +271,20 @@ struct JPEGFrameDecoderTests {
         #expect(pixelData.value == Data(expected.flatMap { [UInt8($0 & 0xFF), UInt8($0 >> 8)] }))
     }
 
+    @Test func decodesJPEGLSLosslessWithCustomPresetCodingParameters() throws {
+        let data = imageFile(
+            transferSyntaxUID: TransferSyntax.jpegLSLossless.uid,
+            rows: 2,
+            columns: 2,
+            bitsAllocated: 8,
+            pixelDataElement: encapsulatedPixelData(fragments: [charLSCustomParametersMonochrome2x2])
+        )
+
+        let pixelData = try #require(try DICOMFile(data: data).pixelData)
+
+        #expect(pixelData.value == Data([1, 2, 3, 4]))
+    }
+
     @Test func decodesMultiFrameJPEGLSLosslessUsingBasicOffsetTable() throws {
         let firstFrame = charLSMonochrome2x2
         let secondFrame = charLSMonochrome2x2
