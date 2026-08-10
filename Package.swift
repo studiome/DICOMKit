@@ -5,7 +5,7 @@ let package = Package(
     name: "DICOMKit",
     platforms: [
         .iOS(.v15),
-        .macOS(.v11)
+        .macOS(.v14)
     ],
     products: [
         .library(

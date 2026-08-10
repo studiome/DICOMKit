@@ -56,7 +56,7 @@ if let pixelData = file.pixelData {
 - Xcode 26.6 or later
 - Swift 6 (language mode) / Swift Package Manager 6.0 or later
 - iPadOS 15.0 or later
-- macOS 11.0 or later
+- macOS 14.0 or later
 
 ## Installation
 
