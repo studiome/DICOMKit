@@ -137,7 +137,7 @@ pull request:
 3. DICOM writing
 4. DICOMweb support
 
-## Non-goals for v0.1
+## Non-goals for v0.3
 
 JPEG-LS Near-Lossless `.81` currently supports only single-component
 `MONOCHROME1` / `MONOCHROME2` frames; Near-Lossless RGB and other JPEG-LS
