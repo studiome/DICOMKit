@@ -129,9 +129,11 @@ public struct DICOMPixelData: Sendable {
             return try makeImage(data: pixels, colorSpace: CGColorSpaceCreateDeviceGray(), bitsPerPixel: 8, bytesPerRow: columns)
 
         case (.rgb, 8):
-            guard samplesPerPixel == 3, planarConfiguration == 0 else {
-                throw DICOMImageError.unsupportedPixelFormat
-            }
+            // Samples per Pixel other than 3 is inconsistent with RGB under
+            // the DICOM standard itself; Planar Configuration 1 is valid
+            // DICOM, just not a layout this renderer implements.
+            guard samplesPerPixel == 3 else { throw DICOMImageError.invalidImageAttributes }
+            guard planarConfiguration == 0 else { throw DICOMImageError.unsupportedPixelFormat }
             let byteCount = try checkedByteCount(pixelCount, bytesPerSample: 1, samples: 3)
             return try makeImage(data: requiredBytes(byteCount), colorSpace: CGColorSpaceCreateDeviceRGB(), bitsPerPixel: 24, bytesPerRow: columns * 3)
 
@@ -242,7 +244,7 @@ public struct DICOMPixelData: Sendable {
                 decode: nil,
                 shouldInterpolate: false,
                 intent: .defaultIntent
-              ) else { throw DICOMImageError.invalidImageAttributes }
+              ) else { throw DICOMImageError.imageCreationFailed }
         return image
     }
 
