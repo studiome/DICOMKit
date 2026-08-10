@@ -27,8 +27,8 @@ Pure Swift utilities for reading DICOM Part 10 files on iPadOS and macOS.
   Lossless Pixel Data
 - Decodes multi-frame RLE Lossless Pixel Data when it includes a Basic Offset
   Table, exposed as `DICOMFile.pixelDataFrames`
-- Decodes single-frame 8-bit RGB JPEG Baseline (Process 1) Pixel Data via
-  ImageIO
+- Decodes 8-bit RGB JPEG Baseline (Process 1) Pixel Data via ImageIO; multiple
+  frames require a Basic Offset Table
 
 ```swift
 let file = try DICOMFile(data: data)
@@ -112,9 +112,9 @@ swift test
 JPEG Lossless, JPEG-LS, and JPEG 2000 decoding, DICOM networking (DIMSE),
 DICOMweb, and writing are intentionally outside the current release scope.
 RLE Lossless currently supports 8-bit and 16-bit monochrome, plus 8-bit RGB
-Pixel Data; multi-frame RLE requires a Basic Offset Table. JPEG Baseline
-(Process 1) currently supports single-frame 8-bit RGB Pixel Data. Pixel
-Padding Value
+Pixel Data; multi-frame encapsulated data requires a Basic Offset Table. JPEG
+Baseline (Process 1) currently supports 8-bit RGB Pixel Data. Pixel Padding
+Value
 `(0028,0120)` is also not applied: padding samples are rendered like any
 other sample rather than being excluded or specially colored. The 8-bit and
 `RGB` rendering paths don't apply `Pixel Representation` or rescale, either;

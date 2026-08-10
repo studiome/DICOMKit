@@ -30,4 +30,43 @@ struct JPEGFrameDecoderTests {
         #expect(bytes[1] < 50)
         #expect(bytes[2] < 50)
     }
+
+    @Test func decodesMultiFrameJPEGBaselinePixelDataUsingBasicOffsetTable() throws {
+        let firstFrame = jpegData(
+            rgb: Data([255, 0, 0]),
+            width: 1,
+            height: 1
+        )
+        let secondFrame = jpegData(
+            rgb: Data([0, 255, 0]),
+            width: 1,
+            height: 1
+        )
+        let secondFrameOffset = 8 + ((firstFrame.count + 1) / 2 * 2)
+        let data = imageFile(
+            transferSyntaxUID: TransferSyntax.jpegBaseline.uid,
+            samplesPerPixel: 3,
+            photometricInterpretation: .rgb,
+            planarConfiguration: 0,
+            numberOfFrames: 2,
+            rows: 1,
+            columns: 1,
+            bitsAllocated: 8,
+            pixelDataElement: encapsulatedPixelData(
+                basicOffsetTable: uint32(0) + uint32(UInt32(secondFrameOffset)),
+                fragments: [firstFrame, secondFrame]
+            )
+        )
+
+        let file = try DICOMFile(data: data)
+        let frames = try #require(file.pixelDataFrames)
+
+        #expect(frames.count == 2)
+        let firstBytes = try imageBytes(frames[0].cgImage())
+        let secondBytes = try imageBytes(frames[1].cgImage())
+        #expect(firstBytes[0] > 200)
+        #expect(firstBytes[1] < 50)
+        #expect(secondBytes[0] < 50)
+        #expect(secondBytes[1] > 200)
+    }
 }

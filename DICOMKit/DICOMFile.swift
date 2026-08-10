@@ -31,10 +31,11 @@ public struct DICOMFile: Sendable {
 
     /// The image frames contained by Pixel Data.
     ///
-    /// For RLE Lossless multi-frame images, this uses the encapsulated Pixel
-    /// Data Basic Offset Table to retain fragment boundaries. Multi-frame RLE
-    /// images without a Basic Offset Table aren't currently supported because
-    /// their frame boundaries cannot be determined reliably.
+    /// For encapsulated RLE Lossless and JPEG Baseline multi-frame images,
+    /// this uses the Pixel Data Basic Offset Table to retain fragment
+    /// boundaries. Multi-frame encapsulated images without a Basic Offset
+    /// Table aren't currently supported because their frame boundaries cannot
+    /// be determined reliably.
     public var pixelDataFrames: [DICOMPixelData]? {
         guard let pixelElement = dataset[.pixelData],
               let rows = dataset[.rows]?.uint16Value,
