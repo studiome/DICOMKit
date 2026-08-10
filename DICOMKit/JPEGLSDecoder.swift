@@ -33,7 +33,8 @@ enum JPEGLSDecoder {
             width: expectedWidth,
             height: expectedHeight,
             precision: header.precision,
-            parameters: header.parameters
+            parameters: header.parameters,
+            restartInterval: header.restartInterval
         )
         let samples = try decoder.decode()
 
@@ -55,6 +56,7 @@ private extension JPEGLSDecoder {
     struct Header {
         let precision: Int
         let parameters: CodingParameters
+        let restartInterval: Int
     }
 
     struct CodingParameters {
@@ -71,6 +73,7 @@ private extension JPEGLSDecoder {
         var precision: Int?
         var componentIdentifier: UInt8?
         var parameters: CodingParameters?
+        var restartInterval = 0
 
         mutating func readHeader(expectedWidth: Int, expectedHeight: Int) throws -> Header {
             guard try readMarker() == 0xD8 else { throw DICOMImageError.unsupportedPixelFormat }
@@ -82,10 +85,8 @@ private extension JPEGLSDecoder {
                     return try readScanHeader()
                 case 0xF8:
                     try readPresetCodingParameters()
-                // Restart intervals are deliberately postponed until they
-                // have independent vectors.
                 case 0xDD:
-                    throw DICOMImageError.unsupportedPixelFormat
+                    try readRestartInterval()
                 case 0xD8, 0xD9, 0xD0...0xD7, 0x01:
                     throw DICOMImageError.unsupportedPixelFormat
                 default:
@@ -139,7 +140,14 @@ private extension JPEGLSDecoder {
             guard parameters.maximumValue == defaultParameters.maximumValue else {
                 throw DICOMImageError.unsupportedPixelFormat
             }
-            return Header(precision: precision, parameters: parameters)
+            return Header(precision: precision, parameters: parameters, restartInterval: restartInterval)
+        }
+
+        mutating func readRestartInterval() throws {
+            let end = try readSegmentEnd()
+            guard end - offset == 2 else { throw DICOMImageError.unsupportedPixelFormat }
+            restartInterval = Int(try readUInt16())
+            guard restartInterval > 0 else { throw DICOMImageError.unsupportedPixelFormat }
         }
 
         mutating func readPresetCodingParameters() throws {
@@ -227,6 +235,15 @@ private extension JPEGLSDecoder {
             return count
         }
 
+        mutating func consumeRestartMarker(expectedIndex: Int) throws {
+            bitsRemaining = 0
+            guard offset + 1 < data.count, data[offset] == 0xFF,
+                  data[offset + 1] == UInt8(0xD0 + expectedIndex) else {
+                throw DICOMImageError.unsupportedPixelFormat
+            }
+            offset += 2
+        }
+
         private mutating func loadByte() throws {
             guard offset < data.count else { throw DICOMImageError.truncatedPixelData }
             let byte = data[offset]
@@ -267,16 +284,18 @@ private extension JPEGLSDecoder {
         let initialA: Int
         let limit: Int
         let parameters: CodingParameters
+        let restartInterval: Int
         var regularContexts: [RegularContext]
         var runContexts: [RunContext]
         var runIndex = 0
 
-        init(reader: EntropyBitReader, width: Int, height: Int, precision: Int, parameters: CodingParameters) {
+        init(reader: EntropyBitReader, width: Int, height: Int, precision: Int, parameters: CodingParameters, restartInterval: Int = 0) {
             self.reader = reader
             self.width = width
             self.height = height
             self.precision = precision
             self.parameters = parameters
+            self.restartInterval = restartInterval
             maximumValue = (1 << precision) - 1
             initialA = max(2, (parameters.maximumValue + 1 + 32) / 64)
             limit = 2 * (precision + max(8, precision))
@@ -292,6 +311,9 @@ private extension JPEGLSDecoder {
             var output = [Int]()
             output.reserveCapacity(width * height)
 
+            var decodedCount = 0
+            var restartIndex = 0
+            var resetPreviousLine = false
             for _ in 0..<height {
                 var current = [Int](repeating: 0, count: width)
                 var x = 0
@@ -304,16 +326,35 @@ private extension JPEGLSDecoder {
                     let q2 = quantize(rb - rc)
                     let q3 = quantize(rc - ra)
                     if q1 == 0, q2 == 0, q3 == 0 {
-                        x = try decodeRun(from: x, ra: ra, rb: rb, into: &current)
+                        let nextX = try decodeRun(from: x, ra: ra, rb: rb, into: &current)
+                        decodedCount += nextX - x
+                        x = nextX
                     } else {
                         current[x] = try decodeRegular(ra: ra, rb: rb, rc: rc, q1: q1, q2: q2, q3: q3)
                         x += 1
+                        decodedCount += 1
+                    }
+                    if restartInterval > 0, decodedCount.isMultiple(of: restartInterval), decodedCount < width * height {
+                        try reader.consumeRestartMarker(expectedIndex: restartIndex)
+                        restartIndex = (restartIndex + 1) % 8
+                        resetContexts()
+                        resetPreviousLine = true
                     }
                 }
                 output.append(contentsOf: current)
-                previous = current
+                previous = resetPreviousLine ? [Int](repeating: 0, count: width) : current
+                resetPreviousLine = false
             }
             return output
+        }
+
+        private mutating func resetContexts() {
+            regularContexts = Array(repeating: RegularContext(a: initialA), count: 365)
+            runContexts = [
+                RunContext(interruptionType: 0, a: initialA),
+                RunContext(interruptionType: 1, a: initialA)
+            ]
+            runIndex = 0
         }
 
         private mutating func decodeRegular(ra: Int, rb: Int, rc: Int, q1: Int, q2: Int, q3: Int) throws -> Int {
