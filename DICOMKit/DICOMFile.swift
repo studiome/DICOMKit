@@ -38,15 +38,18 @@ public struct DICOMFile: Sendable {
         let value: Data
         switch transferSyntax {
         case .rleLossless:
-            guard samplesPerPixel == 1, let fragments = pixelElement.encapsulatedFragments else {
+            guard let fragments = pixelElement.encapsulatedFragments else {
                 return nil
             }
-            switch bitsAllocated {
-            case 8:
+            switch (samplesPerPixel, bitsAllocated) {
+            case (1, 8):
                 guard let decoded = try? RLELosslessDecoder.decode8BitMonochrome(fragments: fragments, pixelCount: pixelCount) else { return nil }
                 value = decoded
-            case 16:
+            case (1, 16):
                 guard let decoded = try? RLELosslessDecoder.decode16BitMonochrome(fragments: fragments, pixelCount: pixelCount) else { return nil }
+                value = decoded
+            case (3, 8):
+                guard let decoded = try? RLELosslessDecoder.decode8BitRGB(fragments: fragments, pixelCount: pixelCount) else { return nil }
                 value = decoded
             default:
                 return nil

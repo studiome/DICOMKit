@@ -674,6 +674,32 @@ struct DICOMKitTests {
         #expect(try imageBytes(image) == Data([0, 255]))
     }
 
+    @Test func decodesSingleFrame8BitRGBRLELosslessPixelData() throws {
+        let data = part10File(
+            transferSyntaxUID: TransferSyntax.rleLossless.uid,
+            datasetElements: [
+                element(tag: .samplesPerPixel, vr: .US, value: uint16(3)),
+                element(tag: .photometricInterpretation, vr: .CS, value: "RGB"),
+                element(tag: .planarConfiguration, vr: .US, value: uint16(0)),
+                element(tag: .rows, vr: .US, value: uint16(1)),
+                element(tag: .columns, vr: .US, value: uint16(2)),
+                element(tag: .bitsAllocated, vr: .US, value: uint16(8)),
+                // RLE stores each color component in its own segment. These
+                // planes reconstruct to interleaved pixels [255,0,0, 0,255,0].
+                encapsulatedPixelData(fragments: [rleFrame(segments: [
+                    Data([0x01, 255, 0]),
+                    Data([0x01, 0, 255]),
+                    Data([0x01, 0, 0])
+                ])])
+            ]
+        )
+
+        let file = try DICOMFile(data: data)
+        let image = try #require(file.pixelData).cgImage()
+
+        #expect(try imageBytes(image) == Data([255, 0, 0, 0, 255, 0]))
+    }
+
     @Test func rejectsSequenceItemTagThatIsNeitherItemNorDelimiter() {
         let data = part10File(
             transferSyntaxUID: TransferSyntax.explicitVRLittleEndian.uid,

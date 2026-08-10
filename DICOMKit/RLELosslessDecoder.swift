@@ -21,6 +21,18 @@ enum RLELosslessDecoder {
         return output
     }
 
+    static func decode8BitRGB(fragments: [Data], pixelCount: Int) throws -> Data {
+        let segments = try decodedSegments(fragments: fragments, count: 3, pixelCount: pixelCount)
+        var output = Data()
+        output.reserveCapacity(pixelCount * 3)
+        for index in 0..<pixelCount {
+            output.append(segments[0][index])
+            output.append(segments[1][index])
+            output.append(segments[2][index])
+        }
+        return output
+    }
+
     private static func decodedSegments(fragments: [Data], count: Int, pixelCount: Int) throws -> [Data] {
         guard pixelCount > 0 else { throw DICOMImageError.invalidImageAttributes }
         let frame = fragments.reduce(into: Data()) { $0.append($1) }
