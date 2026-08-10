@@ -27,30 +27,23 @@ jobs:
         id: pages
         uses: actions/configure-pages@v5
 
-      - name: Build DocC archive
-        run: >-
-          xcodebuild docbuild
-          -workspace .
-          -scheme DICOMKit
-          -destination 'platform=macOS'
-          -derivedDataPath "$RUNNER_TEMP/DerivedData"
-          CODE_SIGNING_ALLOWED=NO
+      - name: Build package symbol graphs
+        run: |
+          mkdir -p "$RUNNER_TEMP/symbol-graphs"
+          swift build \
+            -Xswiftc -emit-symbol-graph \
+            -Xswiftc -emit-symbol-graph-dir \
+            -Xswiftc "$RUNNER_TEMP/symbol-graphs"
 
       - name: Create static documentation site
         run: >-
-          xcrun docc process-archive transform-for-static-hosting
-          "$RUNNER_TEMP/DerivedData/Build/Products/Debug/DICOMKit.doccarchive"
+          xcrun docc convert DICOMKit/DICOMKit.docc
+          --additional-symbol-graph-dir "$RUNNER_TEMP/symbol-graphs"
           --output-path "$RUNNER_TEMP/site"
+          --fallback-display-name DICOMKit
+          --fallback-bundle-identifier org.studiome.DICOMKit
+          --fallback-default-module-kind Framework
           --hosting-base-path "${{ steps.pages.outputs.base_path }}"
-
-      - name: Set the GitHub Pages base path
-        env:
-          BASE_PATH: ${{ steps.pages.outputs.base_path }}
-        run: |
-          find "$RUNNER_TEMP/site" -type f -print0 |
-            xargs -0 perl -pi -e 's/\{\{BASE_PATH\}\}/$ENV{BASE_PATH}/g'
-          perl -0pi -e 's#var baseUrl = "/"#var baseUrl = "$ENV{BASE_PATH}"#g; s#(href|src)="/#$1="$ENV{BASE_PATH}/#g' \
-            "$RUNNER_TEMP/site/index.html"
 
       - name: Upload GitHub Pages artifact
         uses: actions/upload-pages-artifact@v4
