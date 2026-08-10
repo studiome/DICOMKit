@@ -82,10 +82,12 @@ Alternatively, add `https://github.com/studiome/DICOMKit` via
 
 DICOMKit is defined exclusively by `Package.swift`: it owns the library and
 test targets, platform versions, resources, dependencies, and CI build inputs.
-For normal development, open `DICOMKit.xcworkspace` in Xcode. It is a small
-workspace entry point that lets Xcode load the Swift package and its
-`DICOMKit` scheme reliably. You can also open `Package.swift` directly, or
-run the test suite from the command line:
+For normal development, open `DICOMKit.xcworkspace` in Xcode and select the
+`DICOMKit` scheme: it builds the package's library and runs `DICOMKitTests`,
+so ⌘B and ⌘U work against the package itself. The `DICOMKitCloudHost` scheme
+next to it exists only for Xcode Cloud (see below) and isn't needed locally.
+You can also open `Package.swift` directly, or run the test suite from the
+command line:
 
 ```bash
 swift test
@@ -112,17 +114,17 @@ xcodebuild test \
 
 `DICOMKit.xcworkspace` includes a minimal framework target that makes the local
 Swift package available to Xcode Cloud, which can't build a standalone Swift
-package. Select the `DICOMKit` product and shared scheme when configuring a
-test workflow; its test action runs `DICOMKitTests` on macOS and iOS Simulator
-destinations.
+package. Configure test workflows against the `DICOMKitCloudHost` scheme; its
+test action runs `DICOMKitTests` on macOS and iOS Simulator destinations, and
+its product is named `DICOMKit` so Xcode Cloud reports that name.
 
 The framework is empty: linking the package is what makes Xcode Cloud resolve
-and build it. Its product, scheme, and bundle identifier are all named
-`DICOMKit` so Xcode Cloud reports that name rather than the host's. Only the
-underlying target and project file keep the `DICOMKitCloudHost` name, because
-naming either of them `DICOMKit` collides with the package's own target
-(`Multiple commands produce …DICOMKit.build/…`) or leaves the workspace unable
-to resolve a run destination.
+and build it. Its product name and bundle identifier are `DICOMKit`, while the
+target, project file, and this scheme keep the `DICOMKitCloudHost` name.
+Naming the target or project file `DICOMKit` collides with the package's own
+target (`Multiple commands produce …DICOMKit.build/…`) or leaves the workspace
+unable to resolve a run destination; naming this scheme `DICOMKit` makes it
+indistinguishable from the package's own scheme in Xcode's scheme picker.
 
 Commit `Package.resolved` whenever package dependencies create or update it so
 Xcode Cloud resolves the same dependency versions as local development.
