@@ -24,7 +24,8 @@ let columns = file.dataset[.columns]?.uint16Value
 ## Requirements
 
 - Xcode 26.6 or later
-- iPadOS or macOS
+- iPadOS 15.0 or later
+- macOS 11.0 or later
 
 ## Development
 
