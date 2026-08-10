@@ -114,8 +114,8 @@ struct Reader {
     func peekTag() -> DICOMTag? {
         guard offset + 4 <= data.count else { return nil }
         return DICOMTag(
-            group: UInt16(data[offset]) | (UInt16(data[offset + 1]) << 8),
-            element: UInt16(data[offset + 2]) | (UInt16(data[offset + 3]) << 8)
+            group: data.littleEndian(at: offset),
+            element: data.littleEndian(at: offset + 2)
         )
     }
 
@@ -124,16 +124,11 @@ struct Reader {
     }
 
     mutating func readUInt16() throws -> UInt16 {
-        let value = try readData(count: 2)
-        return UInt16(value[value.startIndex]) | (UInt16(value[value.startIndex + 1]) << 8)
+        try readData(count: 2).littleEndian(at: 0)
     }
 
     mutating func readUInt32() throws -> UInt32 {
-        let value = try readData(count: 4)
-        return UInt32(value[value.startIndex])
-            | (UInt32(value[value.startIndex + 1]) << 8)
-            | (UInt32(value[value.startIndex + 2]) << 16)
-            | (UInt32(value[value.startIndex + 3]) << 24)
+        try readData(count: 4).littleEndian(at: 0)
     }
 
     mutating func readData(count: Int) throws -> Data {

@@ -164,13 +164,14 @@ public struct DICOMPixelData: Sendable {
     /// and applying ``rescaleSlope`` / ``rescaleIntercept``.
     ///
     /// Callers must have already validated that `bitsStored` is within
-    /// `1...bitsAllocated`.
+    /// `1...bitsAllocated`. `source` may be a `Data` slice with a non-zero
+    /// `startIndex`; offsets are resolved relative to it.
     private func rescaledSamples(from source: Data) -> [Double] {
         let valueMask = (UInt32(1) << bitsStored) - 1
         let signBitMask = UInt32(1) << (bitsStored - 1)
         let signedRange = UInt32(1) << bitsStored
-        return stride(from: source.startIndex, to: source.endIndex, by: 2).map { offset in
-            let raw = UInt32(UInt16(source[offset]) | (UInt16(source[offset + 1]) << 8))
+        return stride(from: 0, to: source.count, by: 2).map { offset in
+            let raw = UInt32(source.littleEndian(at: offset, as: UInt16.self))
             let masked = raw & valueMask
             let storedValue: Int64
             if pixelRepresentation == 1, masked & signBitMask != 0 {

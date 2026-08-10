@@ -415,6 +415,34 @@ struct DICOMKitTests {
         #expect(try imageBytes(image) == Data([255, 0]))
     }
 
+    @Test func rendersPixelDataFromDataSliceWithNonZeroStartIndex() throws {
+        // `DICOMPixelData.value` set from `dataset[.pixelData]?.value` is
+        // always zero-based (it comes from `Data.subdata`), but a caller
+        // assembling `DICOMPixelData` directly might pass a slice instead.
+        // The 16-bit decode path must resolve sample offsets relative to
+        // `startIndex`, not assume `0`, or it reads garbage bytes from
+        // before the slice. Regression test for the same class of bug
+        // `parsesDataSliceWithNonZeroStartIndex` covers for the Part 10 reader.
+        var padded = Data(repeating: 0xAA, count: 10)
+        padded.append(uint16(0) + uint16(1_000))
+        let slice = padded[10...]
+        #expect(slice.startIndex == 10)
+
+        let pixelData = DICOMPixelData(
+            value: slice,
+            rows: 1,
+            columns: 2,
+            samplesPerPixel: 1,
+            bitsAllocated: 16,
+            photometricInterpretation: .monochrome2,
+            planarConfiguration: 0
+        )
+
+        let image = try pixelData.cgImage(windowCenter: 500, windowWidth: 1_000)
+
+        #expect(try imageBytes(image) == Data([0, 255]))
+    }
+
     @Test func appliesRescaleSlopeAndInterceptBeforeWindowing() throws {
         let pixelData = DICOMPixelData(
             value: uint16(0) + uint16(150),

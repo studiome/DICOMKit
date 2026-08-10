@@ -36,7 +36,7 @@ public struct DICOMElement: Sendable, Equatable {
     /// The first 16-bit unsigned little-endian value, if the value contains one.
     public var uint16Value: UInt16? {
         guard value.count >= 2 else { return nil }
-        return UInt16(value[value.startIndex]) | (UInt16(value[value.startIndex + 1]) << 8)
+        return value.littleEndian(at: 0)
     }
 
     /// The first 16-bit signed little-endian value, if the value contains one.
