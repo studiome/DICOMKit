@@ -1,0 +1,4 @@
+module CharLS {
+    header "CharLS.h"
+    export *
+}
