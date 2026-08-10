@@ -2,7 +2,7 @@
 
 All notable changes to DICOMKit are documented here.
 
-## Unreleased — v0.3
+## v0.3 — Unreleased
 
 - Added JPEG Lossless, Non-Hierarchical Process 14 decoding for DICOM
   Transfer Syntaxes `.57` and `.70`, including Selection Values 1–7,

@@ -1,12 +1,12 @@
 import Foundation
 
-/// Decodes the baseline JPEG-LS lossless interchange format used by DICOM
-/// Transfer Syntax `1.2.840.10008.1.2.4.80`.
+/// Decodes the JPEG-LS interchange formats used by DICOM Transfer Syntaxes
+/// `1.2.840.10008.1.2.4.80` and `1.2.840.10008.1.2.4.81`.
 ///
-/// The first implementation intentionally accepts a single monochrome scan,
-/// default JPEG-LS coding parameters, and `NEAR == 0`. JPEG-LS near-lossless,
-/// color interleave modes, custom preset parameters, and restart intervals are
-/// rejected rather than being decoded with altered pixel values.
+/// The decoder supports single-component monochrome scans and
+/// sample-interleaved lossless RGB scans, default and explicit preset coding
+/// parameters, restart intervals, and Near-Lossless monochrome coding.
+/// Other JPEG-LS interleave modes and Near-Lossless RGB remain unsupported.
 enum JPEGLSDecoder {
     struct DecodedFrame {
         let value: Data
