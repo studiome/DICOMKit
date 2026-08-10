@@ -110,10 +110,11 @@ xcodebuild test \
 
 ### Xcode Cloud
 
-`DICOMKit.xcworkspace` includes a shared `DICOMKit` scheme whose test action
-runs `DICOMKitTests`. Select that workspace and scheme when configuring an
-Xcode Cloud test workflow. The scheme supports macOS and iOS Simulator test
-destinations without requiring a host app target.
+`DICOMKit.xcworkspace` includes a minimal `DICOMKitCloudHost` framework target
+that makes the local Swift package available to Xcode Cloud. Select the
+`DICOMKitCloudHost` product and shared scheme when configuring a test workflow.
+Its test action runs `DICOMKitTests` on macOS and iOS Simulator destinations;
+the framework contains no implementation beyond re-exporting `DICOMKit`.
 
 Commit `Package.resolved` whenever package dependencies create or update it so
 Xcode Cloud resolves the same dependency versions as local development.
