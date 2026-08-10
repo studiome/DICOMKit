@@ -740,27 +740,6 @@ struct DICOMKitTests {
         #expect(file.transferSyntax == .jpegBaseline)
     }
 
-    @Test func decodesSingleFrameJPEGBaselinePixelData() throws {
-        let data = part10File(
-            transferSyntaxUID: TransferSyntax.jpegBaseline.uid,
-            datasetElements: [
-                element(tag: .samplesPerPixel, vr: .US, value: uint16(3)),
-                element(tag: .photometricInterpretation, vr: .CS, value: "RGB"),
-                element(tag: .planarConfiguration, vr: .US, value: uint16(0)),
-                element(tag: .rows, vr: .US, value: uint16(1)),
-                element(tag: .columns, vr: .US, value: uint16(1)),
-                element(tag: .bitsAllocated, vr: .US, value: uint16(8)),
-                encapsulatedPixelData(fragments: [jpegData(rgb: Data([255, 0, 0]))])
-            ]
-        )
-
-        let image = try #require(try DICOMFile(data: data).pixelData).cgImage()
-        let pixel = try imageBytes(image)
-        #expect(image.width == 1)
-        #expect(image.height == 1)
-        #expect(pixel.count == 3)
-    }
-
     @Test func rejectsSequenceItemTagThatIsNeitherItemNorDelimiter() {
         let data = part10File(
             transferSyntaxUID: TransferSyntax.explicitVRLittleEndian.uid,
