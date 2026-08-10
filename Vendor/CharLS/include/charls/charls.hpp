@@ -1,0 +1,10 @@
+// SPDX-FileCopyrightText: © 2024 Team CharLS
+// SPDX-License-Identifier: BSD-3-Clause
+
+#pragma once
+
+#include "jpegls_decoder.hpp"
+#include "jpegls_encoder.hpp"
+#include "version.hpp"
+
+#include "undef_macros.h"
