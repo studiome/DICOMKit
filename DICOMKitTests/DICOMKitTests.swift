@@ -27,7 +27,7 @@ struct DICOMKitTests {
     }
 
     @Test func readsPydicomExplicitVRLittleEndianCTFixture() throws {
-        let file = try DICOMFile(data: Data(contentsOf: try fixtureURL()))
+        let file = try ctFixture()
 
         #expect(file.transferSyntax == .explicitVRLittleEndian)
         #expect(file.dataset[.rows]?.uint16Value == 128)
@@ -43,7 +43,7 @@ struct DICOMKitTests {
         // after correct rescale) rendered as mid-gray instead of black under
         // a soft-tissue window, since they were windowed as raw unsigned
         // storage values with no rescale applied.
-        let file = try DICOMFile(data: Data(contentsOf: try fixtureURL()))
+        let file = try ctFixture()
         let pixelData = try #require(file.pixelData)
 
         #expect(pixelData.pixelRepresentation == 1)
@@ -928,16 +928,6 @@ private func rleFrame(segments: [Data]) -> Data {
     return frame
 }
 
-private func jpegData(rgb: Data) -> Data {
-    let provider = CGDataProvider(data: rgb as CFData)!
-    let image = CGImage(width: 1, height: 1, bitsPerComponent: 8, bitsPerPixel: 24, bytesPerRow: 3, space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: .byteOrderDefault, provider: provider, decode: nil, shouldInterpolate: false, intent: .defaultIntent)!
-    let data = NSMutableData()
-    let destination = CGImageDestinationCreateWithData(data, "public.jpeg" as CFString, 1, nil)!
-    CGImageDestinationAddImage(destination, image, [kCGImageDestinationLossyCompressionQuality: 1.0] as CFDictionary)
-    precondition(CGImageDestinationFinalize(destination))
-    return data as Data
-}
-
 private func implicitElement(tag: DICOMTag, value: String) -> Data {
     var encoded = Data(value.utf8)
     if encoded.count.isMultiple(of: 2) == false { encoded.append(0) }
@@ -1022,4 +1012,8 @@ private func fixtureURL() throws -> URL {
         }
     }
     throw FixtureError.missing("CT_small.dcm")
+}
+
+private func ctFixture() throws -> DICOMFile {
+    try DICOMFile(data: Data(contentsOf: try fixtureURL()))
 }
