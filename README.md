@@ -138,7 +138,7 @@ pull request:
 3. DICOM writing
 4. DICOMweb support
 
-## Non-goals for v0.4
+## Non-goals for v0.3
 
 JPEG-LS currently supports component-interleaved monochrome and
 sample-interleaved `RGB`; line／plane interleave modes remain unsupported.
@@ -146,7 +146,8 @@ JPEG Lossless `.57` and `.70`
 currently support only single-component `MONOCHROME1` / `MONOCHROME2` frames;
 multi-component Process 14 streams are unsupported. All encapsulated
 multi-frame paths require a Basic Offset Table. DICOM networking (DIMSE),
-DICOMweb, and writing are also outside the current release scope.
+DICOMweb is outside the current release scope. DICOM writing is the v0.4 work
+in progress.
 RLE Lossless currently supports 8-bit and 16-bit monochrome, plus 8-bit RGB
 Pixel Data; multi-frame encapsulated data requires a Basic Offset Table. The
 JPEG Baseline and JPEG 2000 paths decode through ImageIO, which yields 8-bit
