@@ -65,6 +65,17 @@ Parameters `MAXVAL=255`, `T1=4`, `T2=8`, `T3=22`, and `RESET=64`.
 - SHA-256: `4f82d4fbb6931a79b530c42fe9e1de2ea25f1a44c1ee9442f1d4604f1268008c`
 - License: BSD-3-Clause, reproduced above
 
+## `charLSRestartMonochrome1x2`, `charLSRGBSampleInterleaved1x1`, and `charLSNearLosslessMonochrome2x2`
+
+These compact JPEG-LS streams were generated with the source-pinned CharLS
+encoder noted above. They respectively exercise a restart interval, a
+sample-interleaved 8-bit RGB frame (`10, 20, 30`), and Near-Lossless coding
+with `NEAR = 1` (`10, 20, 30, 40`). They are retained as byte arrays in
+`Support/JPEGLSTestSupport.swift`.
+
+- Generator source commit: `c0bae6496fa5d787fbb4698debd1e5decb40cf3a`
+- License: BSD-3-Clause, reproduced above
+
 ## `CT_small.dcm`
 
 Source: [`pydicom/pydicom`](https://github.com/pydicom/pydicom),

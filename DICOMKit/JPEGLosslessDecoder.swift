@@ -62,6 +62,7 @@ enum JPEGLosslessDecoder {
                 resetPrediction = true
             }
         }
+        try reader.finishFrame()
 
         var output = Data()
         output.reserveCapacity(sampleCount * (bitsAllocated / 8))
@@ -319,6 +320,21 @@ private extension JPEGLosslessDecoder {
                 throw DICOMImageError.unsupportedPixelFormat
             }
             offset += 1
+        }
+
+        mutating func finishFrame() throws {
+            bitsRemaining = 0
+            // The final entropy byte may contain unused fill bits, so it is
+            // not necessarily consumed by the sample decoder. Require an EOI
+            // marker at the actual end of the interchange stream instead.
+            let endMarkerOffset = data.last == 0 ? data.count - 3 : data.count - 2
+            guard endMarkerOffset >= 0,
+                  offset <= endMarkerOffset,
+                  data[endMarkerOffset] == 0xFF,
+                  data[endMarkerOffset + 1] == 0xD9 else {
+                throw DICOMImageError.truncatedPixelData
+            }
+            offset = data.count
         }
 
         private mutating func loadByte() throws {

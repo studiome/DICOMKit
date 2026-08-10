@@ -253,6 +253,55 @@ struct JPEGFrameDecoderTests {
         #expect(pixelData.value == Data(samples.map(UInt8.init)))
     }
 
+    @Test(arguments: [1, 2, 5, 8])
+    func rejectsTruncatedJPEGLosslessEntropyData(droppedByteCount: Int) {
+        let encoded = jpegLosslessSV1Data(
+            samples: [12, 20, 35, 18],
+            width: 2,
+            height: 2,
+            precision: 8,
+            selectionValue: 4
+        )
+        let truncated = encoded.dropLast(droppedByteCount)
+
+        #expect(throws: (any Error).self) {
+            try JPEGLosslessDecoder.decodeLossless(
+                fragments: [Data(truncated)],
+                width: 2,
+                height: 2,
+                bitsAllocated: 8
+            )
+        }
+    }
+
+    @Test(arguments: [1, 2, 5, 8])
+    func rejectsTruncatedJPEGLSEntropyData(droppedByteCount: Int) {
+        let truncated = charLSMonochrome2x2.dropLast(droppedByteCount)
+
+        #expect(throws: (any Error).self) {
+            try JPEGLSDecoder.decodeLossless(
+                fragments: [Data(truncated)],
+                width: 2,
+                height: 2,
+                bitsAllocated: 8
+            )
+        }
+    }
+
+    @Test func rejectsJPEGLSStreamWithInvalidStartMarker() {
+        var malformed = charLSMonochrome2x2
+        malformed[0] = 0
+
+        #expect(throws: DICOMImageError.unsupportedPixelFormat) {
+            try JPEGLSDecoder.decodeLossless(
+                fragments: [malformed],
+                width: 2,
+                height: 2,
+                bitsAllocated: 8
+            )
+        }
+    }
+
     @Test func decodesReferenceJPEGLSLosslessMonochromeFrame() throws {
         let frame = try JPEGLSDecoder.decodeLossless(
             fragments: [charLSMonochrome2x2],

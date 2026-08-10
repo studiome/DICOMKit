@@ -42,6 +42,7 @@ enum JPEGLSDecoder {
                 near: header.near
             )
             samples = try decoder.decode()
+            try decoder.finishFrame()
         case (3, 2):
             var decoder = RGBScanDecoder(
                 reader: EntropyBitReader(data: data, offset: parser.offset),
@@ -52,6 +53,7 @@ enum JPEGLSDecoder {
                 restartInterval: header.restartInterval
             )
             samples = try decoder.decode()
+            try decoder.finishFrame()
         default:
             throw DICOMImageError.unsupportedPixelFormat
         }
@@ -290,6 +292,21 @@ private extension JPEGLSDecoder {
             offset += 2
         }
 
+        mutating func finishFrame() throws {
+            bitsRemaining = 0
+            // The final entropy byte may contain unused fill bits, so it is
+            // not necessarily consumed by the sample decoder. Require an EOI
+            // marker at the actual end of the interchange stream instead.
+            let endMarkerOffset = data.last == 0 ? data.count - 3 : data.count - 2
+            guard endMarkerOffset >= 0,
+                  offset <= endMarkerOffset,
+                  data[endMarkerOffset] == 0xFF,
+                  data[endMarkerOffset + 1] == 0xD9 else {
+                throw DICOMImageError.truncatedPixelData
+            }
+            offset = data.count
+        }
+
         private mutating func loadByte() throws {
             guard offset < data.count else { throw DICOMImageError.truncatedPixelData }
             let byte = data[offset]
@@ -398,6 +415,10 @@ private extension JPEGLSDecoder {
                 resetPreviousLine = false
             }
             return output
+        }
+
+        mutating func finishFrame() throws {
+            try reader.finishFrame()
         }
 
         private mutating func resetContexts() {
@@ -624,6 +645,10 @@ private extension JPEGLSDecoder {
                 resetPreviousLine = false
             }
             return output
+        }
+
+        mutating func finishFrame() throws {
+            try reader.finishFrame()
         }
 
         private mutating func decodeRegular(component: Int, ra: Int, rb: Int, rc: Int, gradients: (Int, Int, Int)) throws -> Int {
