@@ -38,7 +38,8 @@ enum JPEGLSDecoder {
                 height: expectedHeight,
                 precision: header.precision,
                 parameters: header.parameters,
-                restartInterval: header.restartInterval
+                restartInterval: header.restartInterval,
+                near: header.near
             )
             samples = try decoder.decode()
         case (3, 2):
@@ -76,6 +77,7 @@ private extension JPEGLSDecoder {
         let restartInterval: Int
         let componentCount: Int
         let interleaveMode: Int
+        let near: Int
     }
 
     struct CodingParameters {
@@ -157,16 +159,20 @@ private extension JPEGLSDecoder {
             let near = try readByte()
             let interleaveMode = try readByte()
             let pointTransform = try readByte()
-            guard scanComponentIdentifiers == componentIdentifiers, near == 0,
+            guard scanComponentIdentifiers == componentIdentifiers,
                   (componentCount == 1 && interleaveMode == 0) || (componentCount == 3 && interleaveMode == 2),
                   pointTransform == 0 else {
                 throw DICOMImageError.unsupportedPixelFormat
             }
+            guard Int(near) <= ((1 << precision) - 1) / 2 else { throw DICOMImageError.unsupportedPixelFormat }
+            let maximumValue = (1 << precision) - 1
+            let range = (maximumValue + 2 * Int(near)) / (2 * Int(near) + 1) + 1
+            let factor = min(max(2, (range + 32) / 64), 64)
             let defaultParameters = CodingParameters(
-                maximumValue: (1 << precision) - 1,
-                threshold1: 3,
-                threshold2: 7,
-                threshold3: 21,
+                maximumValue: maximumValue,
+                threshold1: min(maximumValue, factor + 2 + 3 * Int(near)),
+                threshold2: min(maximumValue, 4 * factor + 3 + 5 * Int(near)),
+                threshold3: min(maximumValue, 17 * factor + 4 + 7 * Int(near)),
                 resetValue: 64
             )
             let parameters = parameters ?? defaultParameters
@@ -178,7 +184,8 @@ private extension JPEGLSDecoder {
                 parameters: parameters,
                 restartInterval: restartInterval,
                 componentCount: Int(componentCount),
-                interleaveMode: Int(interleaveMode)
+                interleaveMode: Int(interleaveMode),
+                near: Int(near)
             )
         }
 
@@ -324,19 +331,25 @@ private extension JPEGLSDecoder {
         let limit: Int
         let parameters: CodingParameters
         let restartInterval: Int
+        let near: Int
+        let range: Int
+        let quantizedBits: Int
         var regularContexts: [RegularContext]
         var runContexts: [RunContext]
         var runIndex = 0
 
-        init(reader: EntropyBitReader, width: Int, height: Int, precision: Int, parameters: CodingParameters, restartInterval: Int = 0) {
+        init(reader: EntropyBitReader, width: Int, height: Int, precision: Int, parameters: CodingParameters, restartInterval: Int = 0, near: Int = 0) {
             self.reader = reader
             self.width = width
             self.height = height
             self.precision = precision
             self.parameters = parameters
             self.restartInterval = restartInterval
+            self.near = near
             maximumValue = (1 << precision) - 1
-            initialA = max(2, (parameters.maximumValue + 1 + 32) / 64)
+            range = (parameters.maximumValue + 2 * near) / (2 * near + 1) + 1
+            quantizedBits = Self.bitsRequired(range)
+            initialA = max(2, (range + 32) / 64)
             limit = 2 * (precision + max(8, precision))
             regularContexts = Array(repeating: RegularContext(a: initialA), count: 365)
             runContexts = [
@@ -428,7 +441,7 @@ private extension JPEGLSDecoder {
             }
             let interruption = start + length
             guard interruption < width else { return width }
-            let contextIndex = abs(ra - rb) == 0 ? 1 : 0
+            let contextIndex = abs(ra - rb) <= near ? 1 : 0
             var context = runContexts[contextIndex]
             let k = golombParameter(a: context.a + (context.n >> 1) * context.interruptionType, n: context.n)
             let mapped = try decodeMappedError(k: k, limit: limit - Self.runIndexJ[runIndex] - 1)
@@ -442,10 +455,10 @@ private extension JPEGLSDecoder {
 
         private mutating func decodeMappedError(k: Int, limit: Int) throws -> Int {
             let unary = try reader.readUnaryCode()
-            if unary < limit - precision - 1 {
+            if unary < limit - quantizedBits - 1 {
                 return k == 0 ? unary : (unary << k) + (try reader.readBits(count: k))
             }
-            return (try reader.readBits(count: precision)) + 1
+            return (try reader.readBits(count: quantizedBits)) + 1
         }
 
         private func quantize(_ gradient: Int) -> Int {
@@ -484,7 +497,7 @@ private extension JPEGLSDecoder {
 
         private mutating func updateRegular(_ context: inout RegularContext, error: Int) {
             context.a += abs(error)
-            context.b += error
+            context.b += error * (2 * near + 1)
             if context.n == parameters.resetValue {
                 context.a >>= 1
                 context.b >>= 1
@@ -514,14 +527,21 @@ private extension JPEGLSDecoder {
         }
 
         private func reconstruct(prediction: Int, error: Int) -> Int {
-            let value = prediction + error
-            if value < 0 { return value + maximumValue + 1 }
-            if value > maximumValue { return value - maximumValue - 1 }
-            return value
+            let value = prediction + error * (2 * near + 1)
+            if value < -near { return value + range * (2 * near + 1) }
+            if value > maximumValue + near { return value - range * (2 * near + 1) }
+            return clamp(value)
         }
 
         private func clamp(_ value: Int) -> Int { min(max(0, value), maximumValue) }
         private func sign(of value: Int) -> Int { value < 0 ? -1 : 1 }
+
+        private static func bitsRequired(_ value: Int) -> Int {
+            var bits = 0
+            var limit = 1
+            while limit < value { bits += 1; limit <<= 1 }
+            return bits
+        }
     }
 
     /// Baseline JPEG-LS sample-interleaved RGB scan decoder. Each component

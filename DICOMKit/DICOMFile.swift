@@ -170,7 +170,7 @@ public struct DICOMFile: Sendable {
                 )
             }
 
-        case .jpegLSLossless:
+        case .jpegLSLossless, .jpegLSNearLossless:
             let isMonochrome = sourceSamplesPerPixel == 1 && (sourcePhotometric == .monochrome1 || sourcePhotometric == .monochrome2)
             let isRGB = sourceSamplesPerPixel == 3 && sourcePhotometric == .rgb && sourcePlanarConfiguration == 0
             guard isMonochrome || isRGB,
@@ -201,7 +201,7 @@ public struct DICOMFile: Sendable {
                 )
             }
 
-        case .jpegLossless, .jpegLSNearLossless:
+        case .jpegLossless:
             // These syntaxes must never fall through to the raw-data path or
             // ImageIO. Their decoders are intentionally added in later phases.
             return nil
