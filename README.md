@@ -48,6 +48,9 @@ See the [changelog](CHANGELOG.md) for the v0.3 implementation status.
 - Writes DICOM Part 10 files using Explicit VR Little Endian or Implicit VR
   Little Endian, including defined- or undefined-length Sequences and native
   Pixel Data
+- Provides async DICOMweb clients for QIDO-RS study searches, WADO-RS
+  instance retrieval, and STOW-RS multipart instance storage; transports are
+  injectable for application authentication and testing
 
 ```swift
 let file = try DICOMFile(data: data)
@@ -68,6 +71,18 @@ if let pixelData = file.pixelData {
     // min/max value.
     let image = try pixelData.cgImage(windowCenter: 40, windowWidth: 400)
 }
+```
+
+```swift
+let client = DICOMwebClient(baseURL: URL(string: "https://pacs.example.com/dicomweb")!)
+let studies = try await client.searchStudies(query: [
+    URLQueryItem(name: "PatientName", value: "Doe*")
+])
+let instance = try await client.retrieveInstance(
+    studyInstanceUID: "1.2.3",
+    seriesInstanceUID: "4.5.6",
+    sopInstanceUID: "7.8.9"
+)
 ```
 
 ## Requirements
@@ -138,8 +153,7 @@ pull request:
 
 1. JPEG-LS line／plane interleave modes
 2. Multi-component JPEG Lossless Process 14
-3. DICOMweb support
-4. DIMSE networking
+3. DIMSE networking
 
 ## License
 

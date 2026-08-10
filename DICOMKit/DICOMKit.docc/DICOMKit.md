@@ -50,8 +50,8 @@ samples: `RGB` for three-sample frames and grayscale for `MONOCHROME1` /
 `MONOCHROME2` frames, while frames declaring any other `Bits Allocated` are
 reported as undecodable. Multi-frame encapsulated images require a Basic
 Offset Table and are available through ``DICOMFile/pixelDataFrames``. JPEG
-Multi-component JPEG Lossless, JPEG-LS line／plane interleave modes, writing,
-DIMSE, and DICOMweb remain outside the current scope.
+Multi-component JPEG Lossless, JPEG-LS line／plane interleave modes, and DIMSE
+remain outside the current scope.
 Pixel Padding Value
 `(0028,0120)` is also not yet applied.
 
@@ -59,6 +59,11 @@ DICOMKit also writes Part 10 files through ``DICOMWriter`` and
 ``DICOMFile/encodedData(sequenceLengthEncoding:)``. The writer supports
 Explicit VR Little Endian and Implicit VR Little Endian, defined- and
 undefined-length sequences, and native Pixel Data.
+
+``DICOMwebClient`` provides an async HTTP foundation for QIDO-RS study
+searches, WADO-RS single-instance retrieval, and STOW-RS multipart storage.
+Inject a ``DICOMwebTransport`` to add application-specific authentication or
+to test requests without a network connection.
 
 ## Topics
 
@@ -72,6 +77,12 @@ undefined-length sequences, and native Pixel Data.
 - ``DICOMVR``
 - ``TransferSyntax``
 - ``DICOMError``
+
+### DICOMweb
+
+- ``DICOMwebClient``
+- ``DICOMwebTransport``
+- ``DICOMwebError``
 
 ### Image rendering
 

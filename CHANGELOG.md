@@ -2,6 +2,13 @@
 
 All notable changes to DICOMKit are documented here.
 
+## v0.5 — Unreleased
+
+- Added `DICOMwebClient` for QIDO-RS study searches, WADO-RS single-instance
+  retrieval, and STOW-RS multipart instance storage.
+- Added injectable `DICOMwebTransport` and response validation for testable
+  application-specific authentication and networking policies.
+
 ## v0.4 — Unreleased
 
 - Added `DICOMWriter` and `DICOMFile.encodedData()` for Explicit and Implicit
