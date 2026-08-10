@@ -294,7 +294,7 @@ struct DICOMKitTests {
             columns: 2,
             samplesPerPixel: 1,
             bitsAllocated: 8,
-            photometricInterpretation: photometricInterpretation,
+            photometricInterpretation: PhotometricInterpretation(name: photometricInterpretation),
             planarConfiguration: 0
         )
 
@@ -314,7 +314,7 @@ struct DICOMKitTests {
             columns: 2,
             samplesPerPixel: 1,
             bitsAllocated: 16,
-            photometricInterpretation: photometricInterpretation,
+            photometricInterpretation: PhotometricInterpretation(name: photometricInterpretation),
             planarConfiguration: 0
         )
 
@@ -405,7 +405,7 @@ struct DICOMKitTests {
             columns: 2,
             samplesPerPixel: 1,
             bitsAllocated: 16,
-            photometricInterpretation: "MONOCHROME2",
+            photometricInterpretation: .monochrome2,
             planarConfiguration: 0,
             pixelRepresentation: 1
         )
@@ -422,7 +422,7 @@ struct DICOMKitTests {
             columns: 2,
             samplesPerPixel: 1,
             bitsAllocated: 16,
-            photometricInterpretation: "MONOCHROME2",
+            photometricInterpretation: .monochrome2,
             planarConfiguration: 0,
             rescaleSlope: 2,
             rescaleIntercept: -100
@@ -444,7 +444,7 @@ struct DICOMKitTests {
             columns: 1,
             samplesPerPixel: 1,
             bitsAllocated: 16,
-            photometricInterpretation: "MONOCHROME2",
+            photometricInterpretation: .monochrome2,
             planarConfiguration: 0,
             bitsStored: 12
         )
@@ -464,7 +464,7 @@ struct DICOMKitTests {
             columns: 1,
             samplesPerPixel: 1,
             bitsAllocated: 16,
-            photometricInterpretation: "MONOCHROME2",
+            photometricInterpretation: .monochrome2,
             planarConfiguration: 0,
             bitsStored: 12,
             pixelRepresentation: 1
@@ -502,7 +502,7 @@ struct DICOMKitTests {
             columns: 3,
             samplesPerPixel: 1,
             bitsAllocated: 16,
-            photometricInterpretation: "MONOCHROME2",
+            photometricInterpretation: .monochrome2,
             planarConfiguration: 0
         )
 
@@ -520,7 +520,7 @@ struct DICOMKitTests {
             columns: 2,
             samplesPerPixel: 1,
             bitsAllocated: 16,
-            photometricInterpretation: "MONOCHROME2",
+            photometricInterpretation: .monochrome2,
             planarConfiguration: 0
         )
 
@@ -540,7 +540,7 @@ struct DICOMKitTests {
             columns: 1,
             samplesPerPixel: 1,
             bitsAllocated: 16,
-            photometricInterpretation: "MONOCHROME2",
+            photometricInterpretation: .monochrome2,
             planarConfiguration: 0,
             bitsStored: bitsStored
         )
@@ -647,7 +647,7 @@ struct DICOMKitTests {
             columns: 2,
             samplesPerPixel: 1,
             bitsAllocated: 8,
-            photometricInterpretation: "MONOCHROME2",
+            photometricInterpretation: .monochrome2,
             planarConfiguration: 0
         )
 
@@ -663,7 +663,7 @@ struct DICOMKitTests {
             columns: 2,
             samplesPerPixel: 1,
             bitsAllocated: 8,
-            photometricInterpretation: "YBR_FULL",
+            photometricInterpretation: .other("YBR_FULL"),
             planarConfiguration: 0
         )
 
@@ -679,7 +679,7 @@ struct DICOMKitTests {
             columns: 2,
             samplesPerPixel: 3,
             bitsAllocated: 8,
-            photometricInterpretation: "RGB",
+            photometricInterpretation: .rgb,
             planarConfiguration: 1
         )
 
@@ -695,7 +695,7 @@ struct DICOMKitTests {
             columns: 1,
             samplesPerPixel: 1,
             bitsAllocated: 16,
-            photometricInterpretation: "MONOCHROME2",
+            photometricInterpretation: .monochrome2,
             planarConfiguration: 0
         )
 

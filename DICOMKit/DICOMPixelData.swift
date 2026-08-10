@@ -13,8 +13,8 @@ public struct DICOMPixelData: Sendable {
     public let samplesPerPixel: Int
     /// Number of bits allocated for each sample.
     public let bitsAllocated: Int
-    /// The photometric interpretation, for example `MONOCHROME2` or `RGB`.
-    public let photometricInterpretation: String
+    /// The photometric interpretation, for example ``PhotometricInterpretation/monochrome2`` or ``PhotometricInterpretation/rgb``.
+    public let photometricInterpretation: PhotometricInterpretation
     /// The planar configuration, when applicable.
     public let planarConfiguration: Int
     /// Number of bits actually meaningful within each allocated sample.
@@ -60,7 +60,7 @@ public struct DICOMPixelData: Sendable {
         columns: Int,
         samplesPerPixel: Int,
         bitsAllocated: Int,
-        photometricInterpretation: String,
+        photometricInterpretation: PhotometricInterpretation,
         planarConfiguration: Int = 0,
         bitsStored: Int? = nil,
         pixelRepresentation: Int = 0,
@@ -120,22 +120,22 @@ public struct DICOMPixelData: Sendable {
     public func cgImage(windowCenter: Double? = nil, windowWidth: Double? = nil) throws -> CGImage {
         let pixelCount = try checkedPixelCount()
         switch (photometricInterpretation, bitsAllocated) {
-        case ("MONOCHROME1", 8), ("MONOCHROME2", 8):
+        case (.monochrome1, 8), (.monochrome2, 8):
             guard samplesPerPixel == 1 else { throw DICOMImageError.invalidImageAttributes }
             let source = try requiredBytes(pixelCount)
-            let pixels = photometricInterpretation == "MONOCHROME1"
+            let pixels = photometricInterpretation == .monochrome1
                 ? Data(source.map { 255 - $0 })
                 : source
             return try makeImage(data: pixels, colorSpace: CGColorSpaceCreateDeviceGray(), bitsPerPixel: 8, bytesPerRow: columns)
 
-        case ("RGB", 8):
+        case (.rgb, 8):
             guard samplesPerPixel == 3, planarConfiguration == 0 else {
                 throw DICOMImageError.unsupportedPixelFormat
             }
             let byteCount = try checkedByteCount(pixelCount, bytesPerSample: 1, samples: 3)
             return try makeImage(data: requiredBytes(byteCount), colorSpace: CGColorSpaceCreateDeviceRGB(), bitsPerPixel: 24, bytesPerRow: columns * 3)
 
-        case ("MONOCHROME1", 16), ("MONOCHROME2", 16):
+        case (.monochrome1, 16), (.monochrome2, 16):
             guard samplesPerPixel == 1 else { throw DICOMImageError.invalidImageAttributes }
             guard bitsStored >= 1, bitsStored <= bitsAllocated else { throw DICOMImageError.invalidImageAttributes }
             let byteCount = try checkedByteCount(pixelCount, bytesPerSample: 2, samples: 1)
@@ -148,7 +148,7 @@ public struct DICOMPixelData: Sendable {
 
             let pixels = Data(samples.map { sample in
                 let rendered = windowedSample(sample, center: center, width: width)
-                return photometricInterpretation == "MONOCHROME1" ? 255 - rendered : rendered
+                return photometricInterpretation == .monochrome1 ? 255 - rendered : rendered
             })
             return try makeImage(data: pixels, colorSpace: CGColorSpaceCreateDeviceGray(), bitsPerPixel: 8, bytesPerRow: columns)
 

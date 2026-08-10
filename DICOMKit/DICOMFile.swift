@@ -40,7 +40,7 @@ public struct DICOMFile: Sendable {
             columns: Int(columns),
             samplesPerPixel: Int(samplesPerPixel),
             bitsAllocated: Int(bitsAllocated),
-            photometricInterpretation: photometricInterpretation,
+            photometricInterpretation: PhotometricInterpretation(name: photometricInterpretation),
             planarConfiguration: Int(dataset[.planarConfiguration]?.uint16Value ?? 0),
             bitsStored: dataset[.bitsStored]?.uint16Value.map(Int.init),
             pixelRepresentation: Int(dataset[.pixelRepresentation]?.uint16Value ?? 0),
