@@ -34,11 +34,12 @@ if let pixelData = file.pixelData {
 
 The library supports defined-length and undefined-length sequences, a focused
 set of uncompressed image formats and 8-bit/16-bit monochrome plus 8-bit RGB
-RLE Lossless decoding. Multi-frame RLE requires a Basic Offset Table and is
-available through ``DICOMFile/pixelDataFrames``. It intentionally excludes
-other compressed pixel decoding,
-writing, DIMSE, and DICOMweb. Those will be added as isolated capabilities
-after the file model is stable. Pixel Padding Value
+RLE Lossless decoding. It also supports single-frame 8-bit RGB JPEG Baseline
+(Process 1) decoding through ImageIO. Multi-frame RLE requires a Basic Offset
+Table and is available through ``DICOMFile/pixelDataFrames``. It intentionally
+excludes other compressed pixel decoding, writing, DIMSE, and DICOMweb. Those
+will be added as isolated capabilities after the file model is stable. Pixel
+Padding Value
 `(0028,0120)` is also not yet applied.
 
 ## Topics

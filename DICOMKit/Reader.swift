@@ -30,7 +30,7 @@ struct Reader {
         let length: UInt32
 
         switch transferSyntax {
-        case .explicitVRLittleEndian, .rleLossless:
+        case .explicitVRLittleEndian, .rleLossless, .jpegBaseline:
             let vrText = String(bytes: try readData(count: 2), encoding: .ascii) ?? ""
             guard let parsedVR = DICOMVR(rawValue: vrText) else { throw DICOMError.invalidVR(vrText) }
             vr = parsedVR
