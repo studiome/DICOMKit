@@ -1,17 +1,15 @@
 import Foundation
 
-/// Decodes JPEG Lossless, Non-Hierarchical, First-Order Prediction (Process
-/// 14, Selection Value 1) frames for DICOM Transfer Syntax `.70`.
-///
-/// This intentionally supports one monochrome component only. Other Process
-/// 14 predictors and multi-component images belong to the later `.57` phase.
+/// Decodes single-component JPEG Lossless, Non-Hierarchical (Process 14)
+/// frames used by DICOM Transfer Syntaxes `.57` and `.70`.
 enum JPEGLosslessDecoder {
     struct DecodedFrame {
         let value: Data
         let precision: Int
+        let selectionValue: Int
     }
 
-    static func decodeSV1(
+    static func decodeLossless(
         fragments: [Data],
         width expectedWidth: Int,
         height expectedHeight: Int,
@@ -40,8 +38,15 @@ enum JPEGLosslessDecoder {
                 resetPrediction = false
             } else if x == 0 {
                 predictor = reducedSamples[index - expectedWidth]
-            } else {
+            } else if index < expectedWidth {
                 predictor = reducedSamples[index - 1]
+            } else {
+                predictor = predictedValue(
+                    selectionValue: header.selectionValue,
+                    left: reducedSamples[index - 1],
+                    above: reducedSamples[index - expectedWidth],
+                    upperLeft: reducedSamples[index - expectedWidth - 1]
+                )
             }
             let category = try header.huffmanTable.decodeSymbol(from: &reader)
             guard category <= header.precision else { throw DICOMImageError.unsupportedPixelFormat }
@@ -69,7 +74,20 @@ enum JPEGLosslessDecoder {
                 output.append(UInt8(sample >> 8))
             }
         }
-        return DecodedFrame(value: output, precision: header.precision)
+        return DecodedFrame(value: output, precision: header.precision, selectionValue: header.selectionValue)
+    }
+
+    private static func predictedValue(selectionValue: Int, left: Int, above: Int, upperLeft: Int) -> Int {
+        switch selectionValue {
+        case 1: left
+        case 2: above
+        case 3: upperLeft
+        case 4: left + above - upperLeft
+        case 5: left + ((above - upperLeft) >> 1)
+        case 6: above + ((left - upperLeft) >> 1)
+        case 7: (left + above) >> 1
+        default: preconditionFailure("Validated JPEG Lossless selection value")
+        }
     }
 
     private static func readDifference(category: Int, from reader: inout EntropyBitReader) throws -> Int {
@@ -91,6 +109,7 @@ private extension JPEGLosslessDecoder {
         let precision: Int
         let pointTransform: Int
         let restartInterval: Int
+        let selectionValue: Int
         let huffmanTable: HuffmanTable
     }
 
@@ -180,7 +199,7 @@ private extension JPEGLosslessDecoder {
             let tableIdentifier = Int(tableSelectors >> 4)
             let pointTransform = Int(successiveApproximation & 0x0F)
             guard componentCount == 1, scanComponentIdentifier == componentIdentifier,
-                  tableSelectors & 0x0F == 0, selectionValue == 1, spectralEnd == 0,
+                  tableSelectors & 0x0F == 0, (1...7).contains(Int(selectionValue)), spectralEnd == 0,
                   successiveApproximation >> 4 == 0, pointTransform < precision,
                   let huffmanTable = tables[tableIdentifier] else {
                 throw DICOMImageError.unsupportedPixelFormat
@@ -189,6 +208,7 @@ private extension JPEGLosslessDecoder {
                 precision: precision,
                 pointTransform: pointTransform,
                 restartInterval: restartInterval,
+                selectionValue: Int(selectionValue),
                 huffmanTable: huffmanTable
             )
         }

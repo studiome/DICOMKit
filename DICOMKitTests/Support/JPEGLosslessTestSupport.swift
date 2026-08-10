@@ -1,7 +1,6 @@
 import Foundation
 
-/// Produces a minimal, single-component JPEG Lossless Process 14 stream with
-/// Selection Value 1. It is intentionally test-only: its job is to generate
+/// Produces a minimal, single-component JPEG Lossless Process 14 stream. It is intentionally test-only: its job is to generate
 /// controlled inputs for the independent production decoder.
 func jpegLosslessSV1Data(
     samples: [UInt16],
@@ -9,12 +8,14 @@ func jpegLosslessSV1Data(
     height: Int,
     precision: Int,
     pointTransform: Int = 0,
-    restartInterval: Int = 0
+    restartInterval: Int = 0,
+    selectionValue: Int = 1
 ) -> Data {
     precondition(width > 0 && height > 0 && samples.count == width * height)
     precondition((2...16).contains(precision))
     precondition((0..<precision).contains(pointTransform))
     precondition(restartInterval >= 0)
+    precondition((1...7).contains(selectionValue))
     let maximum = (1 << precision) - 1
     precondition(samples.allSatisfy { Int($0) <= maximum && Int($0) & ((1 << pointTransform) - 1) == 0 })
 
@@ -38,7 +39,7 @@ func jpegLosslessSV1Data(
     }
     output.append(contentsOf: [
         0xFF, 0xDA, 0x00, 0x08,
-        0x01, 0x01, 0x00, 0x01, 0x00, UInt8(pointTransform)
+        0x01, 0x01, 0x00, UInt8(selectionValue), 0x00, UInt8(pointTransform)
     ])
 
     var writer = LosslessJPEGTestBitWriter()
@@ -53,10 +54,22 @@ func jpegLosslessSV1Data(
         let predictor: Int
         if index == 0 || (restartInterval > 0 && index.isMultiple(of: restartInterval)) {
             predictor = initialPredictor
-        } else if index.isMultiple(of: width) {
-            predictor = Int(samples[index - width]) >> pointTransform
         } else {
-            predictor = Int(samples[index - 1]) >> pointTransform
+            let left = Int(samples[index - 1]) >> pointTransform
+            if index.isMultiple(of: width) {
+                predictor = Int(samples[index - width]) >> pointTransform
+            } else if index < width {
+                predictor = left
+            } else {
+                let above = Int(samples[index - width]) >> pointTransform
+                let upperLeft = Int(samples[index - width - 1]) >> pointTransform
+                predictor = losslessJPEGPredictor(
+                    selectionValue,
+                    left: left,
+                    above: above,
+                    upperLeft: upperLeft
+                )
+            }
         }
         let difference = reduced - predictor
         let category = magnitudeBitCount(difference)
@@ -69,6 +82,19 @@ func jpegLosslessSV1Data(
     writer.finish(into: &output)
     output.append(contentsOf: [0xFF, 0xD9]) // EOI
     return output
+}
+
+private func losslessJPEGPredictor(_ selectionValue: Int, left: Int, above: Int, upperLeft: Int) -> Int {
+    switch selectionValue {
+    case 1: left
+    case 2: above
+    case 3: upperLeft
+    case 4: left + above - upperLeft
+    case 5: left + ((above - upperLeft) >> 1)
+    case 6: above + ((left - upperLeft) >> 1)
+    case 7: (left + above) >> 1
+    default: preconditionFailure("Invalid JPEG Lossless selection value")
+    }
 }
 
 private func magnitudeBitCount(_ value: Int) -> Int {

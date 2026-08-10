@@ -148,7 +148,7 @@ public struct DICOMFile: Sendable {
                 return nil
             }
             frames = fragmentFrames.compactMap { fragments in
-                guard let decoded = try? JPEGLosslessDecoder.decodeSV1(
+                guard let decoded = try? JPEGLosslessDecoder.decodeLossless(
                     fragments: fragments,
                     width: Int(columns),
                     height: Int(rows),
@@ -156,6 +156,7 @@ public struct DICOMFile: Sendable {
                 ) else {
                     return nil
                 }
+                guard decoded.selectionValue == 1 else { return nil }
                 if let declaredBitsStored = dataset[.bitsStored]?.uint16Value,
                    Int(declaredBitsStored) != decoded.precision {
                     return nil
@@ -202,9 +203,33 @@ public struct DICOMFile: Sendable {
             }
 
         case .jpegLossless:
-            // These syntaxes must never fall through to the raw-data path or
-            // ImageIO. Their decoders are intentionally added in later phases.
-            return nil
+            guard sourceSamplesPerPixel == 1,
+                  sourcePhotometric == .monochrome1 || sourcePhotometric == .monochrome2,
+                  let fragmentFrames = encapsulatedFrames(of: pixelElement, frameCount: frameCount) else {
+                return nil
+            }
+            frames = fragmentFrames.compactMap { fragments in
+                guard let decoded = try? JPEGLosslessDecoder.decodeLossless(
+                    fragments: fragments,
+                    width: Int(columns),
+                    height: Int(rows),
+                    bitsAllocated: sourceBitsAllocated
+                ) else {
+                    return nil
+                }
+                if let declaredBitsStored = dataset[.bitsStored]?.uint16Value,
+                   Int(declaredBitsStored) != decoded.precision {
+                    return nil
+                }
+                return DecodedPixelDataFrame(
+                    value: decoded.value,
+                    samplesPerPixel: 1,
+                    bitsAllocated: sourceBitsAllocated,
+                    bitsStored: decoded.precision,
+                    photometricInterpretation: sourcePhotometric,
+                    planarConfiguration: sourcePlanarConfiguration
+                )
+            }
 
         default:
             guard bitsAllocated.isMultiple(of: 8) else { return nil }

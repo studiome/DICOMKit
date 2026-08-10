@@ -229,6 +229,30 @@ struct JPEGFrameDecoderTests {
         #expect(pixelData.value == source)
     }
 
+    @Test(arguments: [2, 3, 4, 5, 6, 7])
+    func decodesJPEGLosslessOtherPredictors(selectionValue: Int) throws {
+        let samples: [UInt16] = [12, 20, 35, 18, 27, 40, 30, 36, 50]
+        let data = imageFile(
+            transferSyntaxUID: TransferSyntax.jpegLossless.uid,
+            rows: 3,
+            columns: 3,
+            bitsAllocated: 8,
+            pixelDataElement: encapsulatedPixelData(fragments: [
+                jpegLosslessSV1Data(
+                    samples: samples,
+                    width: 3,
+                    height: 3,
+                    precision: 8,
+                    selectionValue: selectionValue
+                )
+            ])
+        )
+
+        let pixelData = try #require(try DICOMFile(data: data).pixelData)
+
+        #expect(pixelData.value == Data(samples.map(UInt8.init)))
+    }
+
     @Test func decodesReferenceJPEGLSLosslessMonochromeFrame() throws {
         let frame = try JPEGLSDecoder.decodeLossless(
             fragments: [charLSMonochrome2x2],
