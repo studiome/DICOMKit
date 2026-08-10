@@ -1,7 +1,7 @@
 import Foundation
 
 /// A DICOM data-element identifier consisting of a group and element number.
-public struct DICOMTag: Hashable, Sendable, CustomStringConvertible {
+public struct DICOMTag: Hashable, Sendable, Comparable, CustomStringConvertible {
     /// The 16-bit DICOM group number.
     public let group: UInt16
     /// The 16-bit DICOM element number.
@@ -15,4 +15,11 @@ public struct DICOMTag: Hashable, Sendable, CustomStringConvertible {
 
     /// The canonical hexadecimal representation, for example `(0010,0010)`.
     public var description: String { String(format: "(%04X,%04X)", group, element) }
+
+    /// Orders tags by group number first, then by element number within the
+    /// same group, matching the ascending order DICOM datasets are
+    /// conventionally interpreted in.
+    public static func < (lhs: DICOMTag, rhs: DICOMTag) -> Bool {
+        (lhs.group, lhs.element) < (rhs.group, rhs.element)
+    }
 }
