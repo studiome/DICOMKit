@@ -34,10 +34,12 @@ if let pixelData = file.pixelData {
 
 The library supports defined-length and undefined-length sequences, a focused
 set of uncompressed image formats and 8-bit/16-bit monochrome plus 8-bit RGB
-RLE Lossless decoding. It also supports 8-bit RGB JPEG Baseline (Process 1)
-decoding through ImageIO. Multi-frame encapsulated images require a Basic
-Offset Table and are available through ``DICOMFile/pixelDataFrames``. It also
-decodes JPEG 2000 Lossless and JPEG 2000 Pixel Data through ImageIO. It
+RLE Lossless decoding. JPEG Baseline (Process 1), JPEG 2000 Lossless, and
+JPEG 2000 Pixel Data are decoded through ImageIO, which produces 8-bit
+samples: `RGB` for three-sample frames and grayscale for `MONOCHROME1` /
+`MONOCHROME2` frames, while frames declaring any other `Bits Allocated` are
+reported as undecodable. Multi-frame encapsulated images require a Basic
+Offset Table and are available through ``DICOMFile/pixelDataFrames``. It
 intentionally excludes JPEG Lossless, JPEG-LS, writing, DIMSE, and DICOMweb.
 Those will be added as isolated capabilities after the file model is stable.
 Pixel Padding Value

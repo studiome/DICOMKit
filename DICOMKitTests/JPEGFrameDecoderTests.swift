@@ -70,7 +70,8 @@ struct JPEGFrameDecoderTests {
         #expect(secondBytes[1] > 200)
     }
 
-    @Test func decodesJPEG2000LosslessPixelData() throws {
+    @Test(arguments: [TransferSyntax.jpeg2000Lossless, .jpeg2000])
+    func decodesJPEG2000PixelData(transferSyntax: TransferSyntax) throws {
         let encoded = compressedImageData(
             rgb: Data([255, 0, 0, 0, 255, 0]),
             width: 2,
@@ -78,7 +79,7 @@ struct JPEGFrameDecoderTests {
             type: "public.jpeg-2000"
         )
         let data = imageFile(
-            transferSyntaxUID: TransferSyntax.jpeg2000Lossless.uid,
+            transferSyntaxUID: transferSyntax.uid,
             samplesPerPixel: 3,
             photometricInterpretation: .rgb,
             planarConfiguration: 0,
@@ -98,30 +99,120 @@ struct JPEGFrameDecoderTests {
         #expect(bytes[4] > 200)
     }
 
-    @Test func decodesJPEG2000PixelData() throws {
-        let encoded = compressedImageData(
-            rgb: Data([0, 0, 255]),
-            width: 1,
-            height: 1,
-            type: "public.jpeg-2000"
+    @Test func decodesMonochromeJPEGBaselineAsSingleSampleGrayscale() throws {
+        // A grayscale JPEG must stay single-sample monochrome pixel data:
+        // inflating it to RGB throws away the Photometric Interpretation the
+        // 8-bit monochrome rendering path needs.
+        let data = monochromeJPEGFile(
+            photometricInterpretation: .monochrome2,
+            gray: Data([0, 64, 128, 255])
         )
+
+        let pixelData = try #require(try DICOMFile(data: data).pixelData)
+
+        #expect(pixelData.samplesPerPixel == 1)
+        #expect(pixelData.photometricInterpretation == .monochrome2)
+
+        let bytes = try imageBytes(pixelData.cgImage())
+
+        #expect(bytes.count == 4)
+        #expect(bytes[0] < 40)
+        #expect(bytes[3] > 215)
+    }
+
+    @Test func monochrome1JPEGBaselineRendersInvertedPolarity() throws {
+        // MONOCHROME1 displays the minimum stored value as white. Decoding a
+        // grayscale JPEG as if it were RGB skips that inversion and renders
+        // the image with the polarity reversed.
+        let data = monochromeJPEGFile(
+            photometricInterpretation: .monochrome1,
+            gray: Data([0, 0, 255, 255])
+        )
+
+        let bytes = try imageBytes(try #require(try DICOMFile(data: data).pixelData).cgImage())
+
+        #expect(bytes.count == 4)
+        #expect(bytes[0] > 215)
+        #expect(bytes[3] < 40)
+    }
+
+    @Test func decodesYBRJPEGBaselineAsRGB() throws {
+        // JPEG Baseline pixel data is usually YBR_FULL_422 in DICOM. ImageIO
+        // hands back RGB samples, so the decoded frame must be relabelled.
         let data = imageFile(
-            transferSyntaxUID: TransferSyntax.jpeg2000.uid,
+            transferSyntaxUID: TransferSyntax.jpegBaseline.uid,
             samplesPerPixel: 3,
-            photometricInterpretation: .rgb,
+            photometricInterpretation: .other("YBR_FULL_422"),
             planarConfiguration: 0,
             rows: 1,
             columns: 1,
             bitsAllocated: 8,
-            pixelDataElement: encapsulatedPixelData(fragments: [encoded])
+            pixelDataElement: encapsulatedPixelData(fragments: [jpegData(rgb: Data([255, 0, 0]), width: 1, height: 1)])
         )
 
-        let image = try #require(try DICOMFile(data: data).pixelData).cgImage()
-        let bytes = try imageBytes(image)
+        let pixelData = try #require(try DICOMFile(data: data).pixelData)
 
-        #expect(bytes.count == 3)
-        #expect(bytes[0] < 50)
+        #expect(pixelData.photometricInterpretation == .rgb)
+
+        let bytes = try imageBytes(pixelData.cgImage())
+
+        #expect(bytes[0] > 200)
         #expect(bytes[1] < 50)
-        #expect(bytes[2] > 200)
     }
+
+    @Test(arguments: [16, 12])
+    func rejectsEncapsulatedJPEGWithBitsAllocatedOtherThan8(bitsAllocated: UInt16) throws {
+        // ImageIO decodes encapsulated JPEG and JPEG 2000 to 8-bit samples,
+        // so a frame declaring any other Bits Allocated can't be represented
+        // faithfully. Returning `nil` says so up front, instead of handing
+        // back pixel data whose attributes contradict its bytes and only
+        // fails once the caller tries to render it.
+        let data = imageFile(
+            transferSyntaxUID: TransferSyntax.jpeg2000Lossless.uid,
+            samplesPerPixel: 1,
+            photometricInterpretation: .monochrome2,
+            rows: 1,
+            columns: 2,
+            bitsAllocated: bitsAllocated,
+            pixelDataElement: encapsulatedPixelData(fragments: [compressedImageData(
+                gray: Data([0, 255]),
+                width: 2,
+                height: 1,
+                type: "public.jpeg-2000"
+            )])
+        )
+
+        #expect(try DICOMFile(data: data).pixelDataFrames == nil)
+    }
+
+    @Test func rejectsMultiFrameJPEGWithoutBasicOffsetTable() throws {
+        // Without a Basic Offset Table there's no reliable way to tell which
+        // fragment starts which frame.
+        let data = imageFile(
+            transferSyntaxUID: TransferSyntax.jpegBaseline.uid,
+            numberOfFrames: 2,
+            rows: 1,
+            columns: 1,
+            bitsAllocated: 8,
+            pixelDataElement: encapsulatedPixelData(fragments: [
+                jpegData(gray: Data([0]), width: 1, height: 1),
+                jpegData(gray: Data([255]), width: 1, height: 1)
+            ])
+        )
+
+        #expect(try DICOMFile(data: data).pixelDataFrames == nil)
+    }
+}
+
+/// A single-frame monochrome JPEG Baseline file, 2x2 with 8-bit samples.
+private func monochromeJPEGFile(photometricInterpretation: PhotometricInterpretation, gray: Data) -> Data {
+    imageFile(
+        transferSyntaxUID: TransferSyntax.jpegBaseline.uid,
+        samplesPerPixel: 1,
+        photometricInterpretation: photometricInterpretation,
+        rows: 2,
+        columns: 2,
+        bitsAllocated: 8,
+        pixelDataElement: encapsulatedPixelData(fragments: [jpegData(gray: gray, width: 2, height: 2)])
+    )
 }

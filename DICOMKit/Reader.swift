@@ -29,6 +29,10 @@ struct Reader {
         let vr: DICOMVR
         let length: UInt32
 
+        // Listed exhaustively rather than with a `default`, so that adding a
+        // transfer syntax has to state which encoding its datasets use
+        // instead of silently inheriting one. Every encapsulated syntax
+        // encodes its elements as Explicit VR Little Endian.
         switch transferSyntax {
         case .explicitVRLittleEndian, .rleLossless, .jpegBaseline, .jpeg2000Lossless, .jpeg2000:
             let vrText = String(bytes: try readData(count: 2), encoding: .ascii) ?? ""
@@ -55,7 +59,7 @@ struct Reader {
             // (e.g. Referenced Image Sequence) still be parsed.
             length = try readUInt32()
             vr = DICOMDictionary.vr(for: tag) ?? (length == .max ? .SQ : .UN)
-        default:
+        case .explicitVRBigEndian, .unknown:
             throw DICOMError.unsupportedTransferSyntax(transferSyntax.uid)
         }
 

@@ -89,4 +89,23 @@ struct RLELosslessDecoderTests {
         #expect(try imageBytes(frames[0].cgImage()) == Data([0x12]))
         #expect(try imageBytes(frames[1].cgImage()) == Data([0x34]))
     }
+
+    @Test func rejectsMultiFrameRLEWithoutBasicOffsetTable() throws {
+        // An empty Basic Offset Table leaves the frame boundaries undefined
+        // once there's more than one frame, so the fragments must not be
+        // guessed at.
+        let data = imageFile(
+            transferSyntaxUID: TransferSyntax.rleLossless.uid,
+            numberOfFrames: 2,
+            rows: 1,
+            columns: 1,
+            bitsAllocated: 8,
+            pixelDataElement: encapsulatedPixelData(fragments: [
+                rleFrame(segment: Data([0x00, 0x12])),
+                rleFrame(segment: Data([0x00, 0x34]))
+            ])
+        )
+
+        #expect(try DICOMFile(data: data).pixelDataFrames == nil)
+    }
 }

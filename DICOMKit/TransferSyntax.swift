@@ -31,6 +31,22 @@ public enum TransferSyntax: Sendable, Equatable {
         }
     }
 
+    /// Whether ``DICOMFile`` can read a dataset encoded in this transfer
+    /// syntax.
+    ///
+    /// Being readable says nothing about Pixel Data: a readable file may
+    /// still hold pixel data this library can't decode, in which case
+    /// ``DICOMFile/pixelDataFrames`` is `nil`.
+    var isSupported: Bool {
+        switch self {
+        case .implicitVRLittleEndian, .explicitVRLittleEndian, .rleLossless,
+             .jpegBaseline, .jpeg2000Lossless, .jpeg2000:
+            true
+        case .explicitVRBigEndian, .unknown:
+            false
+        }
+    }
+
     init(uid: String) {
         switch uid {
         case Self.implicitVRLittleEndian.uid: self = .implicitVRLittleEndian

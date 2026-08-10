@@ -31,11 +31,19 @@ public struct DICOMFile: Sendable {
 
     /// The image frames contained by Pixel Data.
     ///
-    /// For encapsulated RLE Lossless and JPEG Baseline multi-frame images,
-    /// this uses the Pixel Data Basic Offset Table to retain fragment
+    /// For encapsulated pixel data (RLE Lossless, JPEG Baseline, and JPEG
+    /// 2000), this uses the Pixel Data Basic Offset Table to recover fragment
     /// boundaries. Multi-frame encapsulated images without a Basic Offset
     /// Table aren't currently supported because their frame boundaries cannot
     /// be determined reliably.
+    ///
+    /// JPEG Baseline and JPEG 2000 frames are decoded through ImageIO, which
+    /// produces 8-bit samples: frames declaring any other Bits Allocated
+    /// yield `nil` rather than pixel data whose attributes contradict its
+    /// bytes. Three-sample frames are relabelled `RGB` because ImageIO
+    /// converts the JPEG's own color space (JPEG Baseline pixel data is
+    /// usually `YBR_FULL_422`); single-sample frames keep their
+    /// `MONOCHROME1` / `MONOCHROME2` interpretation and stored polarity.
     public var pixelDataFrames: [DICOMPixelData]? {
         guard let pixelElement = dataset[.pixelData],
               let rows = dataset[.rows]?.uint16Value,
@@ -48,22 +56,12 @@ public struct DICOMFile: Sendable {
         guard let frameCount = Int(dataset[.numberOfFrames]?.stringValue ?? "1"), frameCount > 0 else { return nil }
         let pixelCount = Int(rows) * Int(columns)
         let values: [Data]
-        var outputSamples = Int(samplesPerPixel)
         var outputPhotometric = PhotometricInterpretation(name: photometricInterpretation)
+        var outputPlanarConfiguration = Int(dataset[.planarConfiguration]?.uint16Value ?? 0)
         switch transferSyntax {
         case .rleLossless:
-            guard let fragments = pixelElement.encapsulatedFragments,
-                  let fragmentOffsets = pixelElement.encapsulatedFragmentOffsets,
-                  let basicOffsetTable = pixelElement.basicOffsetTable,
-                  let frameFragments = try? RLELosslessDecoder.frameFragments(
-                    fragments: fragments,
-                    fragmentOffsets: fragmentOffsets,
-                    basicOffsetTable: basicOffsetTable,
-                    frameCount: frameCount
-                  ) else {
-                return nil
-            }
-            values = frameFragments.compactMap { fragments in
+            guard let frames = encapsulatedFrames(of: pixelElement, frameCount: frameCount) else { return nil }
+            values = frames.compactMap { fragments in
                 switch (samplesPerPixel, bitsAllocated) {
                 case (1, 8): try? RLELosslessDecoder.decode8BitMonochrome(fragments: fragments, pixelCount: pixelCount)
                 case (1, 16): try? RLELosslessDecoder.decode16BitMonochrome(fragments: fragments, pixelCount: pixelCount)
@@ -71,15 +69,34 @@ public struct DICOMFile: Sendable {
                 default: nil
                 }
             }
-            guard values.count == frameCount else { return nil }
+
         case .jpegBaseline, .jpeg2000Lossless, .jpeg2000:
-            guard let fragments = pixelElement.encapsulatedFragments,
-                  let fragmentOffsets = pixelElement.encapsulatedFragmentOffsets,
-                  let basicOffsetTable = pixelElement.basicOffsetTable,
-                  let frames = try? RLELosslessDecoder.frameFragments(fragments: fragments, fragmentOffsets: fragmentOffsets, basicOffsetTable: basicOffsetTable, frameCount: frameCount) else { return nil }
-            values = frames.compactMap { try? JPEGFrameDecoder.decodeRGB(fragments: $0, width: Int(columns), height: Int(rows)) }
-            guard values.count == frameCount else { return nil }
-            outputSamples = 3; outputPhotometric = .rgb
+            // ImageIO decodes these transfer syntaxes to 8-bit samples, so a
+            // frame declaring any other Bits Allocated can't be represented
+            // faithfully; saying so here beats handing back pixel data whose
+            // attributes contradict its own bytes.
+            guard bitsAllocated == 8,
+                  let frames = encapsulatedFrames(of: pixelElement, frameCount: frameCount) else { return nil }
+            switch (samplesPerPixel, outputPhotometric) {
+            case (3, _):
+                values = frames.compactMap {
+                    try? JPEGFrameDecoder.decodeRGB(fragments: $0, width: Int(columns), height: Int(rows))
+                }
+                // ImageIO converts the JPEG's own color space, so the decoded
+                // frame is interleaved RGB whatever the dataset declared
+                // (JPEG Baseline pixel data is usually `YBR_FULL_422`).
+                outputPhotometric = .rgb
+                outputPlanarConfiguration = 0
+            case (1, .monochrome1), (1, .monochrome2):
+                // Decoded as single-sample grayscale, keeping the stored
+                // polarity so `MONOCHROME1` still inverts when rendered.
+                values = frames.compactMap {
+                    try? JPEGFrameDecoder.decodeMonochrome(fragments: $0, width: Int(columns), height: Int(rows))
+                }
+            default:
+                return nil
+            }
+
         default:
             guard bitsAllocated.isMultiple(of: 8) else { return nil }
             let bytesPerFrame = pixelCount * Int(samplesPerPixel) * (Int(bitsAllocated) / 8)
@@ -88,14 +105,16 @@ public struct DICOMFile: Sendable {
                 pixelElement.value.subdata(in: frame * bytesPerFrame..<(frame + 1) * bytesPerFrame)
             }
         }
+        guard values.count == frameCount else { return nil }
+
         return values.map { value in DICOMPixelData(
             value: value,
             rows: Int(rows),
             columns: Int(columns),
-            samplesPerPixel: outputSamples,
+            samplesPerPixel: Int(samplesPerPixel),
             bitsAllocated: Int(bitsAllocated),
             photometricInterpretation: outputPhotometric,
-            planarConfiguration: Int(dataset[.planarConfiguration]?.uint16Value ?? 0),
+            planarConfiguration: outputPlanarConfiguration,
             bitsStored: dataset[.bitsStored]?.uint16Value.map(Int.init),
             pixelRepresentation: Int(dataset[.pixelRepresentation]?.uint16Value ?? 0),
             rescaleSlope: dataset[.rescaleSlope]?.doubleValue ?? 1.0,
@@ -103,6 +122,23 @@ public struct DICOMFile: Sendable {
             defaultWindowCenter: dataset[.windowCenter]?.doubleValue,
             defaultWindowWidth: dataset[.windowWidth]?.doubleValue
         ) }
+    }
+
+    /// The fragments of an encapsulated Pixel Data element, grouped per
+    /// frame. `nil` if the element isn't encapsulated or its Basic Offset
+    /// Table doesn't describe `frameCount` frames.
+    private func encapsulatedFrames(of element: DICOMElement, frameCount: Int) -> [[Data]]? {
+        guard let fragments = element.encapsulatedFragments,
+              let fragmentOffsets = element.encapsulatedFragmentOffsets,
+              let basicOffsetTable = element.basicOffsetTable else {
+            return nil
+        }
+        return try? EncapsulatedPixelData.frameFragments(
+            fragments: fragments,
+            fragmentOffsets: fragmentOffsets,
+            basicOffsetTable: basicOffsetTable,
+            frameCount: frameCount
+        )
     }
 
     /// Parses a DICOM Part 10 file from memory.
@@ -136,7 +172,7 @@ public struct DICOMFile: Sendable {
             throw DICOMError.missingTransferSyntaxUID
         }
         transferSyntax = TransferSyntax(uid: uid)
-        guard transferSyntax == .explicitVRLittleEndian || transferSyntax == .implicitVRLittleEndian || transferSyntax == .rleLossless || transferSyntax == .jpegBaseline || transferSyntax == .jpeg2000Lossless || transferSyntax == .jpeg2000 else {
+        guard transferSyntax.isSupported else {
             throw DICOMError.unsupportedTransferSyntax(uid)
         }
 

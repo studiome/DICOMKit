@@ -54,14 +54,11 @@ struct DICOMDatasetTests {
 
 struct DICOMVRTests {
     @Test func uses32BitLengthMatchesPS3_5ExtraLengthVRs() {
-        // DICOM PS3.5 defines exactly these VRs as using a 4-byte length field
-        // in Explicit VR encoding (the same set pydicom calls `extra_length_VRs`).
-        let expected: Set<DICOMVR> = [
-            .OB, .OD, .OF, .OL, .OV, .OW, .SQ, .SV, .UC, .UN, .UR, .UT, .UV
-        ]
-
+        // `explicitVR32BitLengthVRs` is the tests' own copy of the PS3.5 set,
+        // hardcoded independently of the production switch this compares it
+        // against (see its declaration).
         let actual = Set(DICOMVR.allCases.filter(\.uses32BitLength))
 
-        #expect(actual == expected)
+        #expect(actual == explicitVR32BitLengthVRs)
     }
 }
