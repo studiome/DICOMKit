@@ -1,5 +1,48 @@
 # Third-party test data
 
+## `charLSMonochrome2x2`
+
+Source: [`team-charls/charls`](https://github.com/team-charls/charls),
+`test/data/8bit-monochrome-2x2.jls`.
+
+The 29-byte JPEG-LS interchange stream is retained in
+`Support/JPEGLSTestSupport.swift` as a byte array and decodes to the 8-bit
+monochrome samples `1, 2, 3, 4`. CharLS declares binary `.jls` test data as
+BSD-3-Clause in its [`REUSE.toml`](https://github.com/team-charls/charls/blob/main/REUSE.toml).
+
+- Source commit: `c0bae6496fa5d787fbb4698debd1e5decb40cf3a`
+- SHA-256: `7377a5fc8fe8dc4958dc87312e7458df04aa96b804c5021bd5352b049cca5481`
+- Source license: <https://github.com/team-charls/charls/blob/main/LICENSE.md>
+
+Copyright (c) 2024 Team CharLS
+
+BSD 3-Clause License
+
+Copyright (c) 2007, Jan de Vaan and Victor Derks
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+
+1. Redistributions of source code must retain the above copyright notice, this
+   list of conditions and the following disclaimer.
+2. Redistributions in binary form must reproduce the above copyright notice,
+   this list of conditions and the following disclaimer in the documentation
+   and/or other materials provided with the distribution.
+3. Neither the name of the copyright holder nor the names of its contributors
+   may be used to endorse or promote products derived from this software
+   without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
 ## `CT_small.dcm`
 
 Source: [`pydicom/pydicom`](https://github.com/pydicom/pydicom),

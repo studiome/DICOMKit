@@ -187,7 +187,6 @@ struct JPEGFrameDecoderTests {
 
     @Test(arguments: [
         TransferSyntax.jpegLossless,
-        .jpegLSLossless,
         .jpegLSNearLossless
     ])
     func recognizesUnimplementedLosslessJPEGSyntaxWithoutUsingImageIO(transferSyntax: TransferSyntax) throws {
@@ -228,6 +227,30 @@ struct JPEGFrameDecoderTests {
         #expect(pixelData.bitsAllocated == 8)
         #expect(pixelData.bitsStored == 8)
         #expect(pixelData.value == source)
+    }
+
+    @Test func decodesReferenceJPEGLSLosslessMonochromeFrame() throws {
+        let frame = try JPEGLSDecoder.decodeLossless(
+            fragments: [charLSMonochrome2x2],
+            width: 2,
+            height: 2,
+            bitsAllocated: 8
+        )
+        #expect(frame.value == Data([1, 2, 3, 4]))
+
+        let data = imageFile(
+            transferSyntaxUID: TransferSyntax.jpegLSLossless.uid,
+            rows: 2,
+            columns: 2,
+            bitsAllocated: 8,
+            pixelDataElement: encapsulatedPixelData(fragments: [charLSMonochrome2x2])
+        )
+
+        let pixelData = try #require(try DICOMFile(data: data).pixelData)
+
+        #expect(pixelData.bitsAllocated == 8)
+        #expect(pixelData.bitsStored == 8)
+        #expect(pixelData.value == Data([1, 2, 3, 4]))
     }
 
     @Test func decodes12BitJPEGLosslessSV1Into16BitDICOMStorage() throws {

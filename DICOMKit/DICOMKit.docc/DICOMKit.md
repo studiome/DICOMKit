@@ -36,14 +36,18 @@ The library supports defined-length and undefined-length sequences, a focused
 set of uncompressed image formats and 8-bit/16-bit monochrome plus 8-bit RGB
 RLE Lossless decoding. JPEG Lossless SV1 (Transfer Syntax `.70`) supports
 single-component `MONOCHROME1` / `MONOCHROME2` frames with 2–16-bit precision.
+JPEG-LS Lossless (Transfer Syntax `.80`) supports single-component 8-bit
+`MONOCHROME1` / `MONOCHROME2` frames with default coding parameters. JPEG-LS
+16-bit data, custom preset parameters, restart markers, and near-lossless
+Transfer Syntax `.81` remain unsupported.
 JPEG Baseline (Process 1), JPEG 2000 Lossless, and
 JPEG 2000 Pixel Data are decoded through ImageIO, which produces 8-bit
 samples: `RGB` for three-sample frames and grayscale for `MONOCHROME1` /
 `MONOCHROME2` frames, while frames declaring any other `Bits Allocated` are
 reported as undecodable. Multi-frame encapsulated images require a Basic
 Offset Table and are available through ``DICOMFile/pixelDataFrames``. JPEG
-Lossless predictors other than SV1, JPEG-LS, writing, DIMSE, and DICOMweb
-remain outside the current scope.
+Lossless predictors other than SV1, remaining JPEG-LS variants, writing,
+DIMSE, and DICOMweb remain outside the current scope.
 Pixel Padding Value
 `(0028,0120)` is also not yet applied.
 
