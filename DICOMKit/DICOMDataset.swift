@@ -1,5 +1,9 @@
 /// A collection of DICOM elements indexed by tag.
-public struct DICOMDataset: Sendable, Sequence {
+///
+/// Iterating a dataset (for example with `for element in dataset`) visits
+/// its elements in ascending tag order, since DICOM datasets are
+/// conventionally interpreted that way.
+public struct DICOMDataset: Sendable, Sequence, Equatable {
     private var storage: [DICOMTag: DICOMElement]
 
     /// Creates a dataset containing the supplied elements.
@@ -12,8 +16,21 @@ public struct DICOMDataset: Sendable, Sequence {
     /// Returns the element for `tag`, if present.
     public subscript(tag: DICOMTag) -> DICOMElement? { storage[tag] }
 
-    /// Returns an iterator over the dataset's elements.
-    public func makeIterator() -> Dictionary<DICOMTag, DICOMElement>.Values.Iterator {
-        storage.values.makeIterator()
+    /// The number of elements in the dataset.
+    public var count: Int { storage.count }
+
+    /// Whether the dataset contains no elements.
+    public var isEmpty: Bool { storage.isEmpty }
+
+    /// The dataset's tags, in ascending order.
+    public var tags: [DICOMTag] { storage.keys.sorted() }
+
+    /// Returns an iterator that visits the dataset's elements in ascending tag order.
+    ///
+    /// The return type is deliberately opaque instead of exposing the
+    /// dictionary-backed storage, so the underlying storage representation
+    /// can change in a future version without being an ABI-breaking change.
+    public func makeIterator() -> some IteratorProtocol<DICOMElement> {
+        storage.values.sorted { $0.tag < $1.tag }.makeIterator()
     }
 }

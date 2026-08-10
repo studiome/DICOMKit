@@ -1,7 +1,7 @@
 import Foundation
 
 /// A DICOM data element and its decoded structural information.
-public struct DICOMElement: Sendable {
+public struct DICOMElement: Sendable, Equatable {
     /// The element's DICOM tag.
     public let tag: DICOMTag
     /// The element's Value Representation.
