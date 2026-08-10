@@ -656,6 +656,31 @@ struct DICOMKitTests {
         #expect(try imageBytes(image) == Data([0, 64, 128, 255]))
     }
 
+    @Test func decodesSingleFrame16BitRLELosslessPixelData() throws {
+        let data = part10File(
+            transferSyntaxUID: TransferSyntax.rleLossless.uid,
+            datasetElements: [
+                element(tag: .samplesPerPixel, vr: .US, value: uint16(1)),
+                element(tag: .photometricInterpretation, vr: .CS, value: "MONOCHROME2"),
+                element(tag: .rows, vr: .US, value: uint16(1)),
+                element(tag: .columns, vr: .US, value: uint16(2)),
+                element(tag: .bitsAllocated, vr: .US, value: uint16(16)),
+                // RLE segments are stored most-significant byte first. The
+                // two segments below represent little-endian samples 0 and
+                // 1000 once reconstructed: [00 00] and [E8 03].
+                encapsulatedPixelData(fragments: [rleFrame(segments: [
+                    Data([0x01, 0x00, 0x03]),
+                    Data([0x01, 0x00, 0xE8])
+                ])])
+            ]
+        )
+
+        let file = try DICOMFile(data: data)
+        let image = try #require(file.pixelData).cgImage(windowCenter: 500, windowWidth: 1_000)
+
+        #expect(try imageBytes(image) == Data([0, 255]))
+    }
+
     @Test func rejectsSequenceItemTagThatIsNeitherItemNorDelimiter() {
         let data = part10File(
             transferSyntaxUID: TransferSyntax.explicitVRLittleEndian.uid,
@@ -828,10 +853,18 @@ private func encapsulatedPixelData(fragments: [Data]) -> Data {
 }
 
 private func rleFrame(segment: Data) -> Data {
-    var frame = uint32(1)
-    frame.append(uint32(64))
-    frame.append(Data(repeating: 0, count: 56))
-    frame.append(segment)
+    rleFrame(segments: [segment])
+}
+
+private func rleFrame(segments: [Data]) -> Data {
+    var frame = uint32(UInt32(segments.count))
+    var offset = 64
+    for segment in segments {
+        frame.append(uint32(UInt32(offset)))
+        offset += segment.count
+    }
+    frame.append(Data(repeating: 0, count: 64 - frame.count))
+    for segment in segments { frame.append(segment) }
     return frame
 }
 
