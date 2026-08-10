@@ -11,6 +11,7 @@ enum JPEGLSDecoder {
     struct DecodedFrame {
         let value: Data
         let precision: Int
+        let samplesPerPixel: Int
     }
 
     static func decodeLossless(
@@ -28,15 +29,31 @@ enum JPEGLSDecoder {
         let header = try parser.readHeader(expectedWidth: expectedWidth, expectedHeight: expectedHeight)
         guard header.precision <= bitsAllocated else { throw DICOMImageError.invalidImageAttributes }
 
-        var decoder = ScanDecoder(
-            reader: EntropyBitReader(data: data, offset: parser.offset),
-            width: expectedWidth,
-            height: expectedHeight,
-            precision: header.precision,
-            parameters: header.parameters,
-            restartInterval: header.restartInterval
-        )
-        let samples = try decoder.decode()
+        let samples: [Int]
+        switch (header.componentCount, header.interleaveMode) {
+        case (1, 0):
+            var decoder = ScanDecoder(
+                reader: EntropyBitReader(data: data, offset: parser.offset),
+                width: expectedWidth,
+                height: expectedHeight,
+                precision: header.precision,
+                parameters: header.parameters,
+                restartInterval: header.restartInterval
+            )
+            samples = try decoder.decode()
+        case (3, 2):
+            var decoder = RGBScanDecoder(
+                reader: EntropyBitReader(data: data, offset: parser.offset),
+                width: expectedWidth,
+                height: expectedHeight,
+                precision: header.precision,
+                parameters: header.parameters,
+                restartInterval: header.restartInterval
+            )
+            samples = try decoder.decode()
+        default:
+            throw DICOMImageError.unsupportedPixelFormat
+        }
 
         var value = Data()
         value.reserveCapacity(samples.count * (bitsAllocated / 8))
@@ -48,7 +65,7 @@ enum JPEGLSDecoder {
                 value.append(UInt8(sample >> 8))
             }
         }
-        return DecodedFrame(value: value, precision: header.precision)
+        return DecodedFrame(value: value, precision: header.precision, samplesPerPixel: header.componentCount)
     }
 }
 
@@ -57,6 +74,8 @@ private extension JPEGLSDecoder {
         let precision: Int
         let parameters: CodingParameters
         let restartInterval: Int
+        let componentCount: Int
+        let interleaveMode: Int
     }
 
     struct CodingParameters {
@@ -71,7 +90,7 @@ private extension JPEGLSDecoder {
         let data: Data
         var offset = 0
         var precision: Int?
-        var componentIdentifier: UInt8?
+        var componentIdentifiers: [UInt8] = []
         var parameters: CodingParameters?
         var restartInterval = 0
 
@@ -97,36 +116,50 @@ private extension JPEGLSDecoder {
 
         mutating func readFrameHeader(expectedWidth: Int, expectedHeight: Int) throws {
             let end = try readSegmentEnd()
-            guard end - offset == 9 else { throw DICOMImageError.unsupportedPixelFormat }
+            guard end - offset >= 9 else { throw DICOMImageError.unsupportedPixelFormat }
             let parsedPrecision = Int(try readByte())
             let parsedHeight = Int(try readUInt16())
             let parsedWidth = Int(try readUInt16())
             let componentCount = try readByte()
             guard (2...16).contains(parsedPrecision), parsedWidth == expectedWidth,
-                  parsedHeight == expectedHeight, componentCount == 1 else {
+                  parsedHeight == expectedHeight, componentCount == 1 || componentCount == 3,
+                  end - offset == Int(componentCount) * 3 else {
                 throw DICOMImageError.unsupportedPixelFormat
             }
-            let identifier = try readByte()
-            let sampling = try readByte()
-            let mappingTable = try readByte()
-            guard sampling == 0x11, mappingTable == 0 else { throw DICOMImageError.unsupportedPixelFormat }
+            var identifiers: [UInt8] = []
+            for _ in 0..<componentCount {
+                let identifier = try readByte()
+                let sampling = try readByte()
+                let mappingTable = try readByte()
+                guard sampling == 0x11, mappingTable == 0 else { throw DICOMImageError.unsupportedPixelFormat }
+                identifiers.append(identifier)
+            }
             precision = parsedPrecision
-            componentIdentifier = identifier
+            componentIdentifiers = identifiers
         }
 
         mutating func readScanHeader() throws -> Header {
             let end = try readSegmentEnd()
-            guard let precision, let componentIdentifier, end - offset == 6 else {
+            guard let precision, end - offset >= 6 else {
                 throw DICOMImageError.unsupportedPixelFormat
             }
             let componentCount = try readByte()
-            let scanComponentIdentifier = try readByte()
-            let mappingTable = try readByte()
+            guard componentCount == componentIdentifiers.count, end - offset == 3 + componentCount * 2 else {
+                throw DICOMImageError.unsupportedPixelFormat
+            }
+            var scanComponentIdentifiers: [UInt8] = []
+            for _ in 0..<componentCount {
+                let identifier = try readByte()
+                let mappingTable = try readByte()
+                guard mappingTable == 0 else { throw DICOMImageError.unsupportedPixelFormat }
+                scanComponentIdentifiers.append(identifier)
+            }
             let near = try readByte()
             let interleaveMode = try readByte()
             let pointTransform = try readByte()
-            guard componentCount == 1, scanComponentIdentifier == componentIdentifier,
-                  mappingTable == 0, near == 0, interleaveMode == 0, pointTransform == 0 else {
+            guard scanComponentIdentifiers == componentIdentifiers, near == 0,
+                  (componentCount == 1 && interleaveMode == 0) || (componentCount == 3 && interleaveMode == 2),
+                  pointTransform == 0 else {
                 throw DICOMImageError.unsupportedPixelFormat
             }
             let defaultParameters = CodingParameters(
@@ -140,7 +173,13 @@ private extension JPEGLSDecoder {
             guard parameters.maximumValue == defaultParameters.maximumValue else {
                 throw DICOMImageError.unsupportedPixelFormat
             }
-            return Header(precision: precision, parameters: parameters, restartInterval: restartInterval)
+            return Header(
+                precision: precision,
+                parameters: parameters,
+                restartInterval: restartInterval,
+                componentCount: Int(componentCount),
+                interleaveMode: Int(interleaveMode)
+            )
         }
 
         mutating func readRestartInterval() throws {
@@ -274,7 +313,7 @@ private extension JPEGLSDecoder {
     }
 
     struct ScanDecoder {
-        private static let runIndexJ = [0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 9, 10, 11, 12, 13, 14, 15]
+        fileprivate static let runIndexJ = [0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 9, 10, 11, 12, 13, 14, 15]
 
         var reader: EntropyBitReader
         let width: Int
@@ -483,5 +522,160 @@ private extension JPEGLSDecoder {
 
         private func clamp(_ value: Int) -> Int { min(max(0, value), maximumValue) }
         private func sign(of value: Int) -> Int { value < 0 ? -1 : 1 }
+    }
+
+    /// Baseline JPEG-LS sample-interleaved RGB scan decoder. Each component
+    /// maintains independent regular and run-interruption contexts; run length
+    /// state is shared by the interleaved pixel triplet.
+    struct RGBScanDecoder {
+        var reader: EntropyBitReader
+        let width: Int
+        let height: Int
+        let precision: Int
+        let maximumValue: Int
+        let initialA: Int
+        let limit: Int
+        let parameters: CodingParameters
+        let restartInterval: Int
+        var regularContexts: [RegularContext]
+        var runContexts: [RunContext]
+        var runIndex = 0
+
+        init(reader: EntropyBitReader, width: Int, height: Int, precision: Int, parameters: CodingParameters, restartInterval: Int) {
+            self.reader = reader
+            self.width = width
+            self.height = height
+            self.precision = precision
+            maximumValue = (1 << precision) - 1
+            initialA = max(2, (parameters.maximumValue + 1 + 32) / 64)
+            limit = 2 * (precision + max(8, precision))
+            self.parameters = parameters
+            self.restartInterval = restartInterval
+            regularContexts = Array(repeating: RegularContext(a: initialA), count: 365)
+            runContexts = [RunContext(interruptionType: 0, a: initialA), RunContext(interruptionType: 1, a: initialA)]
+        }
+
+        mutating func decode() throws -> [Int] {
+            var previous = Array(repeating: [Int](repeating: 0, count: width), count: 3)
+            var output: [Int] = []
+            output.reserveCapacity(width * height * 3)
+            var decodedPixels = 0
+            var restartMarker = 0
+            var resetPreviousLine = false
+
+            for _ in 0..<height {
+                var current = Array(repeating: [Int](repeating: 0, count: width), count: 3)
+                var x = 0
+                while x < width {
+                    let gradients = (0..<3).map { component -> (Int, Int, Int) in
+                        let ra = x > 0 ? current[component][x - 1] : previous[component][x]
+                        let rb = previous[component][x]
+                        let rc = x > 0 ? previous[component][x - 1] : rb
+                        let rd = x + 1 < width ? previous[component][x + 1] : rb
+                        return (quantize(rd - rb), quantize(rb - rc), quantize(rc - ra))
+                    }
+                    if gradients.allSatisfy({ $0.0 == 0 && $0.1 == 0 && $0.2 == 0 }) {
+                        let nextX = try decodeRun(from: x, previous: previous, current: &current)
+                        decodedPixels += nextX - x
+                        x = nextX
+                    } else {
+                        for component in 0..<3 {
+                            let ra = x > 0 ? current[component][x - 1] : previous[component][x]
+                            let rb = previous[component][x]
+                            let rc = x > 0 ? previous[component][x - 1] : rb
+                            current[component][x] = try decodeRegular(component: component, ra: ra, rb: rb, rc: rc, gradients: gradients[component])
+                        }
+                        x += 1
+                        decodedPixels += 1
+                    }
+                    if restartInterval > 0, decodedPixels.isMultiple(of: restartInterval), decodedPixels < width * height {
+                        try reader.consumeRestartMarker(expectedIndex: restartMarker)
+                        restartMarker = (restartMarker + 1) % 8
+                        resetContexts()
+                        resetPreviousLine = true
+                    }
+                }
+                for pixel in 0..<width {
+                    output.append(current[0][pixel])
+                    output.append(current[1][pixel])
+                    output.append(current[2][pixel])
+                }
+                previous = resetPreviousLine ? Array(repeating: [Int](repeating: 0, count: width), count: 3) : current
+                resetPreviousLine = false
+            }
+            return output
+        }
+
+        private mutating func decodeRegular(component: Int, ra: Int, rb: Int, rc: Int, gradients: (Int, Int, Int)) throws -> Int {
+            let signedContext = (gradients.0 * 9 + gradients.1) * 9 + gradients.2
+            let sign = signedContext < 0 ? -1 : 1
+            let index = abs(signedContext)
+            var context = regularContexts[index]
+            let prediction = clamp(predict(ra, rb, rc) + sign * context.c)
+            let k = golombParameter(a: context.a, n: context.n)
+            var error = unmap(try decodeMappedError(k: k, limit: limit))
+            if k == 0, 2 * context.b + context.n - 1 < 0 { error = -error - 1 }
+            updateRegular(&context, error: error)
+            regularContexts[index] = context
+            return reconstruct(prediction: prediction, error: sign * error)
+        }
+
+        private mutating func decodeRun(from start: Int, previous: [[Int]], current: inout [[Int]]) throws -> Int {
+            var length = 0
+            let remaining = width - start
+            while try reader.readBit() == 1 {
+                let count = min(1 << ScanDecoder.runIndexJ[runIndex], remaining - length)
+                length += count
+                if count == 1 << ScanDecoder.runIndexJ[runIndex], runIndex < ScanDecoder.runIndexJ.count - 1 { runIndex += 1 }
+                if length == remaining { break }
+            }
+            if length < remaining, ScanDecoder.runIndexJ[runIndex] > 0 {
+                length += try reader.readBits(count: ScanDecoder.runIndexJ[runIndex])
+            }
+            guard length <= remaining else { throw DICOMImageError.unsupportedPixelFormat }
+            for component in 0..<3 {
+                let ra = start > 0 ? current[component][start - 1] : previous[component][start]
+                if length > 0 {
+                    for index in start..<(start + length) { current[component][index] = ra }
+                }
+            }
+            let interruption = start + length
+            guard interruption < width else { return width }
+            for component in 0..<3 {
+                let ra = interruption > 0 ? current[component][interruption - 1] : previous[component][interruption]
+                let rb = previous[component][interruption]
+                // JPEG-LS sample-interleaved components always use the
+                // component run-interruption context (RI type 0).
+                let contextIndex = 0
+                var context = runContexts[contextIndex]
+                let k = golombParameter(a: context.a + (context.n >> 1) * context.interruptionType, n: context.n)
+                let mapped = try decodeMappedError(k: k, limit: limit - ScanDecoder.runIndexJ[runIndex] - 1)
+                let error = runInterruptionError(mapped: mapped + context.interruptionType, k: k, context: context)
+                updateRun(&context, error: error, mapped: mapped)
+                runContexts[contextIndex] = context
+                current[component][interruption] = reconstruct(prediction: rb, error: error * sign(of: rb - ra))
+            }
+            if runIndex > 0 { runIndex -= 1 }
+            return interruption + 1
+        }
+
+        private mutating func decodeMappedError(k: Int, limit: Int) throws -> Int {
+            let unary = try reader.readUnaryCode()
+            if unary < limit - precision - 1 { return k == 0 ? unary : (unary << k) + (try reader.readBits(count: k)) }
+            return (try reader.readBits(count: precision)) + 1
+        }
+        private func quantize(_ value: Int) -> Int {
+            if value <= -parameters.threshold3 { return -4 }; if value <= -parameters.threshold2 { return -3 }; if value <= -parameters.threshold1 { return -2 }; if value < 0 { return -1 }; if value == 0 { return 0 }; if value < parameters.threshold1 { return 1 }; if value < parameters.threshold2 { return 2 }; if value < parameters.threshold3 { return 3 }; return 4
+        }
+        private func predict(_ ra: Int, _ rb: Int, _ rc: Int) -> Int { rc >= max(ra, rb) ? min(ra, rb) : (rc <= min(ra, rb) ? max(ra, rb) : ra + rb - rc) }
+        private func golombParameter(a: Int, n: Int) -> Int { var k = 0; while n << k < a { k += 1 }; return k }
+        private func unmap(_ value: Int) -> Int { value.isMultiple(of: 2) ? value / 2 : -(value + 1) / 2 }
+        private func runInterruptionError(mapped: Int, k: Int, context: RunContext) -> Int { let map = !mapped.isMultiple(of: 2); let magnitude = (mapped + (map ? 1 : 0)) / 2; return (k != 0 || 2 * context.nn >= context.n) == map ? -magnitude : magnitude }
+        private mutating func updateRegular(_ context: inout RegularContext, error: Int) { context.a += abs(error); context.b += error; if context.n == parameters.resetValue { context.a >>= 1; context.b >>= 1; context.n >>= 1 }; context.n += 1; if context.b + context.n <= 0 { context.b += context.n; if context.b <= -context.n { context.b = -context.n + 1 }; context.c = max(-128, context.c - 1) } else if context.b > 0 { context.b -= context.n; if context.b > 0 { context.b = 0 }; context.c = min(127, context.c + 1) } }
+        private func updateRun(_ context: inout RunContext, error: Int, mapped: Int) { if error < 0 { context.nn += 1 }; context.a += (mapped + 1 - context.interruptionType) >> 1; if context.n == parameters.resetValue { context.a >>= 1; context.n >>= 1; context.nn >>= 1 }; context.n += 1 }
+        private func reconstruct(prediction: Int, error: Int) -> Int { let value = prediction + error; if value < 0 { return value + maximumValue + 1 }; if value > maximumValue { return value - maximumValue - 1 }; return value }
+        private func clamp(_ value: Int) -> Int { min(max(0, value), maximumValue) }
+        private func sign(of value: Int) -> Int { value < 0 ? -1 : 1 }
+        private mutating func resetContexts() { regularContexts = Array(repeating: RegularContext(a: initialA), count: 365); runContexts = [RunContext(interruptionType: 0, a: initialA), RunContext(interruptionType: 1, a: initialA)]; runIndex = 0 }
     }
 }
