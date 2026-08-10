@@ -45,7 +45,7 @@ enum JPEGLSDecoder {
             )
             samples = try decoder.decode()
             try decoder.finishFrame()
-        case (3, 3, 2):
+        case (3, 3, 1), (3, 3, 2):
             var decoder = SampleDecoder(
                 reader: EntropyBitReader(data: data, offset: parser.offset),
                 width: expectedWidth,
@@ -211,7 +211,7 @@ private extension JPEGLSDecoder {
                   scanComponentIdentifiers.allSatisfy(componentIdentifiers.contains),
                   (componentIdentifiers.count == 1 && componentCount == 1 && interleaveMode == 0) ||
                   (componentIdentifiers.count == 3 && componentCount == 1 && interleaveMode == 0) ||
-                  (componentIdentifiers.count == 3 && componentCount == 3 && interleaveMode == 2),
+                  (componentIdentifiers.count == 3 && componentCount == 3 && (interleaveMode == 1 || interleaveMode == 2)),
                   pointTransform == 0 else {
                 throw DICOMImageError.unsupportedPixelFormat
             }
@@ -432,18 +432,24 @@ private extension JPEGLSDecoder {
     }
 
     /// Decodes one JPEG-LS scan: a single monochrome component, a plane of a
-    /// plane-interleaved (interleave mode 0, 3 scans) RGB frame, or a
-    /// sample-interleaved (interleave mode 2) RGB frame. `componentCount` is
-    /// 1 for the first two cases and 3 for sample-interleaved RGB; every
-    /// component of a pixel is decoded together, entering run mode only
-    /// when all components agree (T.87's triplet/quad coding).
+    /// plane-interleaved (interleave mode 0, 3 scans) RGB frame, a
+    /// line-interleaved (interleave mode 1) RGB frame, or a sample-interleaved
+    /// (interleave mode 2) RGB frame. `componentCount` is 1 for the first two
+    /// cases and 3 for the interleaved-RGB cases; `interleaveMode` selects
+    /// between the pixel-interleaved decode path (modes 0 and 2, where every
+    /// component of a pixel is decoded together) and the line-interleaved
+    /// path (mode 1, where each component's full line is decoded in turn).
     ///
     /// Regular-mode and run-mode statistics (`regularContexts`/`runContexts`)
-    /// are shared across components: JPEG-LS keeps one set of adaptive
-    /// contexts per scan, not per component. There is exactly one shared run
-    /// index (`runIndex`, sized `componentCount` for a future line-interleave
-    /// path but with only slot 0 ever touched here) because all components
-    /// of a pixel run and interrupt together.
+    /// are shared across components in every interleave mode: JPEG-LS keeps
+    /// one set of adaptive contexts per scan, not per component. The run
+    /// index, by contrast, is scoped per component only for line interleave
+    /// (each component's run-length state evolves independently down its own
+    /// column of lines); for a single component or for sample interleave
+    /// there is exactly one shared run index because all components of a
+    /// pixel run and interrupt together. `runIndex` is therefore sized
+    /// `componentCount` but the pixel-interleaved path only ever touches
+    /// slot 0.
     struct SampleDecoder {
         fileprivate static let runIndexJ = [0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 9, 10, 11, 12, 13, 14, 15]
 
@@ -499,7 +505,7 @@ private extension JPEGLSDecoder {
         }
 
         mutating func decode() throws -> [Int] {
-            try decodePixelInterleaved()
+            interleaveMode == 1 ? try decodeLineInterleaved() : try decodePixelInterleaved()
         }
 
         mutating func finishFrame() throws {
@@ -610,6 +616,85 @@ private extension JPEGLSDecoder {
                 current[component][interruption] = try decodeRunInterruptionSample(ra: ra, rb: rb, contextIndex: contextIndex, runIndexSlot: 0)
             }
             if runIndex[0] > 0 { runIndex[0] -= 1 }
+            return interruption + 1
+        }
+
+        // MARK: - Line-interleaved decoding (mode 1)
+
+        /// Decodes a scan whose samples are grouped by line: every sample of
+        /// component 0's line, then every sample of component 1's line, and
+        /// so on. Each component's line is decoded exactly as a standalone
+        /// single-component raster line (its own Ra/Rb/Rc/Rd, its own run
+        /// index and edge state), sharing only the adaptive regular/run
+        /// contexts with the other components. Returns samples in
+        /// pixel-major order (component fastest-varying).
+        private mutating func decodeLineInterleaved() throws -> [Int] {
+            var previous = Array(repeating: [Int](repeating: 0, count: width), count: componentCount)
+            var leftEdgeA = Array(repeating: 0, count: componentCount)
+            var leftEdgeC = Array(repeating: 0, count: componentCount)
+            var output = [Int](repeating: 0, count: width * height * componentCount)
+
+            var decodedSamples = 0
+            var restartIndex = 0
+            var resetPreviousLine = false
+            let totalSamples = width * height * componentCount
+            for row in 0..<height {
+                var current = Array(repeating: [Int](repeating: 0, count: width), count: componentCount)
+                for component in 0..<componentCount {
+                    var x = 0
+                    while x < width {
+                        let ra = x > 0 ? current[component][x - 1] : leftEdgeA[component]
+                        let rb = previous[component][x]
+                        let rc = x > 0 ? previous[component][x - 1] : leftEdgeC[component]
+                        let rd = x + 1 < width ? previous[component][x + 1] : rb
+                        let q1 = quantize(rd - rb)
+                        let q2 = quantize(rb - rc)
+                        let q3 = quantize(rc - ra)
+                        if q1 == 0, q2 == 0, q3 == 0 {
+                            let nextX = try decodeRunComponent(component: component, from: x, ra: ra, previousComponent: previous[component], current: &current[component])
+                            decodedSamples += nextX - x
+                            x = nextX
+                        } else {
+                            current[component][x] = try decodeRegular(ra: ra, rb: rb, rc: rc, q1: q1, q2: q2, q3: q3)
+                            x += 1
+                            decodedSamples += 1
+                        }
+                        if restartInterval > 0, decodedSamples.isMultiple(of: restartInterval), decodedSamples < totalSamples {
+                            try reader.consumeRestartMarker(expectedIndex: restartIndex)
+                            restartIndex = (restartIndex + 1) % 8
+                            resetContexts()
+                            resetPreviousLine = true
+                        }
+                    }
+                    leftEdgeC[component] = resetPreviousLine ? 0 : leftEdgeA[component]
+                    leftEdgeA[component] = resetPreviousLine ? 0 : current[component][0]
+                }
+                for pixel in 0..<width {
+                    for component in 0..<componentCount {
+                        output[(row * width + pixel) * componentCount + component] = current[component][pixel]
+                    }
+                }
+                previous = resetPreviousLine ? Array(repeating: [Int](repeating: 0, count: width), count: componentCount) : current
+                resetPreviousLine = false
+            }
+            return output
+        }
+
+        /// Decodes a run within a single component's own line, using that
+        /// component's own run index slot. The run-interruption context is
+        /// always chosen dynamically here: line interleave decodes each
+        /// component as an independent single-component scan.
+        private mutating func decodeRunComponent(component: Int, from start: Int, ra: Int, previousComponent: [Int], current: inout [Int]) throws -> Int {
+            let length = try decodeRunLength(runIndexSlot: component, remaining: width - start)
+            if length > 0 {
+                for index in start..<(start + length) { current[index] = ra }
+            }
+            let interruption = start + length
+            guard interruption < width else { return width }
+            let rb = previousComponent[interruption]
+            let contextIndex = abs(ra - rb) <= near ? 1 : 0
+            current[interruption] = try decodeRunInterruptionSample(ra: ra, rb: rb, contextIndex: contextIndex, runIndexSlot: component)
+            if runIndex[component] > 0 { runIndex[component] -= 1 }
             return interruption + 1
         }
 
