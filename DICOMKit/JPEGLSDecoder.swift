@@ -25,9 +25,6 @@ enum JPEGLSDecoder {
         }
 
         let data = fragments.reduce(into: Data()) { $0.append($1) }
-        if let decoded = try? CharLSDecoder.decode(data), decoded.precision <= bitsAllocated {
-            return DecodedFrame(value: decoded.value, precision: decoded.precision, samplesPerPixel: decoded.samplesPerPixel)
-        }
         var parser = Parser(data: data)
         let header = try parser.readHeader(expectedWidth: expectedWidth, expectedHeight: expectedHeight)
         guard header.precision <= bitsAllocated else { throw DICOMImageError.invalidImageAttributes }
