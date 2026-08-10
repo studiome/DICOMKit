@@ -53,8 +53,9 @@ public struct DICOMPixelData: Sendable {
     /// `rescaleIntercept` default to the values DICOM specifies when the
     /// corresponding attribute is absent from a dataset, so callers that
     /// don't care about them (for example, 8-bit or `RGB` pixel data) can
-    /// omit them entirely.
-    init(
+    /// omit them entirely. Public so callers can render pixel data they've
+    /// assembled themselves, independently of ``DICOMFile``.
+    public init(
         value: Data,
         rows: Int,
         columns: Int,
