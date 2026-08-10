@@ -8,10 +8,17 @@ All notable changes to DICOMKit are documented here.
   retrieval, and STOW-RS multipart instance storage.
 - Added injectable `DICOMwebTransport` and response validation for testable
   application-specific authentication and networking policies.
-- Added JPEG-LS Lossless plane-interleaved RGB decoding, including
-  multi-SOS encapsulated frames.
-- Integrated the vendored BSD-3-Clause CharLS decoder for JPEG-LS Lossless
-  and Near-Lossless sample, line, and plane interleave modes.
+- Replaced the experimental Pure Swift JPEG-LS decoder with the vendored
+  BSD-3-Clause CharLS decoder. JPEG-LS Lossless and Near-Lossless now use one
+  standards-tested implementation for sample, line, and plane interleave
+  modes.
+- Added dimensions, sample-precision, and DICOM `Bits Allocated` validation
+  to JPEG-LS decoding; 8-bit JPEG-LS samples are safely expanded for 16-bit
+  DICOM storage when required.
+- Made CharLS source-buffer lifetime safe through the complete decode call.
+- Replaced target unsafe C++ flags with the package-level C++17 language
+  setting so tagged SwiftPM releases remain consumable.
+- Added top-level CharLS BSD-3-Clause attribution and license notice.
 
 ## v0.4 — Complete
 
@@ -19,7 +26,7 @@ All notable changes to DICOMKit are documented here.
   VR Little Endian Part 10 output, defined- and undefined-length Sequences,
   and native Pixel Data.
 
-## v0.3 — Unreleased
+## v0.3 — Complete
 
 - Added JPEG Lossless, Non-Hierarchical Process 14 decoding for DICOM
   Transfer Syntaxes `.57` and `.70`, including Selection Values 1–7,
@@ -37,3 +44,4 @@ All notable changes to DICOMKit are documented here.
 
 - Multi-component JPEG Lossless remains unsupported.
 - Encapsulated multi-frame pixel data requires a Basic Offset Table.
+- CharLS does not support JPEG-LS subsampled scans or Point Transform.
