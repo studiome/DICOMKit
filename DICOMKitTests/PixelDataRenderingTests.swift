@@ -5,6 +5,17 @@ import Testing
 
 /// Rendering of 8-bit monochrome and RGB pixel data, which needs no windowing.
 struct PixelDataRenderingTests {
+    @Test func rendersOneBitPackedMonochromePixelData() throws {
+        // DICOM packs the first pixel into the least significant bit.
+        let pixelData = DICOMPixelData(
+            value: Data([0b0101_0011]), rows: 1, columns: 8,
+            samplesPerPixel: 1, bitsAllocated: 1,
+            photometricInterpretation: .monochrome2
+        )
+
+        #expect(try imageBytes(pixelData.cgImage()) == Data([255, 255, 0, 0, 255, 0, 255, 0]))
+    }
+
     @Test func rendersPaletteColorPixelData() throws {
         let lut = try DICOMPaletteColorLUT(
             firstMappedValue: 0,

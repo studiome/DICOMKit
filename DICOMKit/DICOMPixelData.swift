@@ -134,6 +134,17 @@ public struct DICOMPixelData: Sendable {
     public func cgImage(windowCenter: Double? = nil, windowWidth: Double? = nil) throws -> CGImage {
         let pixelCount = try checkedPixelCount()
         switch (photometricInterpretation, bitsAllocated) {
+        case (.monochrome1, 1), (.monochrome2, 1):
+            guard samplesPerPixel == 1 else { throw DICOMImageError.invalidImageAttributes }
+            let byteCount = (pixelCount + 7) / 8
+            let source = try requiredBytes(byteCount)
+            let pixels = Data((0..<pixelCount).map { pixel in
+                let bit = (source[pixel / 8] >> UInt8(pixel % 8)) & 1
+                let rendered = bit == 0 ? UInt8(0) : UInt8(255)
+                return photometricInterpretation == .monochrome1 ? 255 - rendered : rendered
+            })
+            return try makeImage(data: pixels, colorSpace: CGColorSpaceCreateDeviceGray(), bitsPerPixel: 8, bytesPerRow: columns)
+
         case (.monochrome1, 8), (.monochrome2, 8):
             guard samplesPerPixel == 1 else { throw DICOMImageError.invalidImageAttributes }
             let source = try requiredBytes(pixelCount)
