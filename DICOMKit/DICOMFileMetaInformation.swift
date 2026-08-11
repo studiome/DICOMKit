@@ -14,4 +14,20 @@ public struct DICOMFileMetaInformation: Sendable, Equatable {
         self.implementationClassUID = implementationClassUID
         self.implementationVersionName = implementationVersionName
     }
+
+    /// Derives media-storage identifiers from a dataset's SOP identifiers.
+    public init(dataset: DICOMDataset, implementationClassUID: String, implementationVersionName: String? = nil) throws {
+        guard let sopClassUID = dataset[.sopClassUID]?.stringValue, !sopClassUID.isEmpty else {
+            throw DICOMError.missingSOPClassUID
+        }
+        guard let sopInstanceUID = dataset[.sopInstanceUID]?.stringValue, !sopInstanceUID.isEmpty else {
+            throw DICOMError.missingSOPInstanceUID
+        }
+        self.init(
+            mediaStorageSOPClassUID: sopClassUID,
+            mediaStorageSOPInstanceUID: sopInstanceUID,
+            implementationClassUID: implementationClassUID,
+            implementationVersionName: implementationVersionName
+        )
+    }
 }

@@ -24,9 +24,6 @@ public enum DICOMWriter {
             throw DICOMError.unsupportedTransferSyntax(transferSyntax.uid)
         }
 
-        var output = Data(repeating: 0, count: 128)
-        output.append(contentsOf: "DICM".utf8)
-
         var metaElements = Array(metaInformation).filter { $0.tag.group == 0x0002 && $0.tag != .transferSyntaxUID }
         if let requiredMetaInformation {
             metaElements.removeAll {
@@ -40,10 +37,27 @@ public enum DICOMWriter {
                 metaElements.append(DICOMElement(tag: .implementationVersionName, vr: .SH, value: Data(implementationVersionName.utf8)))
             }
         }
+        metaElements.removeAll { $0.tag == DICOMTag(group: 0x0002, element: 0x0000) || $0.tag == DICOMTag(group: 0x0002, element: 0x0001) }
+        metaElements.append(DICOMElement(tag: DICOMTag(group: 0x0002, element: 0x0001), vr: .OB, value: Data([0, 1])))
         metaElements.append(DICOMElement(tag: .transferSyntaxUID, vr: .UI, value: Data(transferSyntax.uid.utf8)))
+        var encodedMeta = Data()
         for element in metaElements.sorted(by: { $0.tag < $1.tag }) {
-            try append(element, to: &output, explicitVR: true, sequenceLengthEncoding: .defined)
+            try append(element, to: &encodedMeta, explicitVR: true, sequenceLengthEncoding: .defined)
         }
+        var output = Data(repeating: 0, count: 128)
+        output.append(contentsOf: "DICM".utf8)
+        let metaLength = UInt32(encodedMeta.count)
+        let groupLength = Data([
+            UInt8(metaLength & 0xFF), UInt8((metaLength >> 8) & 0xFF),
+            UInt8((metaLength >> 16) & 0xFF), UInt8((metaLength >> 24) & 0xFF)
+        ])
+        try append(
+            DICOMElement(tag: DICOMTag(group: 0x0002, element: 0x0000), vr: .UL, value: groupLength),
+            to: &output,
+            explicitVR: true,
+            sequenceLengthEncoding: .defined
+        )
+        output.append(encodedMeta)
         for element in dataset where element.tag.group != 0x0002 {
             try append(element, to: &output, explicitVR: transferSyntax == .explicitVRLittleEndian, sequenceLengthEncoding: sequenceLengthEncoding)
         }

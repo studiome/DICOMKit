@@ -1,6 +1,10 @@
 /// Errors produced while reading a DICOM Part 10 file.
 public enum DICOMError: Error, Sendable, Equatable {
     case invalidUIDRoot
+    /// The dataset doesn't contain the SOP Class UID needed for File Meta Information.
+    case missingSOPClassUID
+    /// The dataset doesn't contain the SOP Instance UID needed for File Meta Information.
+    case missingSOPInstanceUID
     /// The file doesn't contain the 128-byte preamble followed by `DICM`.
     case missingPart10Preamble
     /// The input ended before the declared structure could be read.
