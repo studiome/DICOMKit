@@ -37,6 +37,33 @@ public struct DICOMDataset: Sendable, Sequence, Equatable {
         storage[tag]?.stringValue(characterSet: characterSet)
     }
 
+    /// Returns the Private Creator that owns a private data element.
+    ///
+    /// `nil` is returned unless `tag` is in an odd private group and has an
+    /// element number in the private data range `(gggg,10xx–FFxx)`.
+    public func privateCreator(for tag: DICOMTag) -> String? {
+        guard tag.group % 2 == 1, tag.element >= 0x1000 else { return nil }
+        let block = UInt16(tag.element >> 8)
+        guard block >= 0x10 else { return nil }
+        let creatorTag = DICOMTag(group: tag.group, element: block)
+        return storage[creatorTag]?.stringValue(characterSet: characterSet)
+    }
+
+    /// Resolves a private data element owned by `creator`.
+    ///
+    /// `element` is the low byte of the private tag (`ee` in
+    /// `(gggg,xxee)`). The first matching private creator block is used.
+    public func privateElement(creator: String, group: UInt16, element: UInt8) -> DICOMElement? {
+        guard group % 2 == 1 else { return nil }
+        for block in UInt16(0x10)...UInt16(0xFF) {
+            let creatorTag = DICOMTag(group: group, element: block)
+            guard storage[creatorTag]?.stringValue(characterSet: characterSet) == creator else { continue }
+            let tag = DICOMTag(group: group, element: (block << 8) | UInt16(element))
+            return storage[tag]
+        }
+        return nil
+    }
+
     /// The dataset's tags, in ascending order.
     public var tags: [DICOMTag] { storage.keys.sorted() }
 

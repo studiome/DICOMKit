@@ -93,6 +93,18 @@ struct DICOMElementValueTests {
 }
 
 struct DICOMDatasetTests {
+    @Test func resolvesPrivateCreatorAndPrivateElement() throws {
+        let creatorTag = DICOMTag(group: 0x0019, element: 0x0010)
+        let privateTag = DICOMTag(group: 0x0019, element: 0x1001)
+        let dataset = DICOMDataset(elements: [
+            DICOMElement(tag: creatorTag, vr: .LO, value: Data("ACME 1.0".utf8)),
+            DICOMElement(tag: privateTag, vr: .DS, value: Data("42".utf8))
+        ])
+
+        #expect(dataset.privateCreator(for: privateTag) == "ACME 1.0")
+        #expect(dataset.privateElement(creator: "ACME 1.0", group: 0x0019, element: 0x01)?.doubleValue == 42)
+    }
+
     @Test func datasetInitRetainsLastElementForDuplicateTags() {
         let first = DICOMElement(tag: .patientName, vr: .PN, value: Data("Doe^Jane".utf8))
         let second = DICOMElement(tag: .patientName, vr: .PN, value: Data("Doe^John".utf8))
