@@ -3,6 +3,8 @@ public enum DICOMError: Error, Sendable, Equatable {
     case invalidUIDRoot
     /// A Deflated Explicit VR Little Endian dataset could not be decompressed.
     case invalidDeflatedData
+    /// A DICOM JSON representation cannot be converted to a DICOM element.
+    case invalidDICOMJSON
     /// The dataset doesn't contain the SOP Class UID needed for File Meta Information.
     case missingSOPClassUID
     /// The dataset doesn't contain the SOP Instance UID needed for File Meta Information.

@@ -93,6 +93,20 @@ struct DICOMElementValueTests {
 }
 
 struct DICOMDatasetTests {
+    @Test func convertsTypedDICOMJSONDatasets() throws {
+        let nested = DICOMDataset(elements: [DICOMElement(tag: .referencedSOPClassUID, vr: .UI, value: Data("1.2.3".utf8))])
+        let dataset = DICOMDataset(elements: [
+            DICOMElement(tag: .patientName, vr: .PN, value: Data("Doe^Jane".utf8)),
+            DICOMElement(tag: .rows, vr: .US, value: uint16(512)),
+            DICOMElement(tag: .referencedStudySequence, vr: .SQ, value: Data(), sequenceItems: [nested])
+        ])
+        let json = DICOMJSONDataset(dataset: dataset)
+
+        #expect(json.elements["00100010"]?.value == [.string("Doe^Jane")])
+        #expect(json.elements["00280010"]?.value == [.number(512)])
+        #expect(try json.dicomDataset() == dataset)
+    }
+
     @Test func exposesImageGeometry() throws {
         let dataset = DICOMDataset(elements: [
             DICOMElement(tag: .pixelSpacing, vr: .DS, value: Data("0.5\\0.75".utf8)),
