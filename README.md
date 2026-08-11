@@ -8,7 +8,7 @@ Swift-first utilities for reading DICOM Part 10 files on iPadOS and macOS.
 
 > **Status: early development.** DICOMKit is not yet suitable for clinical use.
 
-See the [changelog](CHANGELOG.md) for the v0.3 implementation status.
+See the [changelog](CHANGELOG.md) for the current implementation status.
 
 ## Current capabilities
 
@@ -42,9 +42,10 @@ See the [changelog](CHANGELOG.md) for the v0.3 implementation status.
   `RGB` 8-bit Pixel Data. The
   JPEG-LS coverage is verified with BSD-3-Clause CharLS-generated reference
   streams.
-- Decodes 8-bit JPEG Baseline (Process 1), JPEG 2000 Lossless, and JPEG 2000
-  Pixel Data via ImageIO, as either interleaved `RGB` (whatever color space
-  the JPEG itself uses, including `YBR_FULL_422`) or single-sample
+- Decodes 8-bit JPEG Baseline (Process 1) Pixel Data with libjpeg-turbo 3.1.3,
+  and JPEG 2000 Lossless / JPEG 2000 Pixel Data with ImageIO, as either
+  interleaved `RGB` (whatever color space the JPEG itself uses, including
+  `YBR_FULL_422`) or single-sample
   `MONOCHROME1` / `MONOCHROME2`; multiple frames require a Basic Offset Table
 - Writes DICOM Part 10 files using Explicit VR Little Endian or Implicit VR
   Little Endian, including defined- or undefined-length Sequences and native
@@ -52,9 +53,22 @@ See the [changelog](CHANGELOG.md) for the v0.3 implementation status.
 - Provides async DICOMweb clients for QIDO-RS study searches, WADO-RS
   instance retrieval, and STOW-RS multipart instance storage; transports are
   injectable for application authentication and testing
-- Uses the BSD-3-Clause CharLS codec through a Git submodule for
-  standards-complete JPEG-LS decoding, including sample, line, and plane
-  interleave modes
+- Uses the BSD-3-Clause CharLS codec through a Git submodule for JPEG-LS
+  decoding, including sample, line, and plane interleave modes
+
+## Codec backends
+
+| DICOM transfer syntax | Decoder | Current scope |
+| --- | --- | --- |
+| JPEG Baseline `.50` | libjpeg-turbo 3.1.3 (TurboJPEG API) | 8-bit `RGB` and monochrome output; JPEG color spaces are converted to output RGB. |
+| JPEG Lossless `.57`, `.70` | DICOMKit Swift decoder | 2–16-bit monochrome and single-scan, 1:1:1 interleaved `RGB`; `.70` requires Selection Value 1. |
+| JPEG-LS `.80`, `.81` | CharLS Git submodule | Lossless and Near-Lossless; supported interleave modes are listed above. |
+| JPEG 2000 `.90`, `.91` | ImageIO | 8-bit `RGB` or monochrome output. |
+
+libjpeg-turbo is selected only for JPEG Baseline. Although its TurboJPEG API
+also supports additional JPEG modes, DICOMKit keeps Process 14 decoding in its
+dedicated decoder so that DICOM precision, predictor, and component-layout
+validation remains explicit.
 
 ```swift
 let file = try DICOMFile(data: data)
@@ -144,6 +158,11 @@ committing it:
 swift test
 ```
 
+libjpeg-turbo is a SwiftPM binary target, downloaded from the pinned 3.1.3
+release URL and verified with the SHA-256 checksum in `Package.swift`. No
+system installation is required. To update it, change both the release URL and
+checksum together, then run the macOS tests and the iOS build below.
+
 To compile the package for iOS and iPadOS:
 
 ```bash
@@ -177,5 +196,5 @@ pull request:
 ## License
 
 DICOMKit is available under the [MIT License](LICENSE).
-Its vendored JPEG-LS decoder, CharLS, is available under the BSD 3-Clause
-License; see [third-party notices](THIRD_PARTY_NOTICES.md).
+Its JPEG codec dependencies, CharLS and libjpeg-turbo, have their own license
+terms; see [third-party notices](THIRD_PARTY_NOTICES.md).

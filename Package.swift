@@ -14,6 +14,11 @@ let package = Package(
         )
     ],
     targets: [
+        .binaryTarget(
+            name: "TurboJPEG",
+            url: "https://github.com/TimOliver/libjpeg-turbo-cocoa/releases/download/3.1.3/libjpeg-turbo-v3.1.3-xcframework-turbojpeg-static.zip",
+            checksum: "f1eef005e7236b9b2c93a9abc104933f302ceac49b272467cd8083c91ca428d6"
+        ),
         .target(
             name: "CharLS",
             path: "Vendor/CharLS",
@@ -41,8 +46,14 @@ let package = Package(
             ]
         ),
         .target(
+            name: "CTurboJPEG",
+            dependencies: ["TurboJPEG"],
+            path: "Sources/CTurboJPEG",
+            publicHeadersPath: "include"
+        ),
+        .target(
             name: "DICOMKit",
-            dependencies: ["CCharLS"],
+            dependencies: ["CCharLS", "CTurboJPEG"],
             path: "DICOMKit",
             swiftSettings: [
                 .swiftLanguageMode(.v6)

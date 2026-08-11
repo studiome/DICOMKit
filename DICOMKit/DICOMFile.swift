@@ -51,12 +51,12 @@ public struct DICOMFile: Sendable {
     /// without a Basic Offset Table aren't currently supported because their
     /// frame boundaries cannot be determined reliably.
     ///
-    /// JPEG Baseline and JPEG 2000 frames are decoded through ImageIO, which
-    /// produces 8-bit samples: frames declaring any other Bits Allocated
-    /// yield `nil` rather than pixel data whose attributes contradict its
-    /// bytes. Three-sample frames are relabelled `RGB` because ImageIO
-    /// converts the JPEG's own color space (JPEG Baseline pixel data is
-    /// usually `YBR_FULL_422`); single-sample frames keep their
+    /// JPEG Baseline frames are decoded through libjpeg-turbo and JPEG 2000
+    /// frames through ImageIO. Both produce 8-bit samples: frames declaring
+    /// any other Bits Allocated yield `nil` rather than pixel data whose
+    /// attributes contradict its bytes. Three-sample frames are relabelled
+    /// `RGB` because both decoders convert the JPEG's own color space (JPEG
+    /// Baseline pixel data is usually `YBR_FULL_422`); single-sample frames keep their
     /// `MONOCHROME1` / `MONOCHROME2` interpretation and stored polarity.
     public var pixelDataFrames: [DICOMPixelData]? {
         guard let pixelElement = dataset[.pixelData],
@@ -97,16 +97,36 @@ public struct DICOMFile: Sendable {
             }
 
         case .jpegBaseline, .jpeg2000Lossless, .jpeg2000:
-            // ImageIO decodes these transfer syntaxes to 8-bit samples, so a
+            // These backends decode their transfer syntaxes to 8-bit samples, so a
             // frame declaring any other Bits Allocated can't be represented
             // faithfully; saying so here beats handing back pixel data whose
             // attributes contradict its own bytes.
             guard bitsAllocated == 8,
                   let fragmentFrames = encapsulatedFrames(of: pixelElement, frameCount: frameCount) else { return nil }
+            let decodeRGB: ([Data], Int, Int) throws -> Data = { fragments, width, height in
+                switch transferSyntax {
+                case .jpegBaseline:
+                    return try TurboJPEGDecoder.decodeRGB(fragments: fragments, width: width, height: height)
+                case .jpeg2000Lossless, .jpeg2000:
+                    return try JPEGFrameDecoder.decodeRGB(fragments: fragments, width: width, height: height)
+                default:
+                    preconditionFailure("Validated JPEG-family transfer syntax")
+                }
+            }
+            let decodeMonochrome: ([Data], Int, Int) throws -> Data = { fragments, width, height in
+                switch transferSyntax {
+                case .jpegBaseline:
+                    return try TurboJPEGDecoder.decodeMonochrome(fragments: fragments, width: width, height: height)
+                case .jpeg2000Lossless, .jpeg2000:
+                    return try JPEGFrameDecoder.decodeMonochrome(fragments: fragments, width: width, height: height)
+                default:
+                    preconditionFailure("Validated JPEG-family transfer syntax")
+                }
+            }
             switch (samplesPerPixel, sourcePhotometric) {
             case (3, _):
                 frames = fragmentFrames.compactMap {
-                    guard let value = try? JPEGFrameDecoder.decodeRGB(fragments: $0, width: Int(columns), height: Int(rows)) else {
+                    guard let value = try? decodeRGB($0, Int(columns), Int(rows)) else {
                         return nil
                     }
                     return DecodedPixelDataFrame(
@@ -118,14 +138,14 @@ public struct DICOMFile: Sendable {
                         planarConfiguration: 0
                     )
                 }
-                // ImageIO converts the JPEG's own color space, so the decoded
+                // The decoder converts the JPEG's own color space, so the decoded
                 // frame is interleaved RGB whatever the dataset declared
                 // (JPEG Baseline pixel data is usually `YBR_FULL_422`).
             case (1, .monochrome1), (1, .monochrome2):
                 // Decoded as single-sample grayscale, keeping the stored
                 // polarity so `MONOCHROME1` still inverts when rendered.
                 frames = fragmentFrames.compactMap {
-                    guard let value = try? JPEGFrameDecoder.decodeMonochrome(fragments: $0, width: Int(columns), height: Int(rows)) else {
+                    guard let value = try? decodeMonochrome($0, Int(columns), Int(rows)) else {
                         return nil
                     }
                     return DecodedPixelDataFrame(

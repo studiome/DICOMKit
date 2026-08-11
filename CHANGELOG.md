@@ -21,6 +21,9 @@ All notable changes to DICOMKit are documented here.
 - Added top-level CharLS BSD-3-Clause attribution and license notice.
 - Added interleaved 1:1:1 RGB JPEG Lossless Process 14 decoding for Transfer
   Syntaxes `.57` and `.70`, including 8-bit and 16-bit DICOM storage.
+- Replaced ImageIO with the checksum-pinned libjpeg-turbo 3.1.3 TurboJPEG API
+  for JPEG Baseline (Process 1) decoding. JPEG 2000 remains on ImageIO and
+  JPEG Lossless Process 14 remains on the DICOMKit decoder.
 
 ## v0.4 — Complete
 
@@ -48,3 +51,5 @@ All notable changes to DICOMKit are documented here.
   and multi-scan frames remain unsupported.
 - Encapsulated multi-frame pixel data requires a Basic Offset Table.
 - CharLS does not support JPEG-LS subsampled scans or Point Transform.
+- libjpeg-turbo is currently used only for 8-bit JPEG Baseline Pixel Data;
+  DICOMKit does not expose its encoding or non-Baseline modes.
