@@ -22,6 +22,8 @@ jobs:
     steps:
       - name: Check out source
         uses: actions/checkout@v6
+        with:
+          submodules: recursive
 
       - name: Configure GitHub Pages
         id: pages
