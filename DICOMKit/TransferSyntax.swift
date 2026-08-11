@@ -55,11 +55,11 @@ public enum TransferSyntax: Sendable, Equatable {
     /// ``DICOMFile/pixelDataFrames`` is `nil`.
     var isSupported: Bool {
         switch self {
-        case .implicitVRLittleEndian, .explicitVRLittleEndian, .deflatedExplicitVRLittleEndian, .rleLossless,
+        case .implicitVRLittleEndian, .explicitVRLittleEndian, .explicitVRBigEndian, .deflatedExplicitVRLittleEndian, .rleLossless,
              .jpegBaseline, .jpegLossless, .jpegLosslessSV1, .jpegLSLossless,
              .jpegLSNearLossless, .jpeg2000Lossless, .jpeg2000:
             true
-        case .explicitVRBigEndian, .unknown:
+        case .unknown:
             false
         }
     }
