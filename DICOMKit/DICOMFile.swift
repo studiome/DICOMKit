@@ -75,6 +75,7 @@ public struct DICOMFile: Sendable {
         let sourcePlanarConfiguration = Int(dataset[.planarConfiguration]?.uint16Value ?? 0)
         let paletteColorLUT = sourcePhotometric == .paletteColor ? makePaletteColorLUT() : nil
         let windowPresets = makeWindowPresets()
+        let voiLUTs = makeVOILUTs()
         guard sourcePhotometric != .paletteColor || paletteColorLUT != nil else { return nil }
         let frames: [DecodedPixelDataFrame]
         switch transferSyntax {
@@ -323,6 +324,7 @@ public struct DICOMFile: Sendable {
             defaultWindowCenter: windowPresets.first?.center ?? dataset[.windowCenter]?.doubleValue,
             defaultWindowWidth: windowPresets.first?.width ?? dataset[.windowWidth]?.doubleValue,
             windowPresets: windowPresets,
+            voiLUTs: voiLUTs,
             paletteColorLUT: paletteColorLUT
         ) }
     }
@@ -334,6 +336,32 @@ public struct DICOMFile: Sendable {
         let explanations = dataset[.windowCenterWidthExplanation]?.stringValues ?? []
         return zip(centers.indices, zip(centers, widths)).map { index, values in
             DICOMWindowPreset(center: values.0, width: values.1, explanation: explanations.indices.contains(index) ? explanations[index] : nil)
+        }
+    }
+
+    private func makeVOILUTs() -> [DICOMVOILUT] {
+        guard let items = dataset[.voiLUTSequence]?.sequenceItems else { return [] }
+        return items.compactMap { item in
+            guard let descriptor = item[.lutDescriptor]?.uint16Values,
+                  descriptor.count == 3,
+                  let dataElement = item[.lutData] else { return nil }
+            let count = descriptor[0] == 0 ? 65_536 : Int(descriptor[0])
+            let bitsPerEntry = Int(descriptor[2])
+            let data: [UInt16]?
+            if bitsPerEntry <= 8, dataElement.vr == .OB, dataElement.value.count >= count {
+                data = dataElement.value.prefix(count).map(UInt16.init)
+            } else if let words = dataElement.uint16Values, words.count >= count {
+                data = Array(words.prefix(count))
+            } else {
+                data = nil
+            }
+            guard let data else { return nil }
+            return try? DICOMVOILUT(
+                firstMappedValue: Int16(bitPattern: descriptor[1]),
+                bitsPerEntry: bitsPerEntry,
+                entries: data,
+                explanation: item[.lutExplanation]?.stringValue
+            )
         }
     }
 

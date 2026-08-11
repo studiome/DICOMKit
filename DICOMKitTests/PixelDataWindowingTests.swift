@@ -5,6 +5,40 @@ import Testing
 /// The 16-bit monochrome path, where stored samples are masked, sign-extended,
 /// rescaled, and windowed before they become 8-bit gray.
 struct PixelDataWindowingTests {
+    @Test func appliesVOILUTWhenNoExplicitWindowIsRequested() throws {
+        let lut = try DICOMVOILUT(firstMappedValue: 0, bitsPerEntry: 8, entries: [0, 255])
+        let pixelData = DICOMPixelData(
+            value: uint16(0) + uint16(1), rows: 1, columns: 2,
+            samplesPerPixel: 1, bitsAllocated: 16,
+            photometricInterpretation: .monochrome2, voiLUTs: [lut]
+        )
+
+        #expect(try imageBytes(pixelData.cgImage()) == Data([0, 255]))
+        #expect(try imageBytes(pixelData.cgImage(windowCenter: 0, windowWidth: 2)) != Data([0, 255]))
+    }
+
+    @Test func readsVOILUTSequenceFromDataset() throws {
+        let item = DICOMDataset(elements: [
+            DICOMElement(tag: .lutDescriptor, vr: .SS, value: uint16(2) + uint16(0) + uint16(8)),
+            DICOMElement(tag: .lutExplanation, vr: .LO, value: Data("Binary".utf8)),
+            DICOMElement(tag: .lutData, vr: .OB, value: Data([0, 255]))
+        ])
+        let dataset = DICOMDataset(elements: [
+            DICOMElement(tag: .samplesPerPixel, vr: .US, value: uint16(1)),
+            DICOMElement(tag: .photometricInterpretation, vr: .CS, value: Data("MONOCHROME2".utf8)),
+            DICOMElement(tag: .rows, vr: .US, value: uint16(1)),
+            DICOMElement(tag: .columns, vr: .US, value: uint16(2)),
+            DICOMElement(tag: .bitsAllocated, vr: .US, value: uint16(16)),
+            DICOMElement(tag: .voiLUTSequence, vr: .SQ, value: Data(), sequenceItems: [item]),
+            DICOMElement(tag: .pixelData, vr: .OW, value: uint16(0) + uint16(1))
+        ])
+        let data = try DICOMWriter.write(dataset: dataset)
+        let pixelData = try #require(DICOMFile(data: data).pixelData)
+
+        #expect(pixelData.voiLUTs.first?.explanation == "Binary")
+        #expect(try imageBytes(pixelData.cgImage()) == Data([0, 255]))
+    }
+
     @Test func exposesMultipleDatasetWindowPresets() throws {
         let file = try DICOMFile(data: imageFile(
             rows: 1,

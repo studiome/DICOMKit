@@ -48,6 +48,8 @@ public struct DICOMPixelData: Sendable {
     public let defaultWindowWidth: Double?
     /// All usable Window Center/Width pairs declared by the dataset.
     public let windowPresets: [DICOMWindowPreset]
+    /// VOI LUTs declared by `(0028,3010)`, in dataset order.
+    public let voiLUTs: [DICOMVOILUT]
     /// The color lookup tables used when ``photometricInterpretation`` is
     /// ``PhotometricInterpretation/paletteColor``.
     public let paletteColorLUT: DICOMPaletteColorLUT?
@@ -75,6 +77,7 @@ public struct DICOMPixelData: Sendable {
         defaultWindowCenter: Double? = nil,
         defaultWindowWidth: Double? = nil,
         windowPresets: [DICOMWindowPreset] = [],
+        voiLUTs: [DICOMVOILUT] = [],
         paletteColorLUT: DICOMPaletteColorLUT? = nil
     ) {
         self.value = value
@@ -91,6 +94,7 @@ public struct DICOMPixelData: Sendable {
         self.defaultWindowCenter = defaultWindowCenter
         self.defaultWindowWidth = defaultWindowWidth
         self.windowPresets = windowPresets
+        self.voiLUTs = voiLUTs
         self.paletteColorLUT = paletteColorLUT
     }
 
@@ -201,6 +205,14 @@ public struct DICOMPixelData: Sendable {
             let byteCount = try checkedByteCount(pixelCount, bytesPerSample: 2, samples: 1)
             let source = try requiredBytes(byteCount)
             let samples = rescaledSamples(from: source)
+
+            if windowCenter == nil, windowWidth == nil, let voiLUT = voiLUTs.first {
+                let pixels = Data(samples.map { sample in
+                    let rendered = voiLUT.renderedValue(for: sample)
+                    return photometricInterpretation == .monochrome1 ? 255 - rendered : rendered
+                })
+                return try makeImage(data: pixels, colorSpace: CGColorSpaceCreateDeviceGray(), bitsPerPixel: 8, bytesPerRow: columns)
+            }
 
             let (center, width) = resolvedWindow(explicitCenter: windowCenter, explicitWidth: windowWidth, samples: samples)
             guard center.isFinite, width.isFinite else { throw DICOMImageError.invalidWindowSettings }

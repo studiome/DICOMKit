@@ -57,6 +57,14 @@ extension DICOMTag {
     public static let windowWidth = DICOMTag(group: 0x0028, element: 0x1051)
     /// Window Center & Width Explanation `(0028,1055)`.
     public static let windowCenterWidthExplanation = DICOMTag(group: 0x0028, element: 0x1055)
+    /// VOI LUT Sequence `(0028,3010)`.
+    public static let voiLUTSequence = DICOMTag(group: 0x0028, element: 0x3010)
+    /// LUT Descriptor `(0028,3002)` inside a VOI LUT Sequence item.
+    public static let lutDescriptor = DICOMTag(group: 0x0028, element: 0x3002)
+    /// LUT Explanation `(0028,3003)` inside a VOI LUT Sequence item.
+    public static let lutExplanation = DICOMTag(group: 0x0028, element: 0x3003)
+    /// LUT Data `(0028,3006)` inside a VOI LUT Sequence item.
+    public static let lutData = DICOMTag(group: 0x0028, element: 0x3006)
     /// Rescale Intercept `(0028,1052)`.
     public static let rescaleIntercept = DICOMTag(group: 0x0028, element: 0x1052)
     /// Rescale Slope `(0028,1053)`.
