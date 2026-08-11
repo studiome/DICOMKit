@@ -47,15 +47,17 @@ Lossless and Near-Lossless sample, line, and plane interleave modes, including
 multi-component 8-bit and 16-bit frames.
 Multi-frame JPEG-LS data requires a Basic Offset Table and is available through
 ``DICOMFile/pixelDataFrames``.
-JPEG Baseline (Process 1) is decoded through libjpeg-turbo's TurboJPEG API;
-JPEG 2000 Lossless and JPEG 2000 are decoded through ImageIO. These backends
-produce 8-bit samples: `RGB` for three-sample frames and grayscale for
-`MONOCHROME1` / `MONOCHROME2` frames, while frames declaring any other `Bits
-Allocated` are reported as undecodable. Multi-frame encapsulated images
-require a Basic Offset Table and are available through
+JPEG Baseline (Process 1) and JPEG Lossless Process 14 are decoded through
+libjpeg-turbo's TurboJPEG API; JPEG 2000 Lossless and JPEG 2000 are decoded
+through ImageIO. The Baseline and JPEG 2000 backends produce 8-bit samples:
+`RGB` for three-sample frames and grayscale for `MONOCHROME1` / `MONOCHROME2`
+frames, while frames declaring any other `Bits Allocated` are reported as
+undecodable. DICOMKit normalizes Process 14 output into the declared DICOM
+storage and preserves its transfer-syntax and component validations. Multi-frame
+encapsulated images require a Basic Offset Table and are available through
 ``DICOMFile/pixelDataFrames``. libjpeg-turbo is pinned as a checksum-verified
-SwiftPM binary target and is used only for JPEG Baseline; Process 14 remains
-in DICOMKit's precision-aware decoder. JPEG
+SwiftPM binary target. The previous Process 14 decoder remains as a temporary
+fallback while fixture-output comparisons are accumulated. JPEG
 DIMSE remains outside the current scope.
 Pixel Padding Value
 `(0028,0120)` is also not yet applied.

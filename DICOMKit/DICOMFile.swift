@@ -169,12 +169,28 @@ public struct DICOMFile: Sendable {
                 return nil
             }
             frames = fragmentFrames.compactMap { fragments in
-                guard let decoded = try? JPEGLosslessDecoder.decodeLossless(
+                let turboDecoded = try? TurboJPEGDecoder.decodeLossless(
+                    fragments: fragments,
+                    width: Int(columns),
+                    height: Int(rows),
+                    bitsAllocated: sourceBitsAllocated,
+                    samplesPerPixel: sourceSamplesPerPixel
+                )
+                let legacyDecoded = turboDecoded == nil ? try? JPEGLosslessDecoder.decodeLossless(
                     fragments: fragments,
                     width: Int(columns),
                     height: Int(rows),
                     bitsAllocated: sourceBitsAllocated
-                ) else {
+                ) : nil
+                let decoded: (value: Data, precision: Int, selectionValue: Int, samplesPerPixel: Int)?
+                if let turboDecoded {
+                    decoded = (turboDecoded.value, turboDecoded.precision, turboDecoded.selectionValue, turboDecoded.samplesPerPixel)
+                } else if let legacyDecoded {
+                    decoded = (legacyDecoded.value, legacyDecoded.precision, legacyDecoded.selectionValue, 1)
+                } else {
+                    decoded = nil
+                }
+                guard let decoded else {
                     return nil
                 }
                 guard decoded.selectionValue == 1 else { return nil }
@@ -233,12 +249,28 @@ public struct DICOMFile: Sendable {
                 return nil
             }
             frames = fragmentFrames.compactMap { fragments in
-                guard let decoded = try? JPEGLosslessDecoder.decodeLossless(
+                let turboDecoded = try? TurboJPEGDecoder.decodeLossless(
+                    fragments: fragments,
+                    width: Int(columns),
+                    height: Int(rows),
+                    bitsAllocated: sourceBitsAllocated,
+                    samplesPerPixel: sourceSamplesPerPixel
+                )
+                let legacyDecoded = turboDecoded == nil ? try? JPEGLosslessDecoder.decodeLossless(
                     fragments: fragments,
                     width: Int(columns),
                     height: Int(rows),
                     bitsAllocated: sourceBitsAllocated
-                ) else {
+                ) : nil
+                let decoded: (value: Data, precision: Int, selectionValue: Int, samplesPerPixel: Int)?
+                if let turboDecoded {
+                    decoded = (turboDecoded.value, turboDecoded.precision, turboDecoded.selectionValue, turboDecoded.samplesPerPixel)
+                } else if let legacyDecoded {
+                    decoded = (legacyDecoded.value, legacyDecoded.precision, legacyDecoded.selectionValue, 1)
+                } else {
+                    decoded = nil
+                }
+                guard let decoded else {
                     return nil
                 }
                 if let declaredBitsStored = dataset[.bitsStored]?.uint16Value,

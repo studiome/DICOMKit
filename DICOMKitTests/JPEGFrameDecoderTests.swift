@@ -273,6 +273,39 @@ struct JPEGFrameDecoderTests {
         #expect(pixelData.value == Data(samples.flatMap { [UInt8($0 & 0xFF), UInt8($0 >> 8)] }))
     }
 
+    @Test func turboJPEGDecodesProcess14RGBAnd12BitMonochrome() throws {
+        let rgb: [UInt16] = [10, 20, 30, 40, 50, 60]
+        let rgbFrame = try TurboJPEGDecoder.decodeLossless(
+            fragments: [jpegLosslessRGBData(samples: rgb, width: 2, height: 1, precision: 8)],
+            width: 2,
+            height: 1,
+            bitsAllocated: 8,
+            samplesPerPixel: 3
+        )
+        #expect(rgbFrame.value == Data(rgb.map(UInt8.init)))
+        #expect(rgbFrame.precision == 8)
+
+        let monochrome: [UInt16] = [1, 2_047, 4_095, 1_024]
+        let monochromeFrame = try TurboJPEGDecoder.decodeLossless(
+            fragments: [jpegLosslessSV1Data(samples: monochrome, width: 2, height: 2, precision: 12)],
+            width: 2,
+            height: 2,
+            bitsAllocated: 16,
+            samplesPerPixel: 1
+        )
+        let legacyMonochromeFrame = try JPEGLosslessDecoder.decodeLossless(
+            fragments: [jpegLosslessSV1Data(samples: monochrome, width: 2, height: 2, precision: 12)],
+            width: 2,
+            height: 2,
+            bitsAllocated: 16
+        )
+        #expect(monochromeFrame.precision == 12)
+        #expect(monochromeFrame.value == Data(monochrome.flatMap { [UInt8($0 & 0xFF), UInt8($0 >> 8)] }))
+        #expect(monochromeFrame.value == legacyMonochromeFrame.value)
+        #expect(monochromeFrame.precision == legacyMonochromeFrame.precision)
+        #expect(monochromeFrame.selectionValue == legacyMonochromeFrame.selectionValue)
+    }
+
     @Test(arguments: [2, 3, 4, 5, 6, 7])
     func decodesJPEGLosslessOtherPredictors(selectionValue: Int) throws {
         let samples: [UInt16] = [12, 20, 35, 18, 27, 40, 30, 36, 50]
