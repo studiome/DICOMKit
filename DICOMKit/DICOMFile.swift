@@ -142,8 +142,9 @@ public struct DICOMFile: Sendable {
             }
 
         case .jpegLosslessSV1:
-            guard sourceSamplesPerPixel == 1,
-                  sourcePhotometric == .monochrome1 || sourcePhotometric == .monochrome2,
+            let isMonochrome = sourceSamplesPerPixel == 1 && (sourcePhotometric == .monochrome1 || sourcePhotometric == .monochrome2)
+            let isRGB = sourceSamplesPerPixel == 3 && sourcePhotometric == .rgb && sourcePlanarConfiguration == 0
+            guard isMonochrome || isRGB,
                   let fragmentFrames = encapsulatedFrames(of: pixelElement, frameCount: frameCount) else {
                 return nil
             }
@@ -161,9 +162,10 @@ public struct DICOMFile: Sendable {
                    Int(declaredBitsStored) != decoded.precision {
                     return nil
                 }
+                guard decoded.samplesPerPixel == sourceSamplesPerPixel else { return nil }
                 return DecodedPixelDataFrame(
                     value: decoded.value,
-                    samplesPerPixel: 1,
+                    samplesPerPixel: decoded.samplesPerPixel,
                     bitsAllocated: sourceBitsAllocated,
                     bitsStored: decoded.precision,
                     photometricInterpretation: sourcePhotometric,
@@ -204,8 +206,9 @@ public struct DICOMFile: Sendable {
             }
 
         case .jpegLossless:
-            guard sourceSamplesPerPixel == 1,
-                  sourcePhotometric == .monochrome1 || sourcePhotometric == .monochrome2,
+            let isMonochrome = sourceSamplesPerPixel == 1 && (sourcePhotometric == .monochrome1 || sourcePhotometric == .monochrome2)
+            let isRGB = sourceSamplesPerPixel == 3 && sourcePhotometric == .rgb && sourcePlanarConfiguration == 0
+            guard isMonochrome || isRGB,
                   let fragmentFrames = encapsulatedFrames(of: pixelElement, frameCount: frameCount) else {
                 return nil
             }
@@ -222,9 +225,10 @@ public struct DICOMFile: Sendable {
                    Int(declaredBitsStored) != decoded.precision {
                     return nil
                 }
+                guard decoded.samplesPerPixel == sourceSamplesPerPixel else { return nil }
                 return DecodedPixelDataFrame(
                     value: decoded.value,
-                    samplesPerPixel: 1,
+                    samplesPerPixel: decoded.samplesPerPixel,
                     bitsAllocated: sourceBitsAllocated,
                     bitsStored: decoded.precision,
                     photometricInterpretation: sourcePhotometric,

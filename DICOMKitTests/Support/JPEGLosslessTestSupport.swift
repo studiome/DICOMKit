@@ -84,6 +84,73 @@ func jpegLosslessSV1Data(
     return output
 }
 
+/// Produces a minimal three-component, interleaved JPEG Lossless Process 14
+/// stream. Samples are ordered pixel-by-pixel (RGBRGB...).
+func jpegLosslessRGBData(
+    samples: [UInt16],
+    width: Int,
+    height: Int,
+    precision: Int,
+    selectionValue: Int = 1
+) -> Data {
+    precondition(width > 0 && height > 0 && samples.count == width * height * 3)
+    precondition((2...16).contains(precision))
+    precondition((1...7).contains(selectionValue))
+    let maximum = (1 << precision) - 1
+    precondition(samples.allSatisfy { Int($0) <= maximum })
+
+    var output = Data([0xFF, 0xD8]) // SOI
+    output.append(contentsOf: [
+        0xFF, 0xC4, 0x00, 0x24,
+        0x00, 0, 0, 0, 0, 17, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+    ])
+    output.append(contentsOf: 0...16)
+    output.append(contentsOf: [
+        0xFF, 0xC3, 0x00, 0x11, UInt8(precision),
+        UInt8(height >> 8), UInt8(height & 0xFF),
+        UInt8(width >> 8), UInt8(width & 0xFF),
+        0x03, 0x01, 0x11, 0x00, 0x02, 0x11, 0x00, 0x03, 0x11, 0x00,
+        0xFF, 0xDA, 0x00, 0x0C,
+        0x03, 0x01, 0x00, 0x02, 0x00, 0x03, 0x00,
+        UInt8(selectionValue), 0x00, 0x00
+    ])
+
+    var writer = LosslessJPEGTestBitWriter()
+    let initialPredictor = 1 << (precision - 1)
+    for pixel in 0..<(width * height) {
+        let x = pixel % width
+        for component in 0..<3 {
+            let index = pixel * 3 + component
+            let sample = Int(samples[index])
+            let predictor: Int
+            if pixel == 0 {
+                predictor = initialPredictor
+            } else if x == 0 {
+                predictor = Int(samples[(pixel - width) * 3 + component])
+            } else if pixel < width {
+                predictor = Int(samples[(pixel - 1) * 3 + component])
+            } else {
+                predictor = losslessJPEGPredictor(
+                    selectionValue,
+                    left: Int(samples[(pixel - 1) * 3 + component]),
+                    above: Int(samples[(pixel - width) * 3 + component]),
+                    upperLeft: Int(samples[(pixel - width - 1) * 3 + component])
+                )
+            }
+            let difference = sample - predictor
+            let category = magnitudeBitCount(difference)
+            writer.write(category, bits: 5, into: &output)
+            if category > 0 {
+                let amplitude = difference >= 0 ? difference : difference + (1 << category) - 1
+                writer.write(amplitude, bits: category, into: &output)
+            }
+        }
+    }
+    writer.finish(into: &output)
+    output.append(contentsOf: [0xFF, 0xD9]) // EOI
+    return output
+}
+
 private func losslessJPEGPredictor(_ selectionValue: Int, left: Int, above: Int, upperLeft: Int) -> Int {
     switch selectionValue {
     case 1: left

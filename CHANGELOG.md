@@ -19,6 +19,8 @@ All notable changes to DICOMKit are documented here.
 - Replaced target unsafe C++ flags with the package-level C++17 language
   setting so tagged SwiftPM releases remain consumable.
 - Added top-level CharLS BSD-3-Clause attribution and license notice.
+- Added interleaved 1:1:1 RGB JPEG Lossless Process 14 decoding for Transfer
+  Syntaxes `.57` and `.70`, including 8-bit and 16-bit DICOM storage.
 
 ## v0.4 — Complete
 
@@ -42,6 +44,7 @@ All notable changes to DICOMKit are documented here.
 
 ## Compatibility notes
 
-- Multi-component JPEG Lossless remains unsupported.
+- JPEG Lossless only supports single-scan, 1:1:1 component sampling; subsampled
+  and multi-scan frames remain unsupported.
 - Encapsulated multi-frame pixel data requires a Basic Offset Table.
 - CharLS does not support JPEG-LS subsampled scans or Point Transform.

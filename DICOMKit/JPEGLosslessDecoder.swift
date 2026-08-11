@@ -1,12 +1,13 @@
 import Foundation
 
-/// Decodes single-component JPEG Lossless, Non-Hierarchical (Process 14)
-/// frames used by DICOM Transfer Syntaxes `.57` and `.70`.
+/// Decodes JPEG Lossless, Non-Hierarchical (Process 14) frames used by DICOM
+/// Transfer Syntaxes `.57` and `.70`.
 enum JPEGLosslessDecoder {
     struct DecodedFrame {
         let value: Data
         let precision: Int
         let selectionValue: Int
+        let samplesPerPixel: Int
     }
 
     static func decodeLossless(
@@ -23,42 +24,46 @@ enum JPEGLosslessDecoder {
         let header = try parser.readHeader(expectedWidth: expectedWidth, expectedHeight: expectedHeight)
         guard header.precision <= bitsAllocated else { throw DICOMImageError.invalidImageAttributes }
 
-        let sampleCount = try checkedProduct(expectedWidth, expectedHeight)
+        let pixelCount = try checkedProduct(expectedWidth, expectedHeight)
+        let sampleCount = try checkedProduct(pixelCount, header.components.count)
         var reader = EntropyBitReader(data: data, offset: parser.offset)
         let initialPredictor = 1 << (header.precision - header.pointTransform - 1)
         let maximumReducedSample = (1 << (header.precision - header.pointTransform)) - 1
         var reducedSamples = [Int](repeating: 0, count: sampleCount)
         var resetPrediction = true
 
-        for index in 0..<sampleCount {
-            let x = index % expectedWidth
-            let predictor: Int
-            if resetPrediction {
-                predictor = initialPredictor
-                resetPrediction = false
-            } else if x == 0 {
-                predictor = reducedSamples[index - expectedWidth]
-            } else if index < expectedWidth {
-                predictor = reducedSamples[index - 1]
-            } else {
-                predictor = predictedValue(
-                    selectionValue: header.selectionValue,
-                    left: reducedSamples[index - 1],
-                    above: reducedSamples[index - expectedWidth],
-                    upperLeft: reducedSamples[index - expectedWidth - 1]
-                )
+        for pixelIndex in 0..<pixelCount {
+            let x = pixelIndex % expectedWidth
+            for component in header.components {
+                let index = pixelIndex * header.components.count + component.outputIndex
+                let predictor: Int
+                if resetPrediction {
+                    predictor = initialPredictor
+                } else if x == 0 {
+                    predictor = reducedSamples[(pixelIndex - expectedWidth) * header.components.count + component.outputIndex]
+                } else if pixelIndex < expectedWidth {
+                    predictor = reducedSamples[(pixelIndex - 1) * header.components.count + component.outputIndex]
+                } else {
+                    predictor = predictedValue(
+                        selectionValue: header.selectionValue,
+                        left: reducedSamples[(pixelIndex - 1) * header.components.count + component.outputIndex],
+                        above: reducedSamples[(pixelIndex - expectedWidth) * header.components.count + component.outputIndex],
+                        upperLeft: reducedSamples[(pixelIndex - expectedWidth - 1) * header.components.count + component.outputIndex]
+                    )
+                }
+                let category = try component.huffmanTable.decodeSymbol(from: &reader)
+                guard category <= header.precision else { throw DICOMImageError.unsupportedPixelFormat }
+                let difference = try readDifference(category: category, from: &reader)
+                let sample = predictor + difference
+                guard (0...maximumReducedSample).contains(sample) else { throw DICOMImageError.unsupportedPixelFormat }
+                reducedSamples[index] = sample
             }
-            let category = try header.huffmanTable.decodeSymbol(from: &reader)
-            guard category <= header.precision else { throw DICOMImageError.unsupportedPixelFormat }
-            let difference = try readDifference(category: category, from: &reader)
-            let sample = predictor + difference
-            guard (0...maximumReducedSample).contains(sample) else { throw DICOMImageError.unsupportedPixelFormat }
-            reducedSamples[index] = sample
+            resetPrediction = false
 
             if header.restartInterval > 0,
-               index + 1 < sampleCount,
-               (index + 1).isMultiple(of: header.restartInterval) {
-                try reader.consumeRestartMarker(expectedIndex: ((index + 1) / header.restartInterval - 1) % 8)
+               pixelIndex + 1 < pixelCount,
+               (pixelIndex + 1).isMultiple(of: header.restartInterval) {
+                try reader.consumeRestartMarker(expectedIndex: ((pixelIndex + 1) / header.restartInterval - 1) % 8)
                 resetPrediction = true
             }
         }
@@ -75,7 +80,12 @@ enum JPEGLosslessDecoder {
                 output.append(UInt8(sample >> 8))
             }
         }
-        return DecodedFrame(value: output, precision: header.precision, selectionValue: header.selectionValue)
+        return DecodedFrame(
+            value: output,
+            precision: header.precision,
+            selectionValue: header.selectionValue,
+            samplesPerPixel: header.components.count
+        )
     }
 
     private static func predictedValue(selectionValue: Int, left: Int, above: Int, upperLeft: Int) -> Int {
@@ -111,6 +121,15 @@ private extension JPEGLosslessDecoder {
         let pointTransform: Int
         let restartInterval: Int
         let selectionValue: Int
+        let components: [ScanComponent]
+    }
+
+    struct FrameComponent {
+        let identifier: UInt8
+    }
+
+    struct ScanComponent {
+        let outputIndex: Int
         let huffmanTable: HuffmanTable
     }
 
@@ -119,7 +138,7 @@ private extension JPEGLosslessDecoder {
         var offset = 0
         var tables: [Int: HuffmanTable] = [:]
         var precision: Int?
-        var componentIdentifier: UInt8?
+        var components: [FrameComponent] = []
         var restartInterval = 0
 
         mutating func readHeader(expectedWidth: Int, expectedHeight: Int) throws -> Header {
@@ -163,21 +182,29 @@ private extension JPEGLosslessDecoder {
 
         mutating func readFrameHeader(expectedWidth: Int, expectedHeight: Int) throws {
             let end = try readSegmentEnd()
-            guard end - offset == 9 else { throw DICOMImageError.unsupportedPixelFormat }
+            guard end - offset >= 9 else { throw DICOMImageError.unsupportedPixelFormat }
             let parsedPrecision = Int(try readByte())
             let parsedHeight = Int(try readUInt16())
             let parsedWidth = Int(try readUInt16())
-            let componentCount = try readByte()
+            let componentCount = Int(try readByte())
             guard (2...16).contains(parsedPrecision), parsedWidth == expectedWidth,
-                  parsedHeight == expectedHeight, componentCount == 1 else {
+                  parsedHeight == expectedHeight, (1...3).contains(componentCount),
+                  end - offset == 3 * componentCount else {
                 throw DICOMImageError.unsupportedPixelFormat
             }
-            let identifier = try readByte()
-            let sampling = try readByte()
-            let quantizationTable = try readByte()
-            guard sampling == 0x11, quantizationTable == 0 else { throw DICOMImageError.unsupportedPixelFormat }
+            var parsedComponents: [FrameComponent] = []
+            for _ in 0..<componentCount {
+                let identifier = try readByte()
+                let sampling = try readByte()
+                let quantizationTable = try readByte()
+                guard sampling == 0x11, quantizationTable == 0,
+                      !parsedComponents.contains(where: { $0.identifier == identifier }) else {
+                    throw DICOMImageError.unsupportedPixelFormat
+                }
+                parsedComponents.append(FrameComponent(identifier: identifier))
+            }
             precision = parsedPrecision
-            componentIdentifier = identifier
+            components = parsedComponents
         }
 
         mutating func readRestartInterval() throws {
@@ -188,21 +215,33 @@ private extension JPEGLosslessDecoder {
 
         mutating func readScanHeader() throws -> Header {
             let end = try readSegmentEnd()
-            guard let precision, let componentIdentifier, end - offset == 6 else {
+            guard let precision, !components.isEmpty else {
                 throw DICOMImageError.unsupportedPixelFormat
             }
-            let componentCount = try readByte()
-            let scanComponentIdentifier = try readByte()
-            let tableSelectors = try readByte()
+            let componentCount = Int(try readByte())
+            guard componentCount == components.count, end - offset == componentCount * 2 + 3 else {
+                throw DICOMImageError.unsupportedPixelFormat
+            }
+            var scanComponents: [ScanComponent] = []
+            for _ in 0..<componentCount {
+                let scanComponentIdentifier = try readByte()
+                let tableSelectors = try readByte()
+                let tableIdentifier = Int(tableSelectors >> 4)
+                guard tableSelectors & 0x0F == 0,
+                      let outputIndex = components.firstIndex(where: { $0.identifier == scanComponentIdentifier }),
+                      !scanComponents.contains(where: { $0.outputIndex == outputIndex }),
+                      let huffmanTable = tables[tableIdentifier] else {
+                    throw DICOMImageError.unsupportedPixelFormat
+                }
+                scanComponents.append(ScanComponent(outputIndex: outputIndex, huffmanTable: huffmanTable))
+            }
             let selectionValue = try readByte()
             let spectralEnd = try readByte()
             let successiveApproximation = try readByte()
-            let tableIdentifier = Int(tableSelectors >> 4)
             let pointTransform = Int(successiveApproximation & 0x0F)
-            guard componentCount == 1, scanComponentIdentifier == componentIdentifier,
-                  tableSelectors & 0x0F == 0, (1...7).contains(Int(selectionValue)), spectralEnd == 0,
+            guard (1...7).contains(Int(selectionValue)), spectralEnd == 0,
                   successiveApproximation >> 4 == 0, pointTransform < precision,
-                  let huffmanTable = tables[tableIdentifier] else {
+                  scanComponents.count == components.count else {
                 throw DICOMImageError.unsupportedPixelFormat
             }
             return Header(
@@ -210,7 +249,7 @@ private extension JPEGLosslessDecoder {
                 pointTransform: pointTransform,
                 restartInterval: restartInterval,
                 selectionValue: Int(selectionValue),
-                huffmanTable: huffmanTable
+                components: scanComponents
             )
         }
 

@@ -229,6 +229,50 @@ struct JPEGFrameDecoderTests {
         #expect(pixelData.value == source)
     }
 
+    @Test func decodesInterleavedRGBJPEGLosslessPixelData() throws {
+        let source = Data([10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120])
+        let data = imageFile(
+            transferSyntaxUID: TransferSyntax.jpegLossless.uid,
+            samplesPerPixel: 3,
+            photometricInterpretation: .rgb,
+            planarConfiguration: 0,
+            rows: 2,
+            columns: 2,
+            bitsAllocated: 8,
+            pixelDataElement: encapsulatedPixelData(fragments: [
+                jpegLosslessRGBData(samples: source.map(UInt16.init), width: 2, height: 2, precision: 8)
+            ])
+        )
+
+        let pixelData = try #require(try DICOMFile(data: data).pixelData)
+
+        #expect(pixelData.samplesPerPixel == 3)
+        #expect(pixelData.photometricInterpretation == .rgb)
+        #expect(pixelData.value == source)
+    }
+
+    @Test func decodesInterleaved16BitRGBJPEGLosslessSV1PixelData() throws {
+        let samples: [UInt16] = [1, 2_047, 4_095, 4_000, 2_000, 0]
+        let data = imageFile(
+            transferSyntaxUID: TransferSyntax.jpegLosslessSV1.uid,
+            samplesPerPixel: 3,
+            photometricInterpretation: .rgb,
+            planarConfiguration: 0,
+            rows: 1,
+            columns: 2,
+            bitsAllocated: 16,
+            bitsStored: 12,
+            pixelDataElement: encapsulatedPixelData(fragments: [
+                jpegLosslessRGBData(samples: samples, width: 2, height: 1, precision: 12)
+            ])
+        )
+
+        let pixelData = try #require(try DICOMFile(data: data).pixelData)
+
+        #expect(pixelData.bitsStored == 12)
+        #expect(pixelData.value == Data(samples.flatMap { [UInt8($0 & 0xFF), UInt8($0 >> 8)] }))
+    }
+
     @Test(arguments: [2, 3, 4, 5, 6, 7])
     func decodesJPEGLosslessOtherPredictors(selectionValue: Int) throws {
         let samples: [UInt16] = [12, 20, 35, 18, 27, 40, 30, 36, 50]
