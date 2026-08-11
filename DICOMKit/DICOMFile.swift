@@ -69,6 +69,17 @@ public struct DICOMFile: Sendable {
         pixelDataFrames?.first
     }
 
+    /// Returns a handle that decodes Pixel Data only when its frames are read.
+    ///
+    /// The returned handle memoizes both a successful decode and an
+    /// undecodable result. Retain the handle when several consumers need the
+    /// same frames. This delays Pixel Data decoding, but not parsing or
+    /// retention of the encoded Pixel Data value.
+    public func makeLazyPixelData() -> DICOMLazyPixelData? {
+        guard dataset[.pixelData] != nil else { return nil }
+        return DICOMLazyPixelData { self.pixelDataFrames }
+    }
+
     /// The image frames contained by Pixel Data.
     ///
     /// For encapsulated pixel data, this uses the Pixel Data Basic Offset

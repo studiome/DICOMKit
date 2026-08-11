@@ -3,6 +3,28 @@ import Testing
 @testable import DICOMKit
 
 struct DICOMFileReaderTests {
+    @Test func defersPixelDataDecodingUntilRequested() throws {
+        let file = try DICOMFile(data: part10File(
+            transferSyntaxUID: TransferSyntax.explicitVRLittleEndian.uid,
+            datasetElements: [
+                element(tag: .rows, vr: .US, value: uint16(1)),
+                element(tag: .columns, vr: .US, value: uint16(2)),
+                element(tag: .samplesPerPixel, vr: .US, value: uint16(1)),
+                element(tag: .photometricInterpretation, vr: .CS, value: "MONOCHROME2"),
+                element(tag: .bitsAllocated, vr: .US, value: uint16(8)),
+                element(tag: .pixelData, vr: .OB, value: Data([0x12, 0x34]))
+            ]
+        ))
+
+        let lazyPixelData = try #require(file.makeLazyPixelData())
+        #expect(!lazyPixelData.isLoaded)
+
+        let firstFrame = try #require(lazyPixelData.loadFirstFrame())
+        #expect(firstFrame.value == Data([0x12, 0x34]))
+        #expect(lazyPixelData.isLoaded)
+        #expect(lazyPixelData.loadFrames()?.count == 1)
+    }
+
     @Test func readsExplicitVRBigEndianDataset() throws {
         var data = Data(repeating: 0, count: 128)
         data.append(Data("DICM".utf8))
