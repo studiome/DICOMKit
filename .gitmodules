@@ -1,0 +1,3 @@
+[submodule "Vendor/CharLS"]
+	path = Vendor/CharLS
+	url = https://github.com/team-charls/charls.git

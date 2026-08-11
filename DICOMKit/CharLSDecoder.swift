@@ -1,5 +1,5 @@
 import Foundation
-import CharLS
+import CCharLS
 
 /// Thin Swift wrapper around the vendored CharLS JPEG-LS decoder.
 enum CharLSDecoder {
