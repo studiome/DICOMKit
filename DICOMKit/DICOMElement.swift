@@ -96,7 +96,38 @@ public struct DICOMElement: Sendable, Equatable {
 
     /// All little-endian unsigned 16-bit components.
     public var uint16Values: [UInt16]? {
-        guard value.count.isMultiple(of: 2) else { return nil }
-        return stride(from: 0, to: value.count, by: 2).map { value.littleEndian(at: $0) }
+        values(as: UInt16.self)
+    }
+
+    /// All little-endian signed 16-bit components.
+    public var int16Values: [Int16]? { uint16Values?.map { Int16(bitPattern: $0) } }
+
+    /// All little-endian unsigned 32-bit components.
+    public var uint32Values: [UInt32]? { values(as: UInt32.self) }
+
+    /// All little-endian signed 32-bit components.
+    public var int32Values: [Int32]? { uint32Values?.map { Int32(bitPattern: $0) } }
+
+    /// All little-endian IEEE 754 single-precision components.
+    public var float32Values: [Float]? { uint32Values?.map { Float(bitPattern: $0) } }
+
+    /// All little-endian IEEE 754 double-precision components.
+    public var float64Values: [Double]? {
+        guard let values = values(as: UInt64.self) else { return nil }
+        return values.map { Double(bitPattern: $0) }
+    }
+
+    /// All Attribute Tag `(gggg,eeee)` values stored in little-endian order.
+    public var attributeTagValues: [DICOMTag]? {
+        guard value.count.isMultiple(of: 4) else { return nil }
+        return stride(from: 0, to: value.count, by: 4).map {
+            DICOMTag(group: value.littleEndian(at: $0), element: value.littleEndian(at: $0 + 2))
+        }
+    }
+
+    private func values<T: FixedWidthInteger & UnsignedInteger>(as type: T.Type) -> [T]? {
+        let width = MemoryLayout<T>.size
+        guard value.count.isMultiple(of: width) else { return nil }
+        return stride(from: 0, to: value.count, by: width).map { value.littleEndian(at: $0, as: T.self) }
     }
 }

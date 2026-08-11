@@ -30,6 +30,24 @@ struct DICOMElementValueTests {
         #expect(element.uint16Values == [1, 2])
     }
 
+    @Test func exposesBinaryNumericAndAttributeTagValues() {
+        let signed = DICOMElement(tag: .pixelRepresentation, vr: .SL, value: Data([0xFF, 0xFF, 0xFF, 0xFF, 2, 0, 0, 0]))
+        #expect(signed.int32Values == [-1, 2])
+
+        let floating = DICOMElement(tag: .rescaleSlope, vr: .FD, value: Data([0, 0, 0, 0, 0, 0, 0xF0, 0x3F]))
+        #expect(floating.float64Values == [1])
+
+        let attributes = DICOMElement(tag: .pixelData, vr: .AT, value: Data([0x10, 0, 0x10, 0, 0x28, 0, 0x10, 0]))
+        #expect(attributes.attributeTagValues == [.patientName, .rows])
+    }
+
+    @Test func resolvesCommonImplicitVRDictionaryEntries() {
+        #expect(DICOMDictionary.vr(for: DICOMTag(group: 0x0010, element: 0x0020)) == .LO) // Patient ID
+        #expect(DICOMDictionary.vr(for: DICOMTag(group: 0x0008, element: 0x0060)) == .CS) // Modality
+        #expect(DICOMDictionary.vr(for: DICOMTag(group: 0x0020, element: 0x000D)) == .UI) // Study UID
+        #expect(DICOMDictionary.vr(for: DICOMTag(group: 0x5200, element: 0x9230)) == .SQ) // Per-frame FG
+    }
+
     @Test func doubleValueParsesNegativeNumber() {
         let element = DICOMElement(tag: .rescaleIntercept, vr: .DS, value: Data("-1024".utf8))
 
