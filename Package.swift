@@ -23,14 +23,26 @@ let package = Package(
                 "src/charls.rc", "src/charls-template.pc", "src/charls.vcxproj",
                 "src/charls.vcxproj.filters"
             ],
-            publicHeadersPath: "include/charls",
+            // This target supplies a static implementation library only. The
+            // Swift-facing C API lives in CCharLS so Xcode does not infer an
+            // umbrella module from CharLS' optional C++ headers.
+            publicHeadersPath: "src",
             cxxSettings: [
                 .headerSearchPath("include")
             ]
         ),
         .target(
-            name: "DICOMKit",
+            name: "CCharLS",
             dependencies: ["CharLS"],
+            path: "Sources/CCharLS",
+            publicHeadersPath: "include",
+            cSettings: [
+                .headerSearchPath("../../Vendor/CharLS/include")
+            ]
+        ),
+        .target(
+            name: "DICOMKit",
+            dependencies: ["CCharLS"],
             path: "DICOMKit",
             swiftSettings: [
                 .swiftLanguageMode(.v6)

@@ -52,8 +52,9 @@ See the [changelog](CHANGELOG.md) for the v0.3 implementation status.
 - Provides async DICOMweb clients for QIDO-RS study searches, WADO-RS
   instance retrieval, and STOW-RS multipart instance storage; transports are
   injectable for application authentication and testing
-- Uses the vendored BSD-3-Clause CharLS codec for standards-complete JPEG-LS
-  decoding, including sample, line, and plane interleave modes
+- Uses the BSD-3-Clause CharLS codec through a Git submodule for
+  standards-complete JPEG-LS decoding, including sample, line, and plane
+  interleave modes
 
 ```swift
 let file = try DICOMFile(data: data)
@@ -123,6 +124,23 @@ Open `Package.swift` directly in Xcode for normal development, or run the test
 suite from the command line:
 
 ```bash
+swift test
+```
+
+CharLS is a Git submodule pinned to an exact upstream commit, rather than a
+source copy maintained in this repository. Clone DICOMKit with
+`--recurse-submodules`, or initialize it after cloning:
+
+```bash
+git submodule update --init --recursive
+```
+
+To deliberately update CharLS, provide an upstream tag or commit to the helper
+script. Review the resulting submodule SHA and run the test suite before
+committing it:
+
+```bash
+./Scripts/update-charls.sh <tag-or-commit>
 swift test
 ```
 
