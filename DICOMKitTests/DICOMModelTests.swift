@@ -51,6 +51,15 @@ struct DICOMElementValueTests {
         #expect(dateTime.dateComponentsValue?.timeZone?.secondsFromGMT() == 32_400)
     }
 
+    @Test func generatesNumericUIDBelowOrganizationRoot() throws {
+        let generator = try DICOMUIDGenerator(root: "1.2.826.0.1.3680043.10.543")
+        let uid = generator.generate()
+        #expect(uid.hasPrefix("1.2.826.0.1.3680043.10.543."))
+        #expect(uid.count <= 64)
+        #expect(uid.allSatisfy { $0.isNumber || $0 == "." })
+        #expect(throws: DICOMError.invalidUIDRoot) { try DICOMUIDGenerator(root: "1.02.3") }
+    }
+
     @Test func resolvesCommonImplicitVRDictionaryEntries() {
         #expect(DICOMDictionary.vr(for: DICOMTag(group: 0x0010, element: 0x0020)) == .LO) // Patient ID
         #expect(DICOMDictionary.vr(for: DICOMTag(group: 0x0008, element: 0x0060)) == .CS) // Modality

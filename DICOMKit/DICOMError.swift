@@ -1,5 +1,6 @@
 /// Errors produced while reading a DICOM Part 10 file.
 public enum DICOMError: Error, Sendable, Equatable {
+    case invalidUIDRoot
     /// The file doesn't contain the 128-byte preamble followed by `DICM`.
     case missingPart10Preamble
     /// The input ended before the declared structure could be read.
