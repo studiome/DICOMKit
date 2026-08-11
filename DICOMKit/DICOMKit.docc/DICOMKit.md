@@ -35,9 +35,10 @@ if let pixelData = file.pixelData {
 The library supports defined-length and undefined-length sequences, a focused
 set of uncompressed image formats and 8-bit/16-bit monochrome plus 8-bit RGB
 RLE Lossless decoding. JPEG Lossless (Transfer Syntaxes `.57` and `.70`)
-supports single-component `MONOCHROME1` / `MONOCHROME2` Process 14 frames with
-Selection Values 1–7, 2–16-bit precision, Point Transform, and restart
-markers; `.70` is limited to Selection Value 1. JPEG-LS Lossless (Transfer
+supports single-component `MONOCHROME1` / `MONOCHROME2` and interleaved 1:1:1
+`RGB` Process 14 frames with Selection Values 1–7, 2–16-bit precision, Point
+Transform, and restart markers; `.70` is limited to Selection Value 1.
+JPEG-LS Lossless (Transfer
 Syntax `.80`) supports monochrome 8-bit and 16-bit frames and
 sample-interleaved and plane-interleaved 8-bit `RGB` and sample-interleaved
 `YBR_FULL` (returned as `RGB`), with default or explicit Preset Coding
@@ -52,8 +53,7 @@ samples: `RGB` for three-sample frames and grayscale for `MONOCHROME1` /
 `MONOCHROME2` frames, while frames declaring any other `Bits Allocated` are
 reported as undecodable. Multi-frame encapsulated images require a Basic
 Offset Table and are available through ``DICOMFile/pixelDataFrames``. JPEG
-Multi-component JPEG Lossless and DIMSE
-remain outside the current scope.
+DIMSE remains outside the current scope.
 Pixel Padding Value
 `(0028,0120)` is also not yet applied.
 

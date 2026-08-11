@@ -29,11 +29,11 @@ See the [changelog](CHANGELOG.md) for the v0.3 implementation status.
   Lossless Pixel Data
 - Decodes multi-frame RLE Lossless Pixel Data when it includes a Basic Offset
   Table, exposed as `DICOMFile.pixelDataFrames`
-- Decodes single-component monochrome JPEG Lossless, Non-Hierarchical
-  (Process 14) Pixel Data for `.57` and `.70`, including Selection Values 1–7,
-  2–16-bit precision, Point Transform, restart markers, and multi-frame Basic
-  Offset Tables. `.70` is constrained to Selection Value 1 as required by its
-  transfer syntax.
+- Decodes JPEG Lossless, Non-Hierarchical (Process 14) Pixel Data for `.57`
+  and `.70`: single-component `MONOCHROME1` / `MONOCHROME2` and interleaved
+  1:1:1 `RGB`, with 2–16-bit precision, Selection Values 1–7, Point Transform,
+  restart markers, and multi-frame Basic Offset Tables. `.70` is constrained
+  to Selection Value 1 as required by its transfer syntax.
 - Decodes JPEG-LS Lossless (`.80`) monochrome 8-bit and 16-bit Pixel Data,
   plus sample-interleaved 8-bit `RGB` and `YBR_FULL` (returned as `RGB`); supports default and explicit Preset
   Coding Parameters, restart markers, multi-frame Basic Offset Tables, and
@@ -172,8 +172,7 @@ pull request:
 
 ## Roadmap
 
-1. Multi-component JPEG Lossless Process 14
-2. DIMSE networking
+1. DIMSE networking
 
 ## License
 
