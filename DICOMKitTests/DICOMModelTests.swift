@@ -102,8 +102,28 @@ struct DICOMDatasetTests {
         ])
         let json = DICOMJSONDataset(dataset: dataset)
 
-        #expect(json.elements["00100010"]?.value == [.string("Doe^Jane")])
+        #expect(json.elements["00100010"]?.value == [.personName(DICOMJSONPersonName(alphabetic: "Doe^Jane"))])
         #expect(json.elements["00280010"]?.value == [.number(512)])
+        #expect(try json.dicomDataset() == dataset)
+    }
+
+    @Test func convertsAllJSONScalarVRFamiliesWithoutBinaryFallback() throws {
+        let dataset = DICOMDataset(elements: [
+            DICOMElement(tag: DICOMTag(group: 0x0009, element: 0x1001), vr: .SS, value: Data([0xFE, 0xFF])),
+            DICOMElement(tag: DICOMTag(group: 0x0009, element: 0x1002), vr: .UL, value: Data([0x78, 0x56, 0x34, 0x12])),
+            DICOMElement(tag: DICOMTag(group: 0x0009, element: 0x1003), vr: .FL, value: Data([0x00, 0x00, 0xA0, 0x3F])),
+            DICOMElement(tag: DICOMTag(group: 0x0009, element: 0x1004), vr: .AT, value: Data([0x10, 0x00, 0x10, 0x00])),
+            DICOMElement(tag: DICOMTag(group: 0x0009, element: 0x1005), vr: .DS, value: Data("1.250".utf8))
+        ])
+
+        let json = DICOMJSONDataset(dataset: dataset)
+
+        #expect(json.elements["00091001"]?.value == [.number(-2)])
+        #expect(json.elements["00091002"]?.value == [.number(305_419_896)])
+        #expect(json.elements["00091003"]?.value == [.number(1.25)])
+        #expect(json.elements["00091004"]?.value == [.string("00100010")])
+        #expect(json.elements["00091005"]?.value == [.string("1.250")])
+        #expect(json.elements["00091001"]?.inlineBinary == nil)
         #expect(try json.dicomDataset() == dataset)
     }
 
