@@ -134,9 +134,22 @@ public struct DICOMPixelData: Sendable {
             // the DICOM standard itself; Planar Configuration 1 is valid
             // DICOM, just not a layout this renderer implements.
             guard samplesPerPixel == 3 else { throw DICOMImageError.invalidImageAttributes }
-            guard planarConfiguration == 0 else { throw DICOMImageError.unsupportedPixelFormat }
             let byteCount = try checkedByteCount(pixelCount, bytesPerSample: 1, samples: 3)
-            return try makeImage(data: requiredBytes(byteCount), colorSpace: CGColorSpaceCreateDeviceRGB(), bitsPerPixel: 24, bytesPerRow: columns * 3)
+            let source = try requiredBytes(byteCount)
+            let interleaved: Data
+            switch planarConfiguration {
+            case 0: interleaved = source
+            case 1:
+                var output = Data(count: byteCount)
+                for pixel in 0..<pixelCount {
+                    output[pixel * 3] = source[pixel]
+                    output[pixel * 3 + 1] = source[pixelCount + pixel]
+                    output[pixel * 3 + 2] = source[pixelCount * 2 + pixel]
+                }
+                interleaved = output
+            default: throw DICOMImageError.unsupportedPixelFormat
+            }
+            return try makeImage(data: interleaved, colorSpace: CGColorSpaceCreateDeviceRGB(), bitsPerPixel: 24, bytesPerRow: columns * 3)
 
         case (.monochrome1, 16), (.monochrome2, 16):
             guard samplesPerPixel == 1 else { throw DICOMImageError.invalidImageAttributes }

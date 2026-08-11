@@ -5,6 +5,18 @@ import Testing
 
 /// Rendering of 8-bit monochrome and RGB pixel data, which needs no windowing.
 struct PixelDataRenderingTests {
+    @Test func rendersPlanarRGBPixelData() throws {
+        let pixelData = DICOMPixelData(
+            value: Data([255, 0, 0, 255, 0, 0]), // R plane, G plane, B plane
+            rows: 1,
+            columns: 2,
+            samplesPerPixel: 3,
+            bitsAllocated: 8,
+            photometricInterpretation: .rgb,
+            planarConfiguration: 1
+        )
+        #expect(try imageBytes(pixelData.cgImage()) == Data([255, 0, 0, 0, 255, 0]))
+    }
     @Test func renders8BitMonochromePixelData() throws {
         let file = try DICOMFile(data: imageFile(
             rows: 2,
@@ -95,7 +107,7 @@ struct PixelDataFormatErrorTests {
         }
     }
 
-    @Test func rejectsRGBWithPlanarConfigurationOne() {
+    @Test func rejectsRGBWithInvalidPlanarConfiguration() {
         let pixelData = DICOMPixelData(
             value: Data(repeating: 0, count: 6),
             rows: 1,
@@ -103,7 +115,7 @@ struct PixelDataFormatErrorTests {
             samplesPerPixel: 3,
             bitsAllocated: 8,
             photometricInterpretation: .rgb,
-            planarConfiguration: 1
+            planarConfiguration: 2
         )
 
         #expect(throws: DICOMImageError.unsupportedPixelFormat) {
