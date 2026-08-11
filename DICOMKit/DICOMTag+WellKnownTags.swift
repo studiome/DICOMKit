@@ -39,6 +39,18 @@ extension DICOMTag {
     /// Pixel Representation `(0028,0103)`: `0` for unsigned integer, `1` for
     /// 2's complement signed integer.
     public static let pixelRepresentation = DICOMTag(group: 0x0028, element: 0x0103)
+    /// Red Palette Color Lookup Table Descriptor `(0028,1101)`.
+    public static let redPaletteColorLookupTableDescriptor = DICOMTag(group: 0x0028, element: 0x1101)
+    /// Green Palette Color Lookup Table Descriptor `(0028,1102)`.
+    public static let greenPaletteColorLookupTableDescriptor = DICOMTag(group: 0x0028, element: 0x1102)
+    /// Blue Palette Color Lookup Table Descriptor `(0028,1103)`.
+    public static let bluePaletteColorLookupTableDescriptor = DICOMTag(group: 0x0028, element: 0x1103)
+    /// Red Palette Color Lookup Table Data `(0028,1201)`.
+    public static let redPaletteColorLookupTableData = DICOMTag(group: 0x0028, element: 0x1201)
+    /// Green Palette Color Lookup Table Data `(0028,1202)`.
+    public static let greenPaletteColorLookupTableData = DICOMTag(group: 0x0028, element: 0x1202)
+    /// Blue Palette Color Lookup Table Data `(0028,1203)`.
+    public static let bluePaletteColorLookupTableData = DICOMTag(group: 0x0028, element: 0x1203)
     /// Window Center `(0028,1050)`.
     public static let windowCenter = DICOMTag(group: 0x0028, element: 0x1050)
     /// Window Width `(0028,1051)`.

@@ -5,6 +5,47 @@ import Testing
 
 /// Rendering of 8-bit monochrome and RGB pixel data, which needs no windowing.
 struct PixelDataRenderingTests {
+    @Test func rendersPaletteColorPixelData() throws {
+        let lut = try DICOMPaletteColorLUT(
+            firstMappedValue: 0,
+            bitsPerEntry: 8,
+            red: [0, 255],
+            green: [0, 0],
+            blue: [0, 0]
+        )
+        let pixelData = DICOMPixelData(
+            value: Data([0, 1]),
+            rows: 1,
+            columns: 2,
+            samplesPerPixel: 1,
+            bitsAllocated: 8,
+            photometricInterpretation: .paletteColor,
+            paletteColorLUT: lut
+        )
+
+        #expect(try imageBytes(pixelData.cgImage()) == Data([0, 0, 0, 255, 0, 0]))
+    }
+
+    @Test func readsPaletteColorLUTFromDataset() throws {
+        let descriptor = uint16(2) + uint16(0) + uint16(8)
+        let file = try DICOMFile(data: part10File(transferSyntaxUID: TransferSyntax.explicitVRLittleEndian.uid, datasetElements: [
+            element(tag: .samplesPerPixel, vr: .US, value: uint16(1)),
+            element(tag: .photometricInterpretation, vr: .CS, value: "PALETTE COLOR"),
+            element(tag: .rows, vr: .US, value: uint16(1)),
+            element(tag: .columns, vr: .US, value: uint16(2)),
+            element(tag: .bitsAllocated, vr: .US, value: uint16(8)),
+            element(tag: .redPaletteColorLookupTableDescriptor, vr: .US, value: descriptor),
+            element(tag: .greenPaletteColorLookupTableDescriptor, vr: .US, value: descriptor),
+            element(tag: .bluePaletteColorLookupTableDescriptor, vr: .US, value: descriptor),
+            element(tag: .redPaletteColorLookupTableData, vr: .OB, value: Data([0, 255])),
+            element(tag: .greenPaletteColorLookupTableData, vr: .OB, value: Data([0, 0])),
+            element(tag: .bluePaletteColorLookupTableData, vr: .OB, value: Data([0, 0])),
+            element(tag: .pixelData, vr: .OB, value: Data([0, 1]))
+        ]))
+
+        #expect(try imageBytes(#require(file.pixelData).cgImage()) == Data([0, 0, 0, 255, 0, 0]))
+    }
+
     @Test func rendersNativeYBRFullAsRGB() throws {
         let pixelData = DICOMPixelData(value: Data([76, 85, 255]), rows: 1, columns: 1, samplesPerPixel: 3, bitsAllocated: 8, photometricInterpretation: .ybrFull)
         let bytes = try imageBytes(pixelData.cgImage())

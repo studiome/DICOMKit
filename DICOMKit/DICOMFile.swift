@@ -73,6 +73,8 @@ public struct DICOMFile: Sendable {
         let sourceBitsAllocated = Int(bitsAllocated)
         let sourcePhotometric = PhotometricInterpretation(name: photometricInterpretation)
         let sourcePlanarConfiguration = Int(dataset[.planarConfiguration]?.uint16Value ?? 0)
+        let paletteColorLUT = sourcePhotometric == .paletteColor ? makePaletteColorLUT() : nil
+        guard sourcePhotometric != .paletteColor || paletteColorLUT != nil else { return nil }
         let frames: [DecodedPixelDataFrame]
         switch transferSyntax {
         case .rleLossless:
@@ -318,8 +320,46 @@ public struct DICOMFile: Sendable {
             rescaleSlope: dataset[.rescaleSlope]?.doubleValue ?? 1.0,
             rescaleIntercept: dataset[.rescaleIntercept]?.doubleValue ?? 0.0,
             defaultWindowCenter: dataset[.windowCenter]?.doubleValue,
-            defaultWindowWidth: dataset[.windowWidth]?.doubleValue
+            defaultWindowWidth: dataset[.windowWidth]?.doubleValue,
+            paletteColorLUT: paletteColorLUT
         ) }
+    }
+
+    /// Builds the palette lookup tables carried by a `PALETTE COLOR` dataset.
+    /// The three standard descriptors must agree. Both modern `OB` 8-bit LUT
+    /// data and `OW` data with 16-bit entries are accepted.
+    private func makePaletteColorLUT() -> DICOMPaletteColorLUT? {
+        guard let redDescriptor = dataset[.redPaletteColorLookupTableDescriptor]?.uint16Values,
+              let greenDescriptor = dataset[.greenPaletteColorLookupTableDescriptor]?.uint16Values,
+              let blueDescriptor = dataset[.bluePaletteColorLookupTableDescriptor]?.uint16Values,
+              redDescriptor.count == 3,
+              redDescriptor == greenDescriptor,
+              redDescriptor == blueDescriptor else { return nil }
+        let entryCount = redDescriptor[0] == 0 ? 65_536 : Int(redDescriptor[0])
+        let firstMappedValue = redDescriptor[1]
+        let bitsPerEntry = Int(redDescriptor[2])
+        guard bitsPerEntry == 8 || bitsPerEntry == 16,
+              let red = paletteEntries(for: .redPaletteColorLookupTableData, count: entryCount, bitsPerEntry: bitsPerEntry),
+              let green = paletteEntries(for: .greenPaletteColorLookupTableData, count: entryCount, bitsPerEntry: bitsPerEntry),
+              let blue = paletteEntries(for: .bluePaletteColorLookupTableData, count: entryCount, bitsPerEntry: bitsPerEntry) else {
+            return nil
+        }
+        return try? DICOMPaletteColorLUT(
+            firstMappedValue: firstMappedValue,
+            bitsPerEntry: bitsPerEntry,
+            red: red,
+            green: green,
+            blue: blue
+        )
+    }
+
+    private func paletteEntries(for tag: DICOMTag, count: Int, bitsPerEntry: Int) -> [UInt16]? {
+        guard let element = dataset[tag] else { return nil }
+        if bitsPerEntry == 8, element.vr == .OB, element.value.count >= count {
+            return element.value.prefix(count).map(UInt16.init)
+        }
+        guard let values = element.uint16Values, values.count >= count else { return nil }
+        return Array(values.prefix(count))
     }
 
     /// The fragments of an encapsulated Pixel Data element, grouped per

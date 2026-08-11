@@ -46,6 +46,9 @@ public struct DICOMPixelData: Sendable {
     /// supply an explicit window width. `nil` if `(0028,1051)` is absent or
     /// unparsable.
     public let defaultWindowWidth: Double?
+    /// The color lookup tables used when ``photometricInterpretation`` is
+    /// ``PhotometricInterpretation/paletteColor``.
+    public let paletteColorLUT: DICOMPaletteColorLUT?
 
     /// Creates uncompressed pixel data and its rendering attributes.
     ///
@@ -68,7 +71,8 @@ public struct DICOMPixelData: Sendable {
         rescaleSlope: Double = 1.0,
         rescaleIntercept: Double = 0.0,
         defaultWindowCenter: Double? = nil,
-        defaultWindowWidth: Double? = nil
+        defaultWindowWidth: Double? = nil,
+        paletteColorLUT: DICOMPaletteColorLUT? = nil
     ) {
         self.value = value
         self.rows = rows
@@ -83,6 +87,7 @@ public struct DICOMPixelData: Sendable {
         self.rescaleIntercept = rescaleIntercept
         self.defaultWindowCenter = defaultWindowCenter
         self.defaultWindowWidth = defaultWindowWidth
+        self.paletteColorLUT = paletteColorLUT
     }
 
     /// Creates a Core Graphics image for 8-bit monochrome, interleaved RGB,
@@ -163,6 +168,26 @@ public struct DICOMPixelData: Sendable {
                 rgb.append(UInt8(clamping: Int((y + 1.402 * cr).rounded())))
                 rgb.append(UInt8(clamping: Int((y - 0.344_136 * cb - 0.714_136 * cr).rounded())))
                 rgb.append(UInt8(clamping: Int((y + 1.772 * cb).rounded())))
+            }
+            return try makeImage(data: rgb, colorSpace: CGColorSpaceCreateDeviceRGB(), bitsPerPixel: 24, bytesPerRow: columns * 3)
+
+        case (.paletteColor, 8), (.paletteColor, 16):
+            guard samplesPerPixel == 1, let paletteColorLUT else { throw DICOMImageError.invalidImageAttributes }
+            let bytesPerSample = bitsAllocated / 8
+            let source = try requiredBytes(try checkedByteCount(pixelCount, bytesPerSample: bytesPerSample, samples: 1))
+            var rgb = Data()
+            rgb.reserveCapacity(pixelCount * 3)
+            for pixel in 0..<pixelCount {
+                let storedValue: UInt16
+                if bitsAllocated == 8 {
+                    storedValue = UInt16(source[pixel])
+                } else {
+                    storedValue = source.littleEndian(at: pixel * 2, as: UInt16.self)
+                }
+                let (red, green, blue) = paletteColorLUT.rgb(for: storedValue)
+                rgb.append(red)
+                rgb.append(green)
+                rgb.append(blue)
             }
             return try makeImage(data: rgb, colorSpace: CGColorSpaceCreateDeviceRGB(), bitsPerPixel: 24, bytesPerRow: columns * 3)
 
