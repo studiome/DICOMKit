@@ -15,6 +15,13 @@ private struct DecodedPixelDataFrame {
     let planarConfiguration: Int
 }
 
+private struct FrameRenderingAttributes {
+    var rescaleSlope: Double?
+    var rescaleIntercept: Double?
+    var windowCenter: Double?
+    var windowWidth: Double?
+}
+
 /// A parsed DICOM Part 10 file.
 public struct DICOMFile: Sendable {
     /// The File Meta Information dataset (group `0002`).
@@ -94,6 +101,7 @@ public struct DICOMFile: Sendable {
         let paletteColorLUT = sourcePhotometric == .paletteColor ? makePaletteColorLUT() : nil
         let windowPresets = makeWindowPresets()
         let voiLUTs = makeVOILUTs()
+        let frameAttributes = renderingAttributes(frameCount: frameCount)
         guard sourcePhotometric != .paletteColor || paletteColorLUT != nil else { return nil }
         let frames: [DecodedPixelDataFrame]
         switch transferSyntax {
@@ -328,7 +336,9 @@ public struct DICOMFile: Sendable {
         }
         guard frames.count == frameCount else { return nil }
 
-        return frames.map { frame in DICOMPixelData(
+        return frames.enumerated().map { index, frame in
+            let attributes = frameAttributes[index]
+            return DICOMPixelData(
             value: frame.value,
             rows: Int(rows),
             columns: Int(columns),
@@ -338,14 +348,43 @@ public struct DICOMFile: Sendable {
             planarConfiguration: frame.planarConfiguration,
             bitsStored: frame.bitsStored ?? dataset[.bitsStored]?.uint16Value.map(Int.init),
             pixelRepresentation: Int(dataset[.pixelRepresentation]?.uint16Value ?? 0),
-            rescaleSlope: dataset[.rescaleSlope]?.doubleValue ?? 1.0,
-            rescaleIntercept: dataset[.rescaleIntercept]?.doubleValue ?? 0.0,
-            defaultWindowCenter: windowPresets.first?.center ?? dataset[.windowCenter]?.doubleValue,
-            defaultWindowWidth: windowPresets.first?.width ?? dataset[.windowWidth]?.doubleValue,
+            rescaleSlope: attributes.rescaleSlope ?? dataset[.rescaleSlope]?.doubleValue ?? 1.0,
+            rescaleIntercept: attributes.rescaleIntercept ?? dataset[.rescaleIntercept]?.doubleValue ?? 0.0,
+            defaultWindowCenter: attributes.windowCenter ?? windowPresets.first?.center ?? dataset[.windowCenter]?.doubleValue,
+            defaultWindowWidth: attributes.windowWidth ?? windowPresets.first?.width ?? dataset[.windowWidth]?.doubleValue,
             windowPresets: windowPresets,
             voiLUTs: voiLUTs,
             paletteColorLUT: paletteColorLUT
-        ) }
+            )
+        }
+    }
+
+    private func renderingAttributes(frameCount: Int) -> [FrameRenderingAttributes] {
+        let shared = dataset[.sharedFunctionalGroupsSequence]?.sequenceItems?.first
+        let perFrame = dataset[.perFrameFunctionalGroupsSequence]?.sequenceItems ?? []
+        return (0..<frameCount).map { index in
+            var resolved = attributes(in: shared)
+            if perFrame.indices.contains(index) {
+                let perFrameAttributes = attributes(in: perFrame[index])
+                if let value = perFrameAttributes.rescaleSlope { resolved.rescaleSlope = value }
+                if let value = perFrameAttributes.rescaleIntercept { resolved.rescaleIntercept = value }
+                if let value = perFrameAttributes.windowCenter { resolved.windowCenter = value }
+                if let value = perFrameAttributes.windowWidth { resolved.windowWidth = value }
+            }
+            return resolved
+        }
+    }
+
+    private func attributes(in functionalGroup: DICOMDataset?) -> FrameRenderingAttributes {
+        guard let functionalGroup else { return FrameRenderingAttributes() }
+        let transformation = functionalGroup[.pixelValueTransformationSequence]?.sequenceItems?.first
+        let voi = functionalGroup[.frameVOILUTSequence]?.sequenceItems?.first
+        return FrameRenderingAttributes(
+            rescaleSlope: transformation?[.rescaleSlope]?.doubleValue,
+            rescaleIntercept: transformation?[.rescaleIntercept]?.doubleValue,
+            windowCenter: voi?[.windowCenter]?.doubleValue,
+            windowWidth: voi?[.windowWidth]?.doubleValue
+        )
     }
 
     private func makeWindowPresets() -> [DICOMWindowPreset] {

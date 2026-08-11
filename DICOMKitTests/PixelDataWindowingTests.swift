@@ -5,6 +5,37 @@ import Testing
 /// The 16-bit monochrome path, where stored samples are masked, sign-extended,
 /// rescaled, and windowed before they become 8-bit gray.
 struct PixelDataWindowingTests {
+    @Test func appliesPerFrameFunctionalGroupRenderingAttributes() throws {
+        func group(intercept: String, center: String) -> DICOMDataset {
+            let transform = DICOMDataset(elements: [
+                DICOMElement(tag: .rescaleSlope, vr: .DS, value: Data("1".utf8)),
+                DICOMElement(tag: .rescaleIntercept, vr: .DS, value: Data(intercept.utf8))
+            ])
+            let voi = DICOMDataset(elements: [
+                DICOMElement(tag: .windowCenter, vr: .DS, value: Data(center.utf8)),
+                DICOMElement(tag: .windowWidth, vr: .DS, value: Data("100".utf8))
+            ])
+            return DICOMDataset(elements: [
+                DICOMElement(tag: .pixelValueTransformationSequence, vr: .SQ, value: Data(), sequenceItems: [transform]),
+                DICOMElement(tag: .frameVOILUTSequence, vr: .SQ, value: Data(), sequenceItems: [voi])
+            ])
+        }
+        let dataset = DICOMDataset(elements: [
+            DICOMElement(tag: .samplesPerPixel, vr: .US, value: uint16(1)),
+            DICOMElement(tag: .numberOfFrames, vr: .IS, value: Data("2".utf8)),
+            DICOMElement(tag: .photometricInterpretation, vr: .CS, value: Data("MONOCHROME2".utf8)),
+            DICOMElement(tag: .rows, vr: .US, value: uint16(1)),
+            DICOMElement(tag: .columns, vr: .US, value: uint16(1)),
+            DICOMElement(tag: .bitsAllocated, vr: .US, value: uint16(16)),
+            DICOMElement(tag: .perFrameFunctionalGroupsSequence, vr: .SQ, value: Data(), sequenceItems: [group(intercept: "-1000", center: "-950"), group(intercept: "0", center: "50")]),
+            DICOMElement(tag: .pixelData, vr: .OW, value: uint16(50) + uint16(50))
+        ])
+        let frames = try #require(DICOMFile(data: DICOMWriter.write(dataset: dataset)).pixelDataFrames)
+
+        #expect(frames.map(\.rescaleIntercept) == [-1000, 0])
+        #expect(frames.map(\.defaultWindowCenter) == [-950, 50])
+    }
+
     @Test func appliesVOILUTWhenNoExplicitWindowIsRequested() throws {
         let lut = try DICOMVOILUT(firstMappedValue: 0, bitsPerEntry: 8, entries: [0, 255])
         let pixelData = DICOMPixelData(

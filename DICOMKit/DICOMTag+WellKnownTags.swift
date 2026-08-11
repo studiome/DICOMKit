@@ -77,8 +77,16 @@ extension DICOMTag {
     public static let rescaleIntercept = DICOMTag(group: 0x0028, element: 0x1052)
     /// Rescale Slope `(0028,1053)`.
     public static let rescaleSlope = DICOMTag(group: 0x0028, element: 0x1053)
+    /// Frame VOI LUT Sequence `(0028,9132)`.
+    public static let frameVOILUTSequence = DICOMTag(group: 0x0028, element: 0x9132)
+    /// Pixel Value Transformation Sequence `(0028,9145)`.
+    public static let pixelValueTransformationSequence = DICOMTag(group: 0x0028, element: 0x9145)
     /// Pixel Data `(7FE0,0010)`.
     public static let pixelData = DICOMTag(group: 0x7FE0, element: 0x0010)
+    /// Shared Functional Groups Sequence `(5200,9229)`.
+    public static let sharedFunctionalGroupsSequence = DICOMTag(group: 0x5200, element: 0x9229)
+    /// Per-frame Functional Groups Sequence `(5200,9230)`.
+    public static let perFrameFunctionalGroupsSequence = DICOMTag(group: 0x5200, element: 0x9230)
     /// Extended Offset Table `(7FE0,0001)` for encapsulated multi-frame data.
     public static let extendedOffsetTable = DICOMTag(group: 0x7FE0, element: 0x0001)
 }
