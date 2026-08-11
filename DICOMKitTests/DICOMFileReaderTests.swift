@@ -3,6 +3,17 @@ import Testing
 @testable import DICOMKit
 
 struct DICOMFileReaderTests {
+    @Test func readsRawDatasetWithExplicitTransferSyntax() throws {
+        let rawDataset = element(tag: .patientName, vr: .PN, value: "Doe^Jane") +
+            element(tag: .rows, vr: .US, value: uint16(512))
+
+        let file = try DICOMFile(datasetData: rawDataset, transferSyntax: .explicitVRLittleEndian)
+
+        #expect(file.metaInformation.isEmpty)
+        #expect(file.dataset[.patientName]?.stringValue == "Doe^Jane")
+        #expect(file.dataset[.rows]?.uint16Value == 512)
+    }
+
     @Test func readsExplicitVRLittleEndianPart10File() throws {
         let file = try DICOMFile(data: part10File(
             transferSyntaxUID: TransferSyntax.explicitVRLittleEndian.uid,

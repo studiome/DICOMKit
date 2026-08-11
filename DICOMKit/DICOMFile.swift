@@ -468,6 +468,22 @@ public struct DICOMFile: Sendable {
         dataset = DICOMDataset(elements: try reader.readDataset(transferSyntax: transferSyntax))
     }
 
+    /// Parses a dataset that isn't wrapped in a DICOM Part 10 preamble and
+    /// File Meta Information.
+    ///
+    /// The caller must supply its transfer syntax because a raw dataset has
+    /// no authoritative syntax declaration. For ordinary exchange files use
+    /// ``init(data:)`` instead.
+    public init(datasetData input: Data, transferSyntax: TransferSyntax) throws {
+        guard transferSyntax.isSupported else {
+            throw DICOMError.unsupportedTransferSyntax(transferSyntax.uid)
+        }
+        var reader = Reader(data: Data(input), offset: 0)
+        self.metaInformation = DICOMDataset()
+        self.transferSyntax = transferSyntax
+        self.dataset = DICOMDataset(elements: try reader.readDataset(transferSyntax: transferSyntax))
+    }
+
     /// Serializes this file as a DICOM Part 10 byte stream.
     public func encodedData(sequenceLengthEncoding: DICOMWriter.SequenceLengthEncoding = .defined) throws -> Data {
         try DICOMWriter.write(metaInformation: metaInformation, dataset: dataset, transferSyntax: transferSyntax, sequenceLengthEncoding: sequenceLengthEncoding)
