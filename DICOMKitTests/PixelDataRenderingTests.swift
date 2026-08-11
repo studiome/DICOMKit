@@ -5,6 +5,14 @@ import Testing
 
 /// Rendering of 8-bit monochrome and RGB pixel data, which needs no windowing.
 struct PixelDataRenderingTests {
+    @Test func rendersNativeYBRFull422AsRGB() throws {
+        // Two red pixels: Y1, Y2, Cb, Cr.
+        let pixelData = DICOMPixelData(value: Data([76, 76, 85, 255]), rows: 1, columns: 2, samplesPerPixel: 3, bitsAllocated: 8, photometricInterpretation: .ybrFull422)
+        let bytes = try imageBytes(pixelData.cgImage())
+        #expect(bytes[0] > 240 && bytes[1] < 20 && bytes[2] < 20)
+        #expect(bytes[3] > 240 && bytes[4] < 20 && bytes[5] < 20)
+    }
+
     @Test func rendersOneBitPackedMonochromePixelData() throws {
         // DICOM packs the first pixel into the least significant bit.
         let pixelData = DICOMPixelData(

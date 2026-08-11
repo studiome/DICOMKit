@@ -190,6 +190,23 @@ public struct DICOMPixelData: Sendable {
             }
             return try makeImage(data: rgb, colorSpace: CGColorSpaceCreateDeviceRGB(), bitsPerPixel: 24, bytesPerRow: columns * 3)
 
+        case (.ybrFull422, 8):
+            guard samplesPerPixel == 3, planarConfiguration == 0, columns.isMultiple(of: 2) else { throw DICOMImageError.unsupportedPixelFormat }
+            let source = try requiredBytes(pixelCount * 2)
+            var rgb = Data()
+            rgb.reserveCapacity(pixelCount * 3)
+            for offset in stride(from: 0, to: source.count, by: 4) {
+                let cb = Double(source[offset + 2]) - 128
+                let cr = Double(source[offset + 3]) - 128
+                for yByte in [source[offset], source[offset + 1]] {
+                    let y = Double(yByte)
+                    rgb.append(UInt8(clamping: Int((y + 1.402 * cr).rounded())))
+                    rgb.append(UInt8(clamping: Int((y - 0.344_136 * cb - 0.714_136 * cr).rounded())))
+                    rgb.append(UInt8(clamping: Int((y + 1.772 * cb).rounded())))
+                }
+            }
+            return try makeImage(data: rgb, colorSpace: CGColorSpaceCreateDeviceRGB(), bitsPerPixel: 24, bytesPerRow: columns * 3)
+
         case (.paletteColor, 8), (.paletteColor, 16):
             guard samplesPerPixel == 1, let paletteColorLUT else { throw DICOMImageError.invalidImageAttributes }
             let bytesPerSample = bitsAllocated / 8
