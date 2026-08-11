@@ -2,6 +2,8 @@
 ///
 /// Declared in ascending tag order.
 extension DICOMTag {
+    /// Specific Character Set `(0008,0005)`.
+    public static let specificCharacterSet = DICOMTag(group: 0x0008, element: 0x0005)
     /// Transfer Syntax UID `(0002,0010)` in File Meta Information.
     public static let transferSyntaxUID = DICOMTag(group: 0x0002, element: 0x0010)
     /// Referenced Study Sequence `(0008,1110)`.

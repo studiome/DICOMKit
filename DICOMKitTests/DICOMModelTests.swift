@@ -14,6 +14,20 @@ struct DICOMElementValueTests {
         let element = DICOMElement(tag: .windowCenter, vr: .DS, value: Data("40\\400".utf8))
 
         #expect(element.doubleValue == 40)
+        #expect(element.doubleValues == [40, 400])
+    }
+
+    @Test func decodesDatasetTextUsingSpecificCharacterSet() {
+        let dataset = DICOMDataset(elements: [
+            DICOMElement(tag: .specificCharacterSet, vr: .CS, value: Data("ISO_IR 100".utf8)),
+            DICOMElement(tag: .patientName, vr: .PN, value: Data([0x4A, 0xF6, 0x72, 0x67]) )
+        ])
+        #expect(dataset.stringValue(for: .patientName) == "Jörg")
+    }
+
+    @Test func exposesMultiValuedUS() {
+        let element = DICOMElement(tag: .rows, vr: .US, value: Data([1, 0, 2, 0]))
+        #expect(element.uint16Values == [1, 2])
     }
 
     @Test func doubleValueParsesNegativeNumber() {

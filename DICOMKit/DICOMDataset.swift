@@ -22,6 +22,21 @@ public struct DICOMDataset: Sendable, Sequence, Equatable {
     /// Whether the dataset contains no elements.
     public var isEmpty: Bool { storage.isEmpty }
 
+    /// The character set declared by `(0008,0005)`, or UTF-8 when absent.
+    public var characterSet: DICOMCharacterSet {
+        guard let declaration = storage[.specificCharacterSet]?.stringValue,
+              let first = declaration.split(separator: "\\", maxSplits: 1).first,
+              let characterSet = DICOMCharacterSet(dicomName: String(first)) else {
+            return .utf8
+        }
+        return characterSet
+    }
+
+    /// Decodes a text value using this dataset's Specific Character Set.
+    public func stringValue(for tag: DICOMTag) -> String? {
+        storage[tag]?.stringValue(characterSet: characterSet)
+    }
+
     /// The dataset's tags, in ascending order.
     public var tags: [DICOMTag] { storage.keys.sorted() }
 

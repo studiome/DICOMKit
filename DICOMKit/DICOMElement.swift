@@ -36,12 +36,28 @@ public struct DICOMElement: Sendable, Equatable {
     ///
     /// Returns `nil` for sequence elements or values that aren't valid UTF-8.
     public var stringValue: String? {
+        stringValue(characterSet: .utf8)
+    }
+
+    /// Decodes this text element with a DICOM character set.
+    public func stringValue(characterSet: DICOMCharacterSet) -> String? {
         guard sequenceItems == nil else { return nil }
         var trimmedValue = value
         while let last = trimmedValue.last, last == 0 || last == 0x20 {
             trimmedValue.removeLast()
         }
-        return String(data: trimmedValue, encoding: .utf8)
+        return characterSet.decode(trimmedValue)
+    }
+
+    /// Backslash-separated text components in this element.
+    public var stringValues: [String]? {
+        stringValues(characterSet: .utf8)
+    }
+
+    /// Backslash-separated text components decoded with a DICOM character set.
+    public func stringValues(characterSet: DICOMCharacterSet) -> [String]? {
+        guard let value = stringValue(characterSet: characterSet) else { return nil }
+        return value.split(separator: "\\", omittingEmptySubsequences: false).map(String.init)
     }
 
     /// The first 16-bit unsigned little-endian value, if the value contains one.
@@ -67,8 +83,20 @@ public struct DICOMElement: Sendable, Equatable {
     /// is empty, isn't valid UTF-8, or the first component can't be parsed as
     /// a `Double`.
     public var doubleValue: Double? {
-        guard let stringValue else { return nil }
-        let firstComponent = stringValue.split(separator: "\\", maxSplits: 1, omittingEmptySubsequences: false)[0]
-        return Double(firstComponent.trimmingCharacters(in: .whitespaces))
+        doubleValues?.first
+    }
+
+    /// All `DS` or `IS` components parsed as `Double` values.
+    public var doubleValues: [Double]? {
+        guard let values = stringValues else { return nil }
+        let result = values.map { Double($0.trimmingCharacters(in: .whitespaces)) }
+        guard result.allSatisfy({ $0 != nil }) else { return nil }
+        return result.compactMap { $0 }
+    }
+
+    /// All little-endian unsigned 16-bit components.
+    public var uint16Values: [UInt16]? {
+        guard value.count.isMultiple(of: 2) else { return nil }
+        return stride(from: 0, to: value.count, by: 2).map { value.littleEndian(at: $0) }
     }
 }
