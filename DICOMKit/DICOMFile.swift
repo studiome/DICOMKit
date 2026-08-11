@@ -87,6 +87,7 @@ public struct DICOMFile: Sendable {
                 case (1, 8): value = try? RLELosslessDecoder.decode8BitMonochrome(fragments: fragments, pixelCount: pixelCount)
                 case (1, 16): value = try? RLELosslessDecoder.decode16BitMonochrome(fragments: fragments, pixelCount: pixelCount)
                 case (3, 8): value = try? RLELosslessDecoder.decode8BitRGB(fragments: fragments, pixelCount: pixelCount)
+                case (3, 16): value = try? RLELosslessDecoder.decode16BitRGB(fragments: fragments, pixelCount: pixelCount)
                 default: value = nil
                 }
                 guard let value else { return nil }
@@ -96,7 +97,7 @@ public struct DICOMFile: Sendable {
                     bitsAllocated: sourceBitsAllocated,
                     bitsStored: nil,
                     photometricInterpretation: sourcePhotometric,
-                    planarConfiguration: sourcePlanarConfiguration
+                    planarConfiguration: sourceSamplesPerPixel == 3 ? 0 : sourcePlanarConfiguration
                 )
             }
 

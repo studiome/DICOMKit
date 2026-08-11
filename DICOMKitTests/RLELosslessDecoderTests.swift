@@ -3,6 +3,23 @@ import Testing
 @testable import DICOMKit
 
 struct RLELosslessDecoderTests {
+    @Test func decodesSingleFrame16BitRGBRLELosslessPixelData() throws {
+        let data = imageFile(
+            transferSyntaxUID: TransferSyntax.rleLossless.uid,
+            samplesPerPixel: 3,
+            photometricInterpretation: .rgb,
+            rows: 1,
+            columns: 1,
+            bitsAllocated: 16,
+            pixelDataElement: encapsulatedPixelData(fragments: [rleFrame(segments: [
+                Data([0x00, 0xFF]), Data([0x00, 0x00]), // red: 0xFF00
+                Data([0x00, 0x00]), Data([0x00, 0x00]),
+                Data([0x00, 0x00]), Data([0x00, 0x00])
+            ])])
+        )
+
+        #expect(try imageBytes(#require(DICOMFile(data: data).pixelData).cgImage()) == Data([255, 0, 0]))
+    }
     @Test func decodesSingleFrame8BitRLELosslessPixelData() throws {
         let data = imageFile(
             transferSyntaxUID: TransferSyntax.rleLossless.uid,
