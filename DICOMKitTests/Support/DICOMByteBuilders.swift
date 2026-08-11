@@ -22,6 +22,11 @@ func uint32(_ value: UInt32) -> Data {
     ])
 }
 
+/// Little-endian encoding of a 64-bit value.
+func uint64(_ value: UInt64) -> Data {
+    Data((0..<8).map { UInt8((value >> UInt64($0 * 8)) & 0xFF) })
+}
+
 private func tagBytes(_ tag: DICOMTag) -> Data {
     uint16(tag.group) + uint16(tag.element)
 }

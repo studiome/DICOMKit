@@ -61,5 +61,6 @@ enum DICOMDictionary {
         DICOMTag(group: 0x5200, element: 0x9229): .SQ,
         DICOMTag(group: 0x5200, element: 0x9230): .SQ,
         .pixelData: .OW
+        , .extendedOffsetTable: .OV
     ]
 }

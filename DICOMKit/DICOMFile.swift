@@ -412,12 +412,22 @@ public struct DICOMFile: Sendable {
               let basicOffsetTable = element.basicOffsetTable else {
             return nil
         }
+        if basicOffsetTable.isEmpty,
+           let extendedOffsets = dataset[.extendedOffsetTable]?.uint64Values,
+           !extendedOffsets.isEmpty {
+            return try? EncapsulatedPixelData.frameFragments(
+                fragments: fragments,
+                fragmentOffsets: fragmentOffsets,
+                extendedOffsets: extendedOffsets,
+                frameCount: frameCount
+            )
+        }
         return try? EncapsulatedPixelData.frameFragments(
-            fragments: fragments,
-            fragmentOffsets: fragmentOffsets,
-            basicOffsetTable: basicOffsetTable,
-            frameCount: frameCount
-        )
+                fragments: fragments,
+                fragmentOffsets: fragmentOffsets,
+                basicOffsetTable: basicOffsetTable,
+                frameCount: frameCount
+            )
     }
 
     /// Parses a DICOM Part 10 file from memory.

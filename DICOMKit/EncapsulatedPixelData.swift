@@ -49,4 +49,29 @@ enum EncapsulatedPixelData {
             return Array(fragments[start..<end])
         }
     }
+
+    /// Groups fragments with 64-bit Extended Offset Table offsets.
+    static func frameFragments(
+        fragments: [Data],
+        fragmentOffsets: [Int],
+        extendedOffsets: [UInt64],
+        frameCount: Int
+    ) throws -> [[Data]] {
+        guard extendedOffsets.count == frameCount,
+              extendedOffsets.first == 0,
+              extendedOffsets == extendedOffsets.sorted(),
+              Set(extendedOffsets).count == extendedOffsets.count else {
+            throw DICOMImageError.unsupportedPixelFormat
+        }
+        let startIndices = try extendedOffsets.map { offset -> Int in
+            guard offset <= UInt64(Int.max), let index = fragmentOffsets.firstIndex(of: Int(offset)) else {
+                throw DICOMImageError.truncatedPixelData
+            }
+            return index
+        }
+        return startIndices.enumerated().map { index, start in
+            let end = index + 1 < startIndices.count ? startIndices[index + 1] : fragments.count
+            return Array(fragments[start..<end])
+        }
+    }
 }

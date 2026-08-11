@@ -71,4 +71,6 @@ extension DICOMTag {
     public static let rescaleSlope = DICOMTag(group: 0x0028, element: 0x1053)
     /// Pixel Data `(7FE0,0010)`.
     public static let pixelData = DICOMTag(group: 0x7FE0, element: 0x0010)
+    /// Extended Offset Table `(7FE0,0001)` for encapsulated multi-frame data.
+    public static let extendedOffsetTable = DICOMTag(group: 0x7FE0, element: 0x0001)
 }

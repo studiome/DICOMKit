@@ -105,6 +105,9 @@ public struct DICOMElement: Sendable, Equatable {
     /// All little-endian unsigned 32-bit components.
     public var uint32Values: [UInt32]? { values(as: UInt32.self) }
 
+    /// All little-endian unsigned 64-bit components.
+    public var uint64Values: [UInt64]? { values(as: UInt64.self) }
+
     /// All little-endian signed 32-bit components.
     public var int32Values: [Int32]? { uint32Values?.map { Int32(bitPattern: $0) } }
 
