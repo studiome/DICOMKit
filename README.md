@@ -61,14 +61,17 @@ See the [changelog](CHANGELOG.md) for the current implementation status.
 | DICOM transfer syntax | Decoder | Current scope |
 | --- | --- | --- |
 | JPEG Baseline `.50` | libjpeg-turbo 3.1.3 (TurboJPEG API) | 8-bit `RGB` and monochrome output; JPEG color spaces are converted to output RGB. |
-| JPEG Lossless `.57`, `.70` | DICOMKit Swift decoder | 2–16-bit monochrome and single-scan, 1:1:1 interleaved `RGB`; `.70` requires Selection Value 1. |
+| JPEG Lossless `.57`, `.70` | libjpeg-turbo 3.1.3 (TurboJPEG API) | 2–16-bit monochrome and single-scan, 1:1:1 interleaved `RGB`; `.70` requires Selection Value 1. |
 | JPEG-LS `.80`, `.81` | CharLS Git submodule | Lossless and Near-Lossless; supported interleave modes are listed above. |
 | JPEG 2000 `.90`, `.91` | ImageIO | 8-bit `RGB` or monochrome output. |
 
-libjpeg-turbo is selected only for JPEG Baseline. Although its TurboJPEG API
-also supports additional JPEG modes, DICOMKit keeps Process 14 decoding in its
-dedicated decoder so that DICOM precision, predictor, and component-layout
-validation remains explicit.
+libjpeg-turbo is the primary decoder for JPEG Baseline and JPEG Lossless
+Process 14. DICOMKit retains responsibility for fragment reassembly, transfer
+syntax restrictions, dimensions, component count, `Bits Allocated`, `Bits
+Stored`, and 16-bit little-endian storage. The previous Process 14 decoder is
+kept as a temporary fallback for streams that TurboJPEG rejects (including the
+current restart-marker regression fixture) while both implementations are
+compared against fixtures.
 
 ```swift
 let file = try DICOMFile(data: data)

@@ -23,7 +23,9 @@ All notable changes to DICOMKit are documented here.
   Syntaxes `.57` and `.70`, including 8-bit and 16-bit DICOM storage.
 - Replaced ImageIO with the checksum-pinned libjpeg-turbo 3.1.3 TurboJPEG API
   for JPEG Baseline (Process 1) decoding. JPEG 2000 remains on ImageIO and
-  JPEG Lossless Process 14 remains on the DICOMKit decoder.
+  libjpeg-turbo is also the primary decoder for JPEG Lossless Process 14.
+  The prior Process 14 decoder remains as a temporary fallback while fixture
+  output is compared, including for restart-marker streams TurboJPEG rejects.
 
 ## v0.4 — Complete
 
