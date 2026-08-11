@@ -5,6 +5,11 @@ import Testing
 
 /// Rendering of 8-bit monochrome and RGB pixel data, which needs no windowing.
 struct PixelDataRenderingTests {
+    @Test func rendersNativeYBRFullAsRGB() throws {
+        let pixelData = DICOMPixelData(value: Data([76, 85, 255]), rows: 1, columns: 1, samplesPerPixel: 3, bitsAllocated: 8, photometricInterpretation: .ybrFull)
+        let bytes = try imageBytes(pixelData.cgImage())
+        #expect(bytes[0] > 240 && bytes[1] < 20 && bytes[2] < 20)
+    }
     @Test func rendersPlanarRGBPixelData() throws {
         let pixelData = DICOMPixelData(
             value: Data([255, 0, 0, 255, 0, 0]), // R plane, G plane, B plane
