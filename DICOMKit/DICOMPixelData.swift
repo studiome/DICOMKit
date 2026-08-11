@@ -46,6 +46,8 @@ public struct DICOMPixelData: Sendable {
     /// supply an explicit window width. `nil` if `(0028,1051)` is absent or
     /// unparsable.
     public let defaultWindowWidth: Double?
+    /// All usable Window Center/Width pairs declared by the dataset.
+    public let windowPresets: [DICOMWindowPreset]
     /// The color lookup tables used when ``photometricInterpretation`` is
     /// ``PhotometricInterpretation/paletteColor``.
     public let paletteColorLUT: DICOMPaletteColorLUT?
@@ -72,6 +74,7 @@ public struct DICOMPixelData: Sendable {
         rescaleIntercept: Double = 0.0,
         defaultWindowCenter: Double? = nil,
         defaultWindowWidth: Double? = nil,
+        windowPresets: [DICOMWindowPreset] = [],
         paletteColorLUT: DICOMPaletteColorLUT? = nil
     ) {
         self.value = value
@@ -87,6 +90,7 @@ public struct DICOMPixelData: Sendable {
         self.rescaleIntercept = rescaleIntercept
         self.defaultWindowCenter = defaultWindowCenter
         self.defaultWindowWidth = defaultWindowWidth
+        self.windowPresets = windowPresets
         self.paletteColorLUT = paletteColorLUT
     }
 

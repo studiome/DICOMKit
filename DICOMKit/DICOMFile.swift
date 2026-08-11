@@ -74,6 +74,7 @@ public struct DICOMFile: Sendable {
         let sourcePhotometric = PhotometricInterpretation(name: photometricInterpretation)
         let sourcePlanarConfiguration = Int(dataset[.planarConfiguration]?.uint16Value ?? 0)
         let paletteColorLUT = sourcePhotometric == .paletteColor ? makePaletteColorLUT() : nil
+        let windowPresets = makeWindowPresets()
         guard sourcePhotometric != .paletteColor || paletteColorLUT != nil else { return nil }
         let frames: [DecodedPixelDataFrame]
         switch transferSyntax {
@@ -319,10 +320,21 @@ public struct DICOMFile: Sendable {
             pixelRepresentation: Int(dataset[.pixelRepresentation]?.uint16Value ?? 0),
             rescaleSlope: dataset[.rescaleSlope]?.doubleValue ?? 1.0,
             rescaleIntercept: dataset[.rescaleIntercept]?.doubleValue ?? 0.0,
-            defaultWindowCenter: dataset[.windowCenter]?.doubleValue,
-            defaultWindowWidth: dataset[.windowWidth]?.doubleValue,
+            defaultWindowCenter: windowPresets.first?.center ?? dataset[.windowCenter]?.doubleValue,
+            defaultWindowWidth: windowPresets.first?.width ?? dataset[.windowWidth]?.doubleValue,
+            windowPresets: windowPresets,
             paletteColorLUT: paletteColorLUT
         ) }
+    }
+
+    private func makeWindowPresets() -> [DICOMWindowPreset] {
+        guard let centers = dataset[.windowCenter]?.doubleValues,
+              let widths = dataset[.windowWidth]?.doubleValues,
+              centers.count == widths.count else { return [] }
+        let explanations = dataset[.windowCenterWidthExplanation]?.stringValues ?? []
+        return zip(centers.indices, zip(centers, widths)).map { index, values in
+            DICOMWindowPreset(center: values.0, width: values.1, explanation: explanations.indices.contains(index) ? explanations[index] : nil)
+        }
     }
 
     /// Builds the palette lookup tables carried by a `PALETTE COLOR` dataset.

@@ -5,6 +5,26 @@ import Testing
 /// The 16-bit monochrome path, where stored samples are masked, sign-extended,
 /// rescaled, and windowed before they become 8-bit gray.
 struct PixelDataWindowingTests {
+    @Test func exposesMultipleDatasetWindowPresets() throws {
+        let file = try DICOMFile(data: imageFile(
+            rows: 1,
+            columns: 1,
+            bitsAllocated: 16,
+            windowCenter: "40\\200",
+            windowWidth: "400\\1000",
+            windowCenterWidthExplanation: "Soft\\Bone",
+            pixelData: uint16(0)
+        ))
+
+        let pixelData = try #require(file.pixelData)
+        #expect(pixelData.windowPresets == [
+            DICOMWindowPreset(center: 40, width: 400, explanation: "Soft"),
+            DICOMWindowPreset(center: 200, width: 1000, explanation: "Bone")
+        ])
+        #expect(pixelData.defaultWindowCenter == 40)
+        #expect(pixelData.defaultWindowWidth == 400)
+    }
+
     @Test(arguments: [
         (PhotometricInterpretation.monochrome1, Data([255, 0])),
         (PhotometricInterpretation.monochrome2, Data([0, 255]))

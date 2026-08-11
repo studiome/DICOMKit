@@ -54,6 +54,7 @@ enum DICOMDictionary {
         .greenPaletteColorLookupTableData: .OW,
         .bluePaletteColorLookupTableData: .OW,
         .windowCenter: .DS, .windowWidth: .DS, .rescaleIntercept: .DS, .rescaleSlope: .DS,
+        .windowCenterWidthExplanation: .LO,
         DICOMTag(group: 0x0028, element: 0x1056): .CS,
         DICOMTag(group: 0x5200, element: 0x9229): .SQ,
         DICOMTag(group: 0x5200, element: 0x9230): .SQ,

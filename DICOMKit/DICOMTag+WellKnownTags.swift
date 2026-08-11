@@ -55,6 +55,8 @@ extension DICOMTag {
     public static let windowCenter = DICOMTag(group: 0x0028, element: 0x1050)
     /// Window Width `(0028,1051)`.
     public static let windowWidth = DICOMTag(group: 0x0028, element: 0x1051)
+    /// Window Center & Width Explanation `(0028,1055)`.
+    public static let windowCenterWidthExplanation = DICOMTag(group: 0x0028, element: 0x1055)
     /// Rescale Intercept `(0028,1052)`.
     public static let rescaleIntercept = DICOMTag(group: 0x0028, element: 0x1052)
     /// Rescale Slope `(0028,1053)`.
