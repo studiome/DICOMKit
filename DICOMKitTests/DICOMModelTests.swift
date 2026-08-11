@@ -93,6 +93,21 @@ struct DICOMElementValueTests {
 }
 
 struct DICOMDatasetTests {
+    @Test func exposesImageGeometry() throws {
+        let dataset = DICOMDataset(elements: [
+            DICOMElement(tag: .pixelSpacing, vr: .DS, value: Data("0.5\\0.75".utf8)),
+            DICOMElement(tag: .pixelAspectRatio, vr: .IS, value: Data("4\\3".utf8)),
+            DICOMElement(tag: .imagePositionPatient, vr: .DS, value: Data("1\\2\\3".utf8)),
+            DICOMElement(tag: .imageOrientationPatient, vr: .DS, value: Data("1\\0\\0\\0\\1\\0".utf8))
+        ])
+        let file = try DICOMFile(data: DICOMWriter.write(dataset: dataset))
+
+        #expect(file.imageGeometry == DICOMImageGeometry(
+            pixelSpacing: [0.5, 0.75], pixelAspectRatio: [4, 3],
+            imagePositionPatient: [1, 2, 3], imageOrientationPatient: [1, 0, 0, 0, 1, 0]
+        ))
+    }
+
     @Test func resolvesPrivateCreatorAndPrivateElement() throws {
         let creatorTag = DICOMTag(group: 0x0019, element: 0x0010)
         let privateTag = DICOMTag(group: 0x0019, element: 0x1001)

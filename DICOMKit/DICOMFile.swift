@@ -24,6 +24,24 @@ public struct DICOMFile: Sendable {
     /// The transfer syntax declared by the File Meta Information.
     public let transferSyntax: TransferSyntax
 
+    /// Typed display and patient-space geometry, when the dataset supplies it.
+    public var imageGeometry: DICOMImageGeometry? {
+        let pixelSpacing = dataset[.pixelSpacing]?.doubleValues
+        let pixelAspectRatio = dataset[.pixelAspectRatio]?.stringValues.flatMap { values -> [Int]? in
+            let parsed = values.compactMap(Int.init)
+            return parsed.count == values.count ? parsed : nil
+        }
+        let imagePosition = dataset[.imagePositionPatient]?.doubleValues
+        let imageOrientation = dataset[.imageOrientationPatient]?.doubleValues
+        guard pixelSpacing != nil || pixelAspectRatio != nil || imagePosition != nil || imageOrientation != nil else { return nil }
+        return DICOMImageGeometry(
+            pixelSpacing: pixelSpacing?.count == 2 ? pixelSpacing : nil,
+            pixelAspectRatio: pixelAspectRatio?.count == 2 ? pixelAspectRatio : nil,
+            imagePositionPatient: imagePosition?.count == 3 ? imagePosition : nil,
+            imageOrientationPatient: imageOrientation?.count == 6 ? imageOrientation : nil
+        )
+    }
+
     /// The first frame of ``pixelDataFrames``, if available.
     ///
     /// `nil` if `(7FE0,0010)` Pixel Data is absent, or if any of the

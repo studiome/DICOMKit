@@ -26,10 +26,18 @@ extension DICOMTag {
     public static let photometricInterpretation = DICOMTag(group: 0x0028, element: 0x0004)
     /// Planar Configuration `(0028,0006)`.
     public static let planarConfiguration = DICOMTag(group: 0x0028, element: 0x0006)
+    /// Pixel Spacing `(0028,0030)`.
+    public static let pixelSpacing = DICOMTag(group: 0x0028, element: 0x0030)
+    /// Pixel Aspect Ratio `(0028,0034)`.
+    public static let pixelAspectRatio = DICOMTag(group: 0x0028, element: 0x0034)
     /// Rows `(0028,0010)`.
     public static let rows = DICOMTag(group: 0x0028, element: 0x0010)
     /// Columns `(0028,0011)`.
     public static let columns = DICOMTag(group: 0x0028, element: 0x0011)
+    /// Image Position (Patient) `(0020,0032)`.
+    public static let imagePositionPatient = DICOMTag(group: 0x0020, element: 0x0032)
+    /// Image Orientation (Patient) `(0020,0037)`.
+    public static let imageOrientationPatient = DICOMTag(group: 0x0020, element: 0x0037)
     /// Bits Allocated `(0028,0100)`.
     public static let bitsAllocated = DICOMTag(group: 0x0028, element: 0x0100)
     /// Bits Stored `(0028,0101)`.
