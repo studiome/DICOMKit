@@ -41,6 +41,16 @@ struct DICOMElementValueTests {
         #expect(attributes.attributeTagValues == [.patientName, .rows])
     }
 
+    @Test func parsesPersonNameAndDICOMDateTime() {
+        let name = DICOMElement(tag: .patientName, vr: .PN, value: Data("Yamada^Taro=山田^太郎=やまだ^たろう".utf8))
+        #expect(name.personNameValue == DICOMPersonName("Yamada^Taro=山田^太郎=やまだ^たろう"))
+
+        let dateTime = DICOMElement(tag: DICOMTag(group: 0x0008, element: 0x002A), vr: .DT, value: Data("20260812093015.25+0900".utf8))
+        #expect(dateTime.dateComponentsValue?.year == 2026)
+        #expect(dateTime.dateComponentsValue?.nanosecond == 250_000_000)
+        #expect(dateTime.dateComponentsValue?.timeZone?.secondsFromGMT() == 32_400)
+    }
+
     @Test func resolvesCommonImplicitVRDictionaryEntries() {
         #expect(DICOMDictionary.vr(for: DICOMTag(group: 0x0010, element: 0x0020)) == .LO) // Patient ID
         #expect(DICOMDictionary.vr(for: DICOMTag(group: 0x0008, element: 0x0060)) == .CS) // Modality

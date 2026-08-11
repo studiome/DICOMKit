@@ -125,9 +125,58 @@ public struct DICOMElement: Sendable, Equatable {
         }
     }
 
+    /// The three representation groups of a `PN` value.
+    public var personNameValue: DICOMPersonName? {
+        guard vr == .PN, let stringValue else { return nil }
+        return DICOMPersonName(stringValue)
+    }
+
+    /// Parses a `DA`, `TM`, or `DT` value without discarding its offset.
+    public var dateComponentsValue: DateComponents? {
+        guard let text = stringValue else { return nil }
+        switch vr {
+        case .DA: return Self.dateComponents(from: text)
+        case .TM: return Self.timeComponents(from: text)
+        case .DT: return Self.dateTimeComponents(from: text)
+        default: return nil
+        }
+    }
+
     private func values<T: FixedWidthInteger & UnsignedInteger>(as type: T.Type) -> [T]? {
         let width = MemoryLayout<T>.size
         guard value.count.isMultiple(of: width) else { return nil }
         return stride(from: 0, to: value.count, by: width).map { value.littleEndian(at: $0, as: T.self) }
+    }
+
+    private static func dateComponents(from text: String) -> DateComponents? {
+        guard text.count == 8, let year = Int(text.prefix(4)), let month = Int(text.dropFirst(4).prefix(2)), let day = Int(text.suffix(2)) else { return nil }
+        return DateComponents(year: year, month: month, day: day)
+    }
+
+    private static func timeComponents(from text: String) -> DateComponents? {
+        let parts = text.split(separator: ".", maxSplits: 1, omittingEmptySubsequences: false)
+        let time = String(parts[0])
+        guard (2...6).contains(time.count), time.allSatisfy(\.isNumber), let hour = Int(time.prefix(2)) else { return nil }
+        let minute = time.count >= 4 ? Int(time.dropFirst(2).prefix(2)) : nil
+        let second = time.count >= 6 ? Int(time.suffix(2)) : nil
+        let nanosecond = parts.count == 2 ? Int((String(parts[1]) + String(repeating: "0", count: max(0, 9 - parts[1].count))).prefix(9)) : nil
+        return DateComponents(hour: hour, minute: minute, second: second, nanosecond: nanosecond)
+    }
+
+    private static func dateTimeComponents(from text: String) -> DateComponents? {
+        let offsetIndex = text.firstIndex(where: { $0 == "+" || $0 == "-" })
+        let dateTime = String(offsetIndex.map { text[..<$0] } ?? text[...])
+        guard dateTime.count >= 8, var result = dateComponents(from: String(dateTime.prefix(8))) else { return nil }
+        let timeText = String(dateTime.dropFirst(8))
+        if !timeText.isEmpty {
+            guard let time = timeComponents(from: timeText) else { return nil }
+            result.hour = time.hour; result.minute = time.minute; result.second = time.second; result.nanosecond = time.nanosecond
+        }
+        if let offsetIndex {
+            let offset = text[offsetIndex...]
+            guard offset.count == 5, let hours = Int(offset.dropFirst().prefix(2)), let minutes = Int(offset.suffix(2)) else { return nil }
+            result.timeZone = TimeZone(secondsFromGMT: (text[offsetIndex] == "+" ? 1 : -1) * (hours * 3600 + minutes * 60))
+        }
+        return result
     }
 }
