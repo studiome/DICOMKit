@@ -1,6 +1,8 @@
 /// Errors produced while reading a DICOM Part 10 file.
 public enum DICOMError: Error, Sendable, Equatable {
     case invalidUIDRoot
+    /// A Deflated Explicit VR Little Endian dataset could not be decompressed.
+    case invalidDeflatedData
     /// The dataset doesn't contain the SOP Class UID needed for File Meta Information.
     case missingSOPClassUID
     /// The dataset doesn't contain the SOP Instance UID needed for File Meta Information.

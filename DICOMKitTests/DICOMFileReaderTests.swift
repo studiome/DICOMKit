@@ -3,6 +3,19 @@ import Testing
 @testable import DICOMKit
 
 struct DICOMFileReaderTests {
+    @Test func readsDeflatedExplicitVRLittleEndianDataset() throws {
+        let rawDataset = element(tag: .patientName, vr: .PN, value: "Doe^Jane")
+        var data = Data(repeating: 0, count: 128)
+        data.append(Data("DICM".utf8))
+        data.append(element(tag: .transferSyntaxUID, vr: .UI, value: TransferSyntax.deflatedExplicitVRLittleEndian.uid))
+        data.append(try DeflateCodec.deflateRaw(rawDataset))
+
+        let file = try DICOMFile(data: data)
+
+        #expect(file.transferSyntax == .deflatedExplicitVRLittleEndian)
+        #expect(file.dataset[.patientName]?.stringValue == "Doe^Jane")
+    }
+
     @Test func readsRawDatasetWithExplicitTransferSyntax() throws {
         let rawDataset = element(tag: .patientName, vr: .PN, value: "Doe^Jane") +
             element(tag: .rows, vr: .US, value: uint16(512))

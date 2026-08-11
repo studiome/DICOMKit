@@ -34,7 +34,7 @@ struct Reader {
         // instead of silently inheriting one. Every encapsulated syntax
         // encodes its elements as Explicit VR Little Endian.
         switch transferSyntax {
-        case .explicitVRLittleEndian, .rleLossless, .jpegBaseline,
+        case .explicitVRLittleEndian, .deflatedExplicitVRLittleEndian, .rleLossless, .jpegBaseline,
              .jpegLossless, .jpegLosslessSV1, .jpegLSLossless,
              .jpegLSNearLossless, .jpeg2000Lossless, .jpeg2000:
             let vrText = String(bytes: try readData(count: 2), encoding: .ascii) ?? ""

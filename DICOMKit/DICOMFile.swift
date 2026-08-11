@@ -522,7 +522,13 @@ public struct DICOMFile: Sendable {
             throw DICOMError.unsupportedTransferSyntax(uid)
         }
 
-        dataset = DICOMDataset(elements: try reader.readDataset(transferSyntax: transferSyntax))
+        if transferSyntax == .deflatedExplicitVRLittleEndian {
+            let compressed = data.subdata(in: reader.offset..<data.count)
+            var inflatedReader = Reader(data: try DeflateCodec.inflateRaw(compressed), offset: 0)
+            dataset = DICOMDataset(elements: try inflatedReader.readDataset(transferSyntax: .explicitVRLittleEndian))
+        } else {
+            dataset = DICOMDataset(elements: try reader.readDataset(transferSyntax: transferSyntax))
+        }
     }
 
     /// Parses a dataset that isn't wrapped in a DICOM Part 10 preamble and
@@ -538,7 +544,12 @@ public struct DICOMFile: Sendable {
         var reader = Reader(data: Data(input), offset: 0)
         self.metaInformation = DICOMDataset()
         self.transferSyntax = transferSyntax
-        self.dataset = DICOMDataset(elements: try reader.readDataset(transferSyntax: transferSyntax))
+        if transferSyntax == .deflatedExplicitVRLittleEndian {
+            var inflatedReader = Reader(data: try DeflateCodec.inflateRaw(Data(input)), offset: 0)
+            self.dataset = DICOMDataset(elements: try inflatedReader.readDataset(transferSyntax: .explicitVRLittleEndian))
+        } else {
+            self.dataset = DICOMDataset(elements: try reader.readDataset(transferSyntax: transferSyntax))
+        }
     }
 
     /// Serializes this file as a DICOM Part 10 byte stream.
