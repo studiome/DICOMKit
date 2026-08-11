@@ -17,6 +17,7 @@ public enum DICOMWriter {
         metaInformation: DICOMDataset = DICOMDataset(),
         dataset: DICOMDataset,
         transferSyntax: TransferSyntax = .explicitVRLittleEndian,
+        requiredMetaInformation: DICOMFileMetaInformation? = nil,
         sequenceLengthEncoding: SequenceLengthEncoding = .defined
     ) throws -> Data {
         guard transferSyntax == .explicitVRLittleEndian || transferSyntax == .implicitVRLittleEndian else {
@@ -27,6 +28,18 @@ public enum DICOMWriter {
         output.append(contentsOf: "DICM".utf8)
 
         var metaElements = Array(metaInformation).filter { $0.tag.group == 0x0002 && $0.tag != .transferSyntaxUID }
+        if let requiredMetaInformation {
+            metaElements.removeAll {
+                $0.tag == .mediaStorageSOPClassUID || $0.tag == .mediaStorageSOPInstanceUID ||
+                $0.tag == .implementationClassUID || $0.tag == .implementationVersionName
+            }
+            metaElements.append(DICOMElement(tag: .mediaStorageSOPClassUID, vr: .UI, value: Data(requiredMetaInformation.mediaStorageSOPClassUID.utf8)))
+            metaElements.append(DICOMElement(tag: .mediaStorageSOPInstanceUID, vr: .UI, value: Data(requiredMetaInformation.mediaStorageSOPInstanceUID.utf8)))
+            metaElements.append(DICOMElement(tag: .implementationClassUID, vr: .UI, value: Data(requiredMetaInformation.implementationClassUID.utf8)))
+            if let implementationVersionName = requiredMetaInformation.implementationVersionName {
+                metaElements.append(DICOMElement(tag: .implementationVersionName, vr: .SH, value: Data(implementationVersionName.utf8)))
+            }
+        }
         metaElements.append(DICOMElement(tag: .transferSyntaxUID, vr: .UI, value: Data(transferSyntax.uid.utf8)))
         for element in metaElements.sorted(by: { $0.tag < $1.tag }) {
             try append(element, to: &output, explicitVR: true, sequenceLengthEncoding: .defined)

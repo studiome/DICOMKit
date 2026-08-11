@@ -16,6 +16,20 @@ struct DICOMWriterTests {
         #expect(file.dataset == dataset)
     }
 
+    @Test func writesRequiredFileMetaInformation() throws {
+        let meta = DICOMFileMetaInformation(
+            mediaStorageSOPClassUID: "1.2.840.10008.5.1.4.1.1.2",
+            mediaStorageSOPInstanceUID: "1.2.3.4",
+            implementationClassUID: "1.2.826.0.1.3680043.10.543.1",
+            implementationVersionName: "DICOMKIT_1"
+        )
+        let file = try DICOMFile(data: DICOMWriter.write(dataset: DICOMDataset(), requiredMetaInformation: meta))
+        #expect(file.metaInformation[.mediaStorageSOPClassUID]?.stringValue == meta.mediaStorageSOPClassUID)
+        #expect(file.metaInformation[.mediaStorageSOPInstanceUID]?.stringValue == meta.mediaStorageSOPInstanceUID)
+        #expect(file.metaInformation[.implementationClassUID]?.stringValue == meta.implementationClassUID)
+        #expect(file.metaInformation[.implementationVersionName]?.stringValue == meta.implementationVersionName)
+    }
+
     @Test func writesDefinedLengthSequence() throws {
         let dataset = DICOMDataset(elements: [
             DICOMElement(

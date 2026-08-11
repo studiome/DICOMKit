@@ -6,6 +6,12 @@ extension DICOMTag {
     public static let specificCharacterSet = DICOMTag(group: 0x0008, element: 0x0005)
     /// Transfer Syntax UID `(0002,0010)` in File Meta Information.
     public static let transferSyntaxUID = DICOMTag(group: 0x0002, element: 0x0010)
+    public static let mediaStorageSOPClassUID = DICOMTag(group: 0x0002, element: 0x0002)
+    public static let mediaStorageSOPInstanceUID = DICOMTag(group: 0x0002, element: 0x0003)
+    public static let implementationClassUID = DICOMTag(group: 0x0002, element: 0x0012)
+    public static let implementationVersionName = DICOMTag(group: 0x0002, element: 0x0013)
+    public static let sopClassUID = DICOMTag(group: 0x0008, element: 0x0016)
+    public static let sopInstanceUID = DICOMTag(group: 0x0008, element: 0x0018)
     /// Referenced Study Sequence `(0008,1110)`.
     public static let referencedStudySequence = DICOMTag(group: 0x0008, element: 0x1110)
     /// Referenced SOP Class UID `(0008,1150)`.
