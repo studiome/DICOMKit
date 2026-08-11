@@ -33,6 +33,21 @@ enum RLELosslessDecoder {
         return output
     }
 
+    static func decode16BitRGB(fragments: [Data], pixelCount: Int) throws -> Data {
+        let segments = try decodedSegments(fragments: fragments, count: 6, pixelCount: pixelCount)
+        var output = Data()
+        output.reserveCapacity(pixelCount * 6)
+        for index in 0..<pixelCount {
+            // Per Annex G, each component's most-significant byte segment
+            // precedes its least-significant byte segment.
+            for component in 0..<3 {
+                output.append(segments[component * 2 + 1][index])
+                output.append(segments[component * 2][index])
+            }
+        }
+        return output
+    }
+
     private static func decodedSegments(fragments: [Data], count: Int, pixelCount: Int) throws -> [Data] {
         guard pixelCount > 0 else { throw DICOMImageError.invalidImageAttributes }
         let frame = fragments.reduce(into: Data()) { $0.append($1) }

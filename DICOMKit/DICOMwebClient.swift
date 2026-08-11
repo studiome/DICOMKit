@@ -53,6 +53,19 @@ public struct DICOMwebClient: Sendable {
         return try await perform(request).data
     }
 
+    /// Performs a QIDO-RS series search within a study.
+    public func searchSeries(studyInstanceUID: String, query: [URLQueryItem] = []) async throws -> Data {
+        try await qidoSearch(path: ["studies", studyInstanceUID, "series"], query: query)
+    }
+
+    /// Performs a QIDO-RS instance search, optionally scoped to a series.
+    public func searchInstances(studyInstanceUID: String, seriesInstanceUID: String? = nil, query: [URLQueryItem] = []) async throws -> Data {
+        var path = ["studies", studyInstanceUID]
+        if let seriesInstanceUID { path += ["series", seriesInstanceUID] }
+        path.append("instances")
+        return try await qidoSearch(path: path, query: query)
+    }
+
     /// Retrieves one DICOM Part 10 instance through WADO-RS.
     ///
     /// Both a direct `application/dicom` response and a single-instance
@@ -81,12 +94,29 @@ public struct DICOMwebClient: Sendable {
 
     /// Stores DICOM Part 10 instances through STOW-RS and returns the server's DICOM JSON response.
     public func store(instances: [Data]) async throws -> Data {
+        try await store(instances: instances, studyInstanceUID: nil)
+    }
+
+    /// Stores DICOM Part 10 instances through STOW-RS, optionally at a
+    /// study-specific endpoint.
+    public func store(instances: [Data], studyInstanceUID: String?) async throws -> Data {
         let boundary = "DICOMKit-\(UUID().uuidString)"
-        var request = URLRequest(url: endpoint(["studies"]))
+        var path = ["studies"]
+        if let studyInstanceUID { path.append(studyInstanceUID) }
+        var request = URLRequest(url: endpoint(path))
         request.httpMethod = "POST"
         request.setValue("application/dicom+json", forHTTPHeaderField: "Accept")
         request.setValue("multipart/related; type=application/dicom; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
         request.httpBody = multipartBody(instances: instances, boundary: boundary)
+        return try await perform(request).data
+    }
+
+    private func qidoSearch(path: [String], query: [URLQueryItem]) async throws -> Data {
+        var components = URLComponents(url: endpoint(path), resolvingAgainstBaseURL: false)!
+        components.queryItems = query.isEmpty ? nil : query
+        var request = URLRequest(url: components.url!)
+        request.httpMethod = "GET"
+        request.setValue("application/dicom+json", forHTTPHeaderField: "Accept")
         return try await perform(request).data
     }
 

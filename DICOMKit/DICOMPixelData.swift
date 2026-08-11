@@ -46,6 +46,13 @@ public struct DICOMPixelData: Sendable {
     /// supply an explicit window width. `nil` if `(0028,1051)` is absent or
     /// unparsable.
     public let defaultWindowWidth: Double?
+    /// All usable Window Center/Width pairs declared by the dataset.
+    public let windowPresets: [DICOMWindowPreset]
+    /// VOI LUTs declared by `(0028,3010)`, in dataset order.
+    public let voiLUTs: [DICOMVOILUT]
+    /// The color lookup tables used when ``photometricInterpretation`` is
+    /// ``PhotometricInterpretation/paletteColor``.
+    public let paletteColorLUT: DICOMPaletteColorLUT?
 
     /// Creates uncompressed pixel data and its rendering attributes.
     ///
@@ -68,7 +75,10 @@ public struct DICOMPixelData: Sendable {
         rescaleSlope: Double = 1.0,
         rescaleIntercept: Double = 0.0,
         defaultWindowCenter: Double? = nil,
-        defaultWindowWidth: Double? = nil
+        defaultWindowWidth: Double? = nil,
+        windowPresets: [DICOMWindowPreset] = [],
+        voiLUTs: [DICOMVOILUT] = [],
+        paletteColorLUT: DICOMPaletteColorLUT? = nil
     ) {
         self.value = value
         self.rows = rows
@@ -83,6 +93,9 @@ public struct DICOMPixelData: Sendable {
         self.rescaleIntercept = rescaleIntercept
         self.defaultWindowCenter = defaultWindowCenter
         self.defaultWindowWidth = defaultWindowWidth
+        self.windowPresets = windowPresets
+        self.voiLUTs = voiLUTs
+        self.paletteColorLUT = paletteColorLUT
     }
 
     /// Creates a Core Graphics image for 8-bit monochrome, interleaved RGB,
@@ -121,6 +134,17 @@ public struct DICOMPixelData: Sendable {
     public func cgImage(windowCenter: Double? = nil, windowWidth: Double? = nil) throws -> CGImage {
         let pixelCount = try checkedPixelCount()
         switch (photometricInterpretation, bitsAllocated) {
+        case (.monochrome1, 1), (.monochrome2, 1):
+            guard samplesPerPixel == 1 else { throw DICOMImageError.invalidImageAttributes }
+            let byteCount = (pixelCount + 7) / 8
+            let source = try requiredBytes(byteCount)
+            let pixels = Data((0..<pixelCount).map { pixel in
+                let bit = (source[pixel / 8] >> UInt8(pixel % 8)) & 1
+                let rendered = bit == 0 ? UInt8(0) : UInt8(255)
+                return photometricInterpretation == .monochrome1 ? 255 - rendered : rendered
+            })
+            return try makeImage(data: pixels, colorSpace: CGColorSpaceCreateDeviceGray(), bitsPerPixel: 8, bytesPerRow: columns)
+
         case (.monochrome1, 8), (.monochrome2, 8):
             guard samplesPerPixel == 1 else { throw DICOMImageError.invalidImageAttributes }
             let source = try requiredBytes(pixelCount)
@@ -134,9 +158,93 @@ public struct DICOMPixelData: Sendable {
             // the DICOM standard itself; Planar Configuration 1 is valid
             // DICOM, just not a layout this renderer implements.
             guard samplesPerPixel == 3 else { throw DICOMImageError.invalidImageAttributes }
-            guard planarConfiguration == 0 else { throw DICOMImageError.unsupportedPixelFormat }
             let byteCount = try checkedByteCount(pixelCount, bytesPerSample: 1, samples: 3)
-            return try makeImage(data: requiredBytes(byteCount), colorSpace: CGColorSpaceCreateDeviceRGB(), bitsPerPixel: 24, bytesPerRow: columns * 3)
+            let source = try requiredBytes(byteCount)
+            let interleaved: Data
+            switch planarConfiguration {
+            case 0: interleaved = source
+            case 1:
+                var output = Data(count: byteCount)
+                for pixel in 0..<pixelCount {
+                    output[pixel * 3] = source[pixel]
+                    output[pixel * 3 + 1] = source[pixelCount + pixel]
+                    output[pixel * 3 + 2] = source[pixelCount * 2 + pixel]
+                }
+                interleaved = output
+            default: throw DICOMImageError.unsupportedPixelFormat
+            }
+            return try makeImage(data: interleaved, colorSpace: CGColorSpaceCreateDeviceRGB(), bitsPerPixel: 24, bytesPerRow: columns * 3)
+
+        case (.rgb, 16):
+            guard samplesPerPixel == 3 else { throw DICOMImageError.invalidImageAttributes }
+            let byteCount = try checkedByteCount(pixelCount, bytesPerSample: 2, samples: 3)
+            let source = try requiredBytes(byteCount)
+            var rgb = Data()
+            rgb.reserveCapacity(pixelCount * 3)
+            for pixel in 0..<pixelCount {
+                for component in 0..<3 {
+                    let sourceOffset: Int
+                    switch planarConfiguration {
+                    case 0: sourceOffset = (pixel * 3 + component) * 2
+                    case 1: sourceOffset = (component * pixelCount + pixel) * 2
+                    default: throw DICOMImageError.unsupportedPixelFormat
+                    }
+                    rgb.append(UInt8(source.littleEndian(at: sourceOffset, as: UInt16.self) >> 8))
+                }
+            }
+            return try makeImage(data: rgb, colorSpace: CGColorSpaceCreateDeviceRGB(), bitsPerPixel: 24, bytesPerRow: columns * 3)
+
+        case (.ybrFull, 8):
+            guard samplesPerPixel == 3, planarConfiguration == 0 else { throw DICOMImageError.unsupportedPixelFormat }
+            let source = try requiredBytes(try checkedByteCount(pixelCount, bytesPerSample: 1, samples: 3))
+            var rgb = Data()
+            rgb.reserveCapacity(source.count)
+            for offset in stride(from: 0, to: source.count, by: 3) {
+                let y = Double(source[offset])
+                let cb = Double(source[offset + 1]) - 128
+                let cr = Double(source[offset + 2]) - 128
+                rgb.append(UInt8(clamping: Int((y + 1.402 * cr).rounded())))
+                rgb.append(UInt8(clamping: Int((y - 0.344_136 * cb - 0.714_136 * cr).rounded())))
+                rgb.append(UInt8(clamping: Int((y + 1.772 * cb).rounded())))
+            }
+            return try makeImage(data: rgb, colorSpace: CGColorSpaceCreateDeviceRGB(), bitsPerPixel: 24, bytesPerRow: columns * 3)
+
+        case (.ybrFull422, 8):
+            guard samplesPerPixel == 3, planarConfiguration == 0, columns.isMultiple(of: 2) else { throw DICOMImageError.unsupportedPixelFormat }
+            let source = try requiredBytes(pixelCount * 2)
+            var rgb = Data()
+            rgb.reserveCapacity(pixelCount * 3)
+            for offset in stride(from: 0, to: source.count, by: 4) {
+                let cb = Double(source[offset + 2]) - 128
+                let cr = Double(source[offset + 3]) - 128
+                for yByte in [source[offset], source[offset + 1]] {
+                    let y = Double(yByte)
+                    rgb.append(UInt8(clamping: Int((y + 1.402 * cr).rounded())))
+                    rgb.append(UInt8(clamping: Int((y - 0.344_136 * cb - 0.714_136 * cr).rounded())))
+                    rgb.append(UInt8(clamping: Int((y + 1.772 * cb).rounded())))
+                }
+            }
+            return try makeImage(data: rgb, colorSpace: CGColorSpaceCreateDeviceRGB(), bitsPerPixel: 24, bytesPerRow: columns * 3)
+
+        case (.paletteColor, 8), (.paletteColor, 16):
+            guard samplesPerPixel == 1, let paletteColorLUT else { throw DICOMImageError.invalidImageAttributes }
+            let bytesPerSample = bitsAllocated / 8
+            let source = try requiredBytes(try checkedByteCount(pixelCount, bytesPerSample: bytesPerSample, samples: 1))
+            var rgb = Data()
+            rgb.reserveCapacity(pixelCount * 3)
+            for pixel in 0..<pixelCount {
+                let storedValue: UInt16
+                if bitsAllocated == 8 {
+                    storedValue = UInt16(source[pixel])
+                } else {
+                    storedValue = source.littleEndian(at: pixel * 2, as: UInt16.self)
+                }
+                let (red, green, blue) = paletteColorLUT.rgb(for: storedValue)
+                rgb.append(red)
+                rgb.append(green)
+                rgb.append(blue)
+            }
+            return try makeImage(data: rgb, colorSpace: CGColorSpaceCreateDeviceRGB(), bitsPerPixel: 24, bytesPerRow: columns * 3)
 
         case (.monochrome1, 16), (.monochrome2, 16):
             guard samplesPerPixel == 1 else { throw DICOMImageError.invalidImageAttributes }
@@ -144,6 +252,14 @@ public struct DICOMPixelData: Sendable {
             let byteCount = try checkedByteCount(pixelCount, bytesPerSample: 2, samples: 1)
             let source = try requiredBytes(byteCount)
             let samples = rescaledSamples(from: source)
+
+            if windowCenter == nil, windowWidth == nil, let voiLUT = voiLUTs.first {
+                let pixels = Data(samples.map { sample in
+                    let rendered = voiLUT.renderedValue(for: sample)
+                    return photometricInterpretation == .monochrome1 ? 255 - rendered : rendered
+                })
+                return try makeImage(data: pixels, colorSpace: CGColorSpaceCreateDeviceGray(), bitsPerPixel: 8, bytesPerRow: columns)
+            }
 
             let (center, width) = resolvedWindow(explicitCenter: windowCenter, explicitWidth: windowWidth, samples: samples)
             guard center.isFinite, width.isFinite else { throw DICOMImageError.invalidWindowSettings }

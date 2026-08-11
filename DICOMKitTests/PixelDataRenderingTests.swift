@@ -5,6 +5,83 @@ import Testing
 
 /// Rendering of 8-bit monochrome and RGB pixel data, which needs no windowing.
 struct PixelDataRenderingTests {
+    @Test func rendersNativeYBRFull422AsRGB() throws {
+        // Two red pixels: Y1, Y2, Cb, Cr.
+        let pixelData = DICOMPixelData(value: Data([76, 76, 85, 255]), rows: 1, columns: 2, samplesPerPixel: 3, bitsAllocated: 8, photometricInterpretation: .ybrFull422)
+        let bytes = try imageBytes(pixelData.cgImage())
+        #expect(bytes[0] > 240 && bytes[1] < 20 && bytes[2] < 20)
+        #expect(bytes[3] > 240 && bytes[4] < 20 && bytes[5] < 20)
+    }
+
+    @Test func rendersOneBitPackedMonochromePixelData() throws {
+        // DICOM packs the first pixel into the least significant bit.
+        let pixelData = DICOMPixelData(
+            value: Data([0b0101_0011]), rows: 1, columns: 8,
+            samplesPerPixel: 1, bitsAllocated: 1,
+            photometricInterpretation: .monochrome2
+        )
+
+        #expect(try imageBytes(pixelData.cgImage()) == Data([255, 255, 0, 0, 255, 0, 255, 0]))
+    }
+
+    @Test func rendersPaletteColorPixelData() throws {
+        let lut = try DICOMPaletteColorLUT(
+            firstMappedValue: 0,
+            bitsPerEntry: 8,
+            red: [0, 255],
+            green: [0, 0],
+            blue: [0, 0]
+        )
+        let pixelData = DICOMPixelData(
+            value: Data([0, 1]),
+            rows: 1,
+            columns: 2,
+            samplesPerPixel: 1,
+            bitsAllocated: 8,
+            photometricInterpretation: .paletteColor,
+            paletteColorLUT: lut
+        )
+
+        #expect(try imageBytes(pixelData.cgImage()) == Data([0, 0, 0, 255, 0, 0]))
+    }
+
+    @Test func readsPaletteColorLUTFromDataset() throws {
+        let descriptor = uint16(2) + uint16(0) + uint16(8)
+        let file = try DICOMFile(data: part10File(transferSyntaxUID: TransferSyntax.explicitVRLittleEndian.uid, datasetElements: [
+            element(tag: .samplesPerPixel, vr: .US, value: uint16(1)),
+            element(tag: .photometricInterpretation, vr: .CS, value: "PALETTE COLOR"),
+            element(tag: .rows, vr: .US, value: uint16(1)),
+            element(tag: .columns, vr: .US, value: uint16(2)),
+            element(tag: .bitsAllocated, vr: .US, value: uint16(8)),
+            element(tag: .redPaletteColorLookupTableDescriptor, vr: .US, value: descriptor),
+            element(tag: .greenPaletteColorLookupTableDescriptor, vr: .US, value: descriptor),
+            element(tag: .bluePaletteColorLookupTableDescriptor, vr: .US, value: descriptor),
+            element(tag: .redPaletteColorLookupTableData, vr: .OB, value: Data([0, 255])),
+            element(tag: .greenPaletteColorLookupTableData, vr: .OB, value: Data([0, 0])),
+            element(tag: .bluePaletteColorLookupTableData, vr: .OB, value: Data([0, 0])),
+            element(tag: .pixelData, vr: .OB, value: Data([0, 1]))
+        ]))
+
+        #expect(try imageBytes(#require(file.pixelData).cgImage()) == Data([0, 0, 0, 255, 0, 0]))
+    }
+
+    @Test func rendersNativeYBRFullAsRGB() throws {
+        let pixelData = DICOMPixelData(value: Data([76, 85, 255]), rows: 1, columns: 1, samplesPerPixel: 3, bitsAllocated: 8, photometricInterpretation: .ybrFull)
+        let bytes = try imageBytes(pixelData.cgImage())
+        #expect(bytes[0] > 240 && bytes[1] < 20 && bytes[2] < 20)
+    }
+    @Test func rendersPlanarRGBPixelData() throws {
+        let pixelData = DICOMPixelData(
+            value: Data([255, 0, 0, 255, 0, 0]), // R plane, G plane, B plane
+            rows: 1,
+            columns: 2,
+            samplesPerPixel: 3,
+            bitsAllocated: 8,
+            photometricInterpretation: .rgb,
+            planarConfiguration: 1
+        )
+        #expect(try imageBytes(pixelData.cgImage()) == Data([255, 0, 0, 0, 255, 0]))
+    }
     @Test func renders8BitMonochromePixelData() throws {
         let file = try DICOMFile(data: imageFile(
             rows: 2,
@@ -95,7 +172,7 @@ struct PixelDataFormatErrorTests {
         }
     }
 
-    @Test func rejectsRGBWithPlanarConfigurationOne() {
+    @Test func rejectsRGBWithInvalidPlanarConfiguration() {
         let pixelData = DICOMPixelData(
             value: Data(repeating: 0, count: 6),
             rows: 1,
@@ -103,7 +180,7 @@ struct PixelDataFormatErrorTests {
             samplesPerPixel: 3,
             bitsAllocated: 8,
             photometricInterpretation: .rgb,
-            planarConfiguration: 1
+            planarConfiguration: 2
         )
 
         #expect(throws: DICOMImageError.unsupportedPixelFormat) {

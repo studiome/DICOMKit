@@ -2,8 +2,16 @@
 ///
 /// Declared in ascending tag order.
 extension DICOMTag {
+    /// Specific Character Set `(0008,0005)`.
+    public static let specificCharacterSet = DICOMTag(group: 0x0008, element: 0x0005)
     /// Transfer Syntax UID `(0002,0010)` in File Meta Information.
     public static let transferSyntaxUID = DICOMTag(group: 0x0002, element: 0x0010)
+    public static let mediaStorageSOPClassUID = DICOMTag(group: 0x0002, element: 0x0002)
+    public static let mediaStorageSOPInstanceUID = DICOMTag(group: 0x0002, element: 0x0003)
+    public static let implementationClassUID = DICOMTag(group: 0x0002, element: 0x0012)
+    public static let implementationVersionName = DICOMTag(group: 0x0002, element: 0x0013)
+    public static let sopClassUID = DICOMTag(group: 0x0008, element: 0x0016)
+    public static let sopInstanceUID = DICOMTag(group: 0x0008, element: 0x0018)
     /// Referenced Study Sequence `(0008,1110)`.
     public static let referencedStudySequence = DICOMTag(group: 0x0008, element: 0x1110)
     /// Referenced SOP Class UID `(0008,1150)`.
@@ -18,10 +26,18 @@ extension DICOMTag {
     public static let photometricInterpretation = DICOMTag(group: 0x0028, element: 0x0004)
     /// Planar Configuration `(0028,0006)`.
     public static let planarConfiguration = DICOMTag(group: 0x0028, element: 0x0006)
+    /// Pixel Spacing `(0028,0030)`.
+    public static let pixelSpacing = DICOMTag(group: 0x0028, element: 0x0030)
+    /// Pixel Aspect Ratio `(0028,0034)`.
+    public static let pixelAspectRatio = DICOMTag(group: 0x0028, element: 0x0034)
     /// Rows `(0028,0010)`.
     public static let rows = DICOMTag(group: 0x0028, element: 0x0010)
     /// Columns `(0028,0011)`.
     public static let columns = DICOMTag(group: 0x0028, element: 0x0011)
+    /// Image Position (Patient) `(0020,0032)`.
+    public static let imagePositionPatient = DICOMTag(group: 0x0020, element: 0x0032)
+    /// Image Orientation (Patient) `(0020,0037)`.
+    public static let imageOrientationPatient = DICOMTag(group: 0x0020, element: 0x0037)
     /// Bits Allocated `(0028,0100)`.
     public static let bitsAllocated = DICOMTag(group: 0x0028, element: 0x0100)
     /// Bits Stored `(0028,0101)`.
@@ -31,14 +47,46 @@ extension DICOMTag {
     /// Pixel Representation `(0028,0103)`: `0` for unsigned integer, `1` for
     /// 2's complement signed integer.
     public static let pixelRepresentation = DICOMTag(group: 0x0028, element: 0x0103)
+    /// Red Palette Color Lookup Table Descriptor `(0028,1101)`.
+    public static let redPaletteColorLookupTableDescriptor = DICOMTag(group: 0x0028, element: 0x1101)
+    /// Green Palette Color Lookup Table Descriptor `(0028,1102)`.
+    public static let greenPaletteColorLookupTableDescriptor = DICOMTag(group: 0x0028, element: 0x1102)
+    /// Blue Palette Color Lookup Table Descriptor `(0028,1103)`.
+    public static let bluePaletteColorLookupTableDescriptor = DICOMTag(group: 0x0028, element: 0x1103)
+    /// Red Palette Color Lookup Table Data `(0028,1201)`.
+    public static let redPaletteColorLookupTableData = DICOMTag(group: 0x0028, element: 0x1201)
+    /// Green Palette Color Lookup Table Data `(0028,1202)`.
+    public static let greenPaletteColorLookupTableData = DICOMTag(group: 0x0028, element: 0x1202)
+    /// Blue Palette Color Lookup Table Data `(0028,1203)`.
+    public static let bluePaletteColorLookupTableData = DICOMTag(group: 0x0028, element: 0x1203)
     /// Window Center `(0028,1050)`.
     public static let windowCenter = DICOMTag(group: 0x0028, element: 0x1050)
     /// Window Width `(0028,1051)`.
     public static let windowWidth = DICOMTag(group: 0x0028, element: 0x1051)
+    /// Window Center & Width Explanation `(0028,1055)`.
+    public static let windowCenterWidthExplanation = DICOMTag(group: 0x0028, element: 0x1055)
+    /// VOI LUT Sequence `(0028,3010)`.
+    public static let voiLUTSequence = DICOMTag(group: 0x0028, element: 0x3010)
+    /// LUT Descriptor `(0028,3002)` inside a VOI LUT Sequence item.
+    public static let lutDescriptor = DICOMTag(group: 0x0028, element: 0x3002)
+    /// LUT Explanation `(0028,3003)` inside a VOI LUT Sequence item.
+    public static let lutExplanation = DICOMTag(group: 0x0028, element: 0x3003)
+    /// LUT Data `(0028,3006)` inside a VOI LUT Sequence item.
+    public static let lutData = DICOMTag(group: 0x0028, element: 0x3006)
     /// Rescale Intercept `(0028,1052)`.
     public static let rescaleIntercept = DICOMTag(group: 0x0028, element: 0x1052)
     /// Rescale Slope `(0028,1053)`.
     public static let rescaleSlope = DICOMTag(group: 0x0028, element: 0x1053)
+    /// Frame VOI LUT Sequence `(0028,9132)`.
+    public static let frameVOILUTSequence = DICOMTag(group: 0x0028, element: 0x9132)
+    /// Pixel Value Transformation Sequence `(0028,9145)`.
+    public static let pixelValueTransformationSequence = DICOMTag(group: 0x0028, element: 0x9145)
     /// Pixel Data `(7FE0,0010)`.
     public static let pixelData = DICOMTag(group: 0x7FE0, element: 0x0010)
+    /// Shared Functional Groups Sequence `(5200,9229)`.
+    public static let sharedFunctionalGroupsSequence = DICOMTag(group: 0x5200, element: 0x9229)
+    /// Per-frame Functional Groups Sequence `(5200,9230)`.
+    public static let perFrameFunctionalGroupsSequence = DICOMTag(group: 0x5200, element: 0x9230)
+    /// Extended Offset Table `(7FE0,0001)` for encapsulated multi-frame data.
+    public static let extendedOffsetTable = DICOMTag(group: 0x7FE0, element: 0x0001)
 }

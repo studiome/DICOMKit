@@ -6,6 +6,8 @@ public enum TransferSyntax: Sendable, Equatable {
     case explicitVRLittleEndian
     /// Explicit VR Big Endian (`1.2.840.10008.1.2.2`).
     case explicitVRBigEndian
+    /// Deflated Explicit VR Little Endian (`1.2.840.10008.1.2.1.99`).
+    case deflatedExplicitVRLittleEndian
     /// RLE Lossless (`1.2.840.10008.1.2.5`).
     case rleLossless
     /// JPEG Baseline (Process 1, 8-bit) (`1.2.840.10008.1.2.4.50`).
@@ -32,6 +34,7 @@ public enum TransferSyntax: Sendable, Equatable {
         case .implicitVRLittleEndian: "1.2.840.10008.1.2"
         case .explicitVRLittleEndian: "1.2.840.10008.1.2.1"
         case .explicitVRBigEndian: "1.2.840.10008.1.2.2"
+        case .deflatedExplicitVRLittleEndian: "1.2.840.10008.1.2.1.99"
         case .rleLossless: "1.2.840.10008.1.2.5"
         case .jpegBaseline: "1.2.840.10008.1.2.4.50"
         case .jpegLossless: "1.2.840.10008.1.2.4.57"
@@ -52,11 +55,11 @@ public enum TransferSyntax: Sendable, Equatable {
     /// ``DICOMFile/pixelDataFrames`` is `nil`.
     var isSupported: Bool {
         switch self {
-        case .implicitVRLittleEndian, .explicitVRLittleEndian, .rleLossless,
+        case .implicitVRLittleEndian, .explicitVRLittleEndian, .explicitVRBigEndian, .deflatedExplicitVRLittleEndian, .rleLossless,
              .jpegBaseline, .jpegLossless, .jpegLosslessSV1, .jpegLSLossless,
              .jpegLSNearLossless, .jpeg2000Lossless, .jpeg2000:
             true
-        case .explicitVRBigEndian, .unknown:
+        case .unknown:
             false
         }
     }
@@ -66,6 +69,7 @@ public enum TransferSyntax: Sendable, Equatable {
         case Self.implicitVRLittleEndian.uid: self = .implicitVRLittleEndian
         case Self.explicitVRLittleEndian.uid: self = .explicitVRLittleEndian
         case Self.explicitVRBigEndian.uid: self = .explicitVRBigEndian
+        case Self.deflatedExplicitVRLittleEndian.uid: self = .deflatedExplicitVRLittleEndian
         case Self.rleLossless.uid: self = .rleLossless
         case Self.jpegBaseline.uid: self = .jpegBaseline
         case Self.jpegLossless.uid: self = .jpegLossless

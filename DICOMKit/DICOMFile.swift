@@ -15,6 +15,13 @@ private struct DecodedPixelDataFrame {
     let planarConfiguration: Int
 }
 
+private struct FrameRenderingAttributes {
+    var rescaleSlope: Double?
+    var rescaleIntercept: Double?
+    var windowCenter: Double?
+    var windowWidth: Double?
+}
+
 /// A parsed DICOM Part 10 file.
 public struct DICOMFile: Sendable {
     /// The File Meta Information dataset (group `0002`).
@@ -23,6 +30,24 @@ public struct DICOMFile: Sendable {
     public let dataset: DICOMDataset
     /// The transfer syntax declared by the File Meta Information.
     public let transferSyntax: TransferSyntax
+
+    /// Typed display and patient-space geometry, when the dataset supplies it.
+    public var imageGeometry: DICOMImageGeometry? {
+        let pixelSpacing = dataset[.pixelSpacing]?.doubleValues
+        let pixelAspectRatio = dataset[.pixelAspectRatio]?.stringValues.flatMap { values -> [Int]? in
+            let parsed = values.compactMap(Int.init)
+            return parsed.count == values.count ? parsed : nil
+        }
+        let imagePosition = dataset[.imagePositionPatient]?.doubleValues
+        let imageOrientation = dataset[.imageOrientationPatient]?.doubleValues
+        guard pixelSpacing != nil || pixelAspectRatio != nil || imagePosition != nil || imageOrientation != nil else { return nil }
+        return DICOMImageGeometry(
+            pixelSpacing: pixelSpacing?.count == 2 ? pixelSpacing : nil,
+            pixelAspectRatio: pixelAspectRatio?.count == 2 ? pixelAspectRatio : nil,
+            imagePositionPatient: imagePosition?.count == 3 ? imagePosition : nil,
+            imageOrientationPatient: imageOrientation?.count == 6 ? imageOrientation : nil
+        )
+    }
 
     /// The first frame of ``pixelDataFrames``, if available.
     ///
@@ -42,6 +67,17 @@ public struct DICOMFile: Sendable {
     /// return `nil`.
     public var pixelData: DICOMPixelData? {
         pixelDataFrames?.first
+    }
+
+    /// Returns a handle that decodes Pixel Data only when its frames are read.
+    ///
+    /// The returned handle memoizes both a successful decode and an
+    /// undecodable result. Retain the handle when several consumers need the
+    /// same frames. This delays Pixel Data decoding, but not parsing or
+    /// retention of the encoded Pixel Data value.
+    public func makeLazyPixelData() -> DICOMLazyPixelData? {
+        guard dataset[.pixelData] != nil else { return nil }
+        return DICOMLazyPixelData { self.pixelDataFrames }
     }
 
     /// The image frames contained by Pixel Data.
@@ -73,6 +109,11 @@ public struct DICOMFile: Sendable {
         let sourceBitsAllocated = Int(bitsAllocated)
         let sourcePhotometric = PhotometricInterpretation(name: photometricInterpretation)
         let sourcePlanarConfiguration = Int(dataset[.planarConfiguration]?.uint16Value ?? 0)
+        let paletteColorLUT = sourcePhotometric == .paletteColor ? makePaletteColorLUT() : nil
+        let windowPresets = makeWindowPresets()
+        let voiLUTs = makeVOILUTs()
+        let frameAttributes = renderingAttributes(frameCount: frameCount)
+        guard sourcePhotometric != .paletteColor || paletteColorLUT != nil else { return nil }
         let frames: [DecodedPixelDataFrame]
         switch transferSyntax {
         case .rleLossless:
@@ -83,6 +124,7 @@ public struct DICOMFile: Sendable {
                 case (1, 8): value = try? RLELosslessDecoder.decode8BitMonochrome(fragments: fragments, pixelCount: pixelCount)
                 case (1, 16): value = try? RLELosslessDecoder.decode16BitMonochrome(fragments: fragments, pixelCount: pixelCount)
                 case (3, 8): value = try? RLELosslessDecoder.decode8BitRGB(fragments: fragments, pixelCount: pixelCount)
+                case (3, 16): value = try? RLELosslessDecoder.decode16BitRGB(fragments: fragments, pixelCount: pixelCount)
                 default: value = nil
                 }
                 guard let value else { return nil }
@@ -92,7 +134,7 @@ public struct DICOMFile: Sendable {
                     bitsAllocated: sourceBitsAllocated,
                     bitsStored: nil,
                     photometricInterpretation: sourcePhotometric,
-                    planarConfiguration: sourcePlanarConfiguration
+                    planarConfiguration: sourceSamplesPerPixel == 3 ? 0 : sourcePlanarConfiguration
                 )
             }
 
@@ -305,7 +347,9 @@ public struct DICOMFile: Sendable {
         }
         guard frames.count == frameCount else { return nil }
 
-        return frames.map { frame in DICOMPixelData(
+        return frames.enumerated().map { index, frame in
+            let attributes = frameAttributes[index]
+            return DICOMPixelData(
             value: frame.value,
             rows: Int(rows),
             columns: Int(columns),
@@ -315,11 +359,116 @@ public struct DICOMFile: Sendable {
             planarConfiguration: frame.planarConfiguration,
             bitsStored: frame.bitsStored ?? dataset[.bitsStored]?.uint16Value.map(Int.init),
             pixelRepresentation: Int(dataset[.pixelRepresentation]?.uint16Value ?? 0),
-            rescaleSlope: dataset[.rescaleSlope]?.doubleValue ?? 1.0,
-            rescaleIntercept: dataset[.rescaleIntercept]?.doubleValue ?? 0.0,
-            defaultWindowCenter: dataset[.windowCenter]?.doubleValue,
-            defaultWindowWidth: dataset[.windowWidth]?.doubleValue
-        ) }
+            rescaleSlope: attributes.rescaleSlope ?? dataset[.rescaleSlope]?.doubleValue ?? 1.0,
+            rescaleIntercept: attributes.rescaleIntercept ?? dataset[.rescaleIntercept]?.doubleValue ?? 0.0,
+            defaultWindowCenter: attributes.windowCenter ?? windowPresets.first?.center ?? dataset[.windowCenter]?.doubleValue,
+            defaultWindowWidth: attributes.windowWidth ?? windowPresets.first?.width ?? dataset[.windowWidth]?.doubleValue,
+            windowPresets: windowPresets,
+            voiLUTs: voiLUTs,
+            paletteColorLUT: paletteColorLUT
+            )
+        }
+    }
+
+    private func renderingAttributes(frameCount: Int) -> [FrameRenderingAttributes] {
+        let shared = dataset[.sharedFunctionalGroupsSequence]?.sequenceItems?.first
+        let perFrame = dataset[.perFrameFunctionalGroupsSequence]?.sequenceItems ?? []
+        return (0..<frameCount).map { index in
+            var resolved = attributes(in: shared)
+            if perFrame.indices.contains(index) {
+                let perFrameAttributes = attributes(in: perFrame[index])
+                if let value = perFrameAttributes.rescaleSlope { resolved.rescaleSlope = value }
+                if let value = perFrameAttributes.rescaleIntercept { resolved.rescaleIntercept = value }
+                if let value = perFrameAttributes.windowCenter { resolved.windowCenter = value }
+                if let value = perFrameAttributes.windowWidth { resolved.windowWidth = value }
+            }
+            return resolved
+        }
+    }
+
+    private func attributes(in functionalGroup: DICOMDataset?) -> FrameRenderingAttributes {
+        guard let functionalGroup else { return FrameRenderingAttributes() }
+        let transformation = functionalGroup[.pixelValueTransformationSequence]?.sequenceItems?.first
+        let voi = functionalGroup[.frameVOILUTSequence]?.sequenceItems?.first
+        return FrameRenderingAttributes(
+            rescaleSlope: transformation?[.rescaleSlope]?.doubleValue,
+            rescaleIntercept: transformation?[.rescaleIntercept]?.doubleValue,
+            windowCenter: voi?[.windowCenter]?.doubleValue,
+            windowWidth: voi?[.windowWidth]?.doubleValue
+        )
+    }
+
+    private func makeWindowPresets() -> [DICOMWindowPreset] {
+        guard let centers = dataset[.windowCenter]?.doubleValues,
+              let widths = dataset[.windowWidth]?.doubleValues,
+              centers.count == widths.count else { return [] }
+        let explanations = dataset[.windowCenterWidthExplanation]?.stringValues ?? []
+        return zip(centers.indices, zip(centers, widths)).map { index, values in
+            DICOMWindowPreset(center: values.0, width: values.1, explanation: explanations.indices.contains(index) ? explanations[index] : nil)
+        }
+    }
+
+    private func makeVOILUTs() -> [DICOMVOILUT] {
+        guard let items = dataset[.voiLUTSequence]?.sequenceItems else { return [] }
+        return items.compactMap { item in
+            guard let descriptor = item[.lutDescriptor]?.uint16Values,
+                  descriptor.count == 3,
+                  let dataElement = item[.lutData] else { return nil }
+            let count = descriptor[0] == 0 ? 65_536 : Int(descriptor[0])
+            let bitsPerEntry = Int(descriptor[2])
+            let data: [UInt16]?
+            if bitsPerEntry <= 8, dataElement.vr == .OB, dataElement.value.count >= count {
+                data = dataElement.value.prefix(count).map(UInt16.init)
+            } else if let words = dataElement.uint16Values, words.count >= count {
+                data = Array(words.prefix(count))
+            } else {
+                data = nil
+            }
+            guard let data else { return nil }
+            return try? DICOMVOILUT(
+                firstMappedValue: Int16(bitPattern: descriptor[1]),
+                bitsPerEntry: bitsPerEntry,
+                entries: data,
+                explanation: item[.lutExplanation]?.stringValue
+            )
+        }
+    }
+
+    /// Builds the palette lookup tables carried by a `PALETTE COLOR` dataset.
+    /// The three standard descriptors must agree. Both modern `OB` 8-bit LUT
+    /// data and `OW` data with 16-bit entries are accepted.
+    private func makePaletteColorLUT() -> DICOMPaletteColorLUT? {
+        guard let redDescriptor = dataset[.redPaletteColorLookupTableDescriptor]?.uint16Values,
+              let greenDescriptor = dataset[.greenPaletteColorLookupTableDescriptor]?.uint16Values,
+              let blueDescriptor = dataset[.bluePaletteColorLookupTableDescriptor]?.uint16Values,
+              redDescriptor.count == 3,
+              redDescriptor == greenDescriptor,
+              redDescriptor == blueDescriptor else { return nil }
+        let entryCount = redDescriptor[0] == 0 ? 65_536 : Int(redDescriptor[0])
+        let firstMappedValue = redDescriptor[1]
+        let bitsPerEntry = Int(redDescriptor[2])
+        guard bitsPerEntry == 8 || bitsPerEntry == 16,
+              let red = paletteEntries(for: .redPaletteColorLookupTableData, count: entryCount, bitsPerEntry: bitsPerEntry),
+              let green = paletteEntries(for: .greenPaletteColorLookupTableData, count: entryCount, bitsPerEntry: bitsPerEntry),
+              let blue = paletteEntries(for: .bluePaletteColorLookupTableData, count: entryCount, bitsPerEntry: bitsPerEntry) else {
+            return nil
+        }
+        return try? DICOMPaletteColorLUT(
+            firstMappedValue: firstMappedValue,
+            bitsPerEntry: bitsPerEntry,
+            red: red,
+            green: green,
+            blue: blue
+        )
+    }
+
+    private func paletteEntries(for tag: DICOMTag, count: Int, bitsPerEntry: Int) -> [UInt16]? {
+        guard let element = dataset[tag] else { return nil }
+        if bitsPerEntry == 8, element.vr == .OB, element.value.count >= count {
+            return element.value.prefix(count).map(UInt16.init)
+        }
+        guard let values = element.uint16Values, values.count >= count else { return nil }
+        return Array(values.prefix(count))
     }
 
     /// The fragments of an encapsulated Pixel Data element, grouped per
@@ -331,12 +480,22 @@ public struct DICOMFile: Sendable {
               let basicOffsetTable = element.basicOffsetTable else {
             return nil
         }
+        if basicOffsetTable.isEmpty,
+           let extendedOffsets = dataset[.extendedOffsetTable]?.uint64Values,
+           !extendedOffsets.isEmpty {
+            return try? EncapsulatedPixelData.frameFragments(
+                fragments: fragments,
+                fragmentOffsets: fragmentOffsets,
+                extendedOffsets: extendedOffsets,
+                frameCount: frameCount
+            )
+        }
         return try? EncapsulatedPixelData.frameFragments(
-            fragments: fragments,
-            fragmentOffsets: fragmentOffsets,
-            basicOffsetTable: basicOffsetTable,
-            frameCount: frameCount
-        )
+                fragments: fragments,
+                fragmentOffsets: fragmentOffsets,
+                basicOffsetTable: basicOffsetTable,
+                frameCount: frameCount
+            )
     }
 
     /// Parses a DICOM Part 10 file from memory.
@@ -374,7 +533,34 @@ public struct DICOMFile: Sendable {
             throw DICOMError.unsupportedTransferSyntax(uid)
         }
 
-        dataset = DICOMDataset(elements: try reader.readDataset(transferSyntax: transferSyntax))
+        if transferSyntax == .deflatedExplicitVRLittleEndian {
+            let compressed = data.subdata(in: reader.offset..<data.count)
+            var inflatedReader = Reader(data: try DeflateCodec.inflateRaw(compressed), offset: 0)
+            dataset = DICOMDataset(elements: try inflatedReader.readDataset(transferSyntax: .explicitVRLittleEndian))
+        } else {
+            dataset = DICOMDataset(elements: try reader.readDataset(transferSyntax: transferSyntax))
+        }
+    }
+
+    /// Parses a dataset that isn't wrapped in a DICOM Part 10 preamble and
+    /// File Meta Information.
+    ///
+    /// The caller must supply its transfer syntax because a raw dataset has
+    /// no authoritative syntax declaration. For ordinary exchange files use
+    /// ``init(data:)`` instead.
+    public init(datasetData input: Data, transferSyntax: TransferSyntax) throws {
+        guard transferSyntax.isSupported else {
+            throw DICOMError.unsupportedTransferSyntax(transferSyntax.uid)
+        }
+        var reader = Reader(data: Data(input), offset: 0)
+        self.metaInformation = DICOMDataset()
+        self.transferSyntax = transferSyntax
+        if transferSyntax == .deflatedExplicitVRLittleEndian {
+            var inflatedReader = Reader(data: try DeflateCodec.inflateRaw(Data(input)), offset: 0)
+            self.dataset = DICOMDataset(elements: try inflatedReader.readDataset(transferSyntax: .explicitVRLittleEndian))
+        } else {
+            self.dataset = DICOMDataset(elements: try reader.readDataset(transferSyntax: transferSyntax))
+        }
     }
 
     /// Serializes this file as a DICOM Part 10 byte stream.

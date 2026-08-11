@@ -25,7 +25,8 @@ struct Reader {
     }
 
     mutating func readElement(transferSyntax: TransferSyntax) throws -> DICOMElement {
-        let tag = try readTag()
+        let byteOrder: ByteOrder = transferSyntax == .explicitVRBigEndian ? .bigEndian : .littleEndian
+        let tag = try readTag(byteOrder: byteOrder)
         let vr: DICOMVR
         let length: UInt32
 
@@ -34,7 +35,7 @@ struct Reader {
         // instead of silently inheriting one. Every encapsulated syntax
         // encodes its elements as Explicit VR Little Endian.
         switch transferSyntax {
-        case .explicitVRLittleEndian, .rleLossless, .jpegBaseline,
+        case .explicitVRLittleEndian, .explicitVRBigEndian, .deflatedExplicitVRLittleEndian, .rleLossless, .jpegBaseline,
              .jpegLossless, .jpegLosslessSV1, .jpegLSLossless,
              .jpegLSNearLossless, .jpeg2000Lossless, .jpeg2000:
             let vrText = String(bytes: try readData(count: 2), encoding: .ascii) ?? ""
@@ -46,10 +47,10 @@ struct Reader {
                 // non-zero reserved bytes would needlessly break
                 // compatibility with such files, so they're discarded
                 // without validation.
-                _ = try readUInt16()
-                length = try readUInt32()
+                _ = try readUInt16(byteOrder: byteOrder)
+                length = try readUInt32(byteOrder: byteOrder)
             } else {
-                length = UInt32(try readUInt16())
+                length = UInt32(try readUInt16(byteOrder: byteOrder))
             }
         case .implicitVRLittleEndian:
             // Read the length before resolving the VR: when a tag isn't in
@@ -59,9 +60,9 @@ struct Reader {
             // length under this reader (see `unsupportedUndefinedLength`).
             // This lets sequences outside the small built-in dictionary
             // (e.g. Referenced Image Sequence) still be parsed.
-            length = try readUInt32()
+            length = try readUInt32(byteOrder: .littleEndian)
             vr = DICOMDictionary.vr(for: tag) ?? (length == .max ? .SQ : .UN)
-        case .explicitVRBigEndian, .unknown:
+        case .unknown:
             throw DICOMError.unsupportedTransferSyntax(transferSyntax.uid)
         }
 
@@ -69,7 +70,7 @@ struct Reader {
             return DICOMElement(tag: tag, vr: vr, value: Data(), sequenceItems: try readSequence(transferSyntax: transferSyntax, length: length))
         }
         if tag == .pixelData, length == .max {
-            let encapsulated = try readEncapsulatedPixelData()
+            let encapsulated = try readEncapsulatedPixelData(byteOrder: byteOrder)
             return DICOMElement(
                 tag: tag,
                 vr: vr,
@@ -80,12 +81,13 @@ struct Reader {
             )
         }
         guard length != .max else { throw DICOMError.unsupportedUndefinedLength(tag) }
-        return DICOMElement(tag: tag, vr: vr, value: try readData(count: Int(length)))
+        let value = try readData(count: Int(length))
+        return DICOMElement(tag: tag, vr: vr, value: byteOrder == .bigEndian ? canonicalLittleEndian(value, vr: vr) : value)
     }
 
     /// Reads the item sequence used by compressed Pixel Data. The first item
     /// is the Basic Offset Table and isn't returned with the frame fragments.
-    mutating func readEncapsulatedPixelData() throws -> (basicOffsetTable: Data, fragments: [Data], fragmentOffsets: [Int]) {
+    mutating func readEncapsulatedPixelData(byteOrder: ByteOrder) throws -> (basicOffsetTable: Data, fragments: [Data], fragmentOffsets: [Int]) {
         var fragments: [Data] = []
         var fragmentOffsets: [Int] = []
         var basicOffsetTable: Data?
@@ -93,8 +95,8 @@ struct Reader {
         var isBasicOffsetTable = true
         while offset < data.count {
             let itemOffset = offset
-            let itemTag = try readTag()
-            let itemLength = try readUInt32()
+            let itemTag = try readTag(byteOrder: byteOrder)
+            let itemLength = try readUInt32(byteOrder: byteOrder)
             if itemTag == DICOMTag(group: 0xFFFE, element: 0xE0DD) {
                 guard itemLength == 0, !isBasicOffsetTable, let basicOffsetTable, !fragments.isEmpty else { throw DICOMError.invalidEncapsulatedPixelData }
                 return (basicOffsetTable, fragments, fragmentOffsets)
@@ -129,8 +131,9 @@ struct Reader {
         var items: [DICOMDataset] = []
         while offset < data.count {
             if let endOffset, offset == endOffset { return items }
-            let itemTag = try readTag()
-            let itemLength = try readUInt32()
+            let byteOrder: ByteOrder = transferSyntax == .explicitVRBigEndian ? .bigEndian : .littleEndian
+            let itemTag = try readTag(byteOrder: byteOrder)
+            let itemLength = try readUInt32(byteOrder: byteOrder)
             if itemTag == DICOMTag(group: 0xFFFE, element: 0xE0DD) {
                 guard endOffset == nil, itemLength == 0 else { throw DICOMError.invalidSequenceItem(itemTag) }
                 return items
@@ -156,9 +159,10 @@ struct Reader {
     mutating func readUndefinedLengthItem(transferSyntax: TransferSyntax) throws -> [DICOMElement] {
         var elements: [DICOMElement] = []
         while offset < data.count {
-            if peekTag() == DICOMTag(group: 0xFFFE, element: 0xE00D) {
-                _ = try readTag()
-                guard try readUInt32() == 0 else { throw DICOMError.truncatedData }
+            let byteOrder: ByteOrder = transferSyntax == .explicitVRBigEndian ? .bigEndian : .littleEndian
+            if peekTag(byteOrder: byteOrder) == DICOMTag(group: 0xFFFE, element: 0xE00D) {
+                _ = try readTag(byteOrder: byteOrder)
+                guard try readUInt32(byteOrder: byteOrder) == 0 else { throw DICOMError.truncatedData }
                 return elements
             }
             elements.append(try readElement(transferSyntax: transferSyntax))
@@ -166,24 +170,21 @@ struct Reader {
         throw DICOMError.truncatedData
     }
 
-    func peekTag() -> DICOMTag? {
+    func peekTag(byteOrder: ByteOrder = .littleEndian) -> DICOMTag? {
         guard offset + 4 <= data.count else { return nil }
-        return DICOMTag(
-            group: data.littleEndian(at: offset),
-            element: data.littleEndian(at: offset + 2)
-        )
+        return DICOMTag(group: byteOrder.uint16(in: data, at: offset), element: byteOrder.uint16(in: data, at: offset + 2))
     }
 
-    mutating func readTag() throws -> DICOMTag {
-        DICOMTag(group: try readUInt16(), element: try readUInt16())
+    mutating func readTag(byteOrder: ByteOrder = .littleEndian) throws -> DICOMTag {
+        DICOMTag(group: try readUInt16(byteOrder: byteOrder), element: try readUInt16(byteOrder: byteOrder))
     }
 
-    mutating func readUInt16() throws -> UInt16 {
-        try readData(count: 2).littleEndian(at: 0)
+    mutating func readUInt16(byteOrder: ByteOrder = .littleEndian) throws -> UInt16 {
+        byteOrder.uint16(in: try readData(count: 2), at: 0)
     }
 
-    mutating func readUInt32() throws -> UInt32 {
-        try readData(count: 4).littleEndian(at: 0)
+    mutating func readUInt32(byteOrder: ByteOrder = .littleEndian) throws -> UInt32 {
+        byteOrder.uint32(in: try readData(count: 4), at: 0)
     }
 
     mutating func readData(count: Int) throws -> Data {
@@ -191,4 +192,42 @@ struct Reader {
         defer { offset += count }
         return data.subdata(in: offset..<(offset + count))
     }
+}
+
+enum ByteOrder: Equatable {
+    case littleEndian
+    case bigEndian
+
+    func uint16(in data: Data, at offset: Int) -> UInt16 {
+        switch self {
+        case .littleEndian: data.littleEndian(at: offset)
+        case .bigEndian: UInt16(data[offset]) << 8 | UInt16(data[offset + 1])
+        }
+    }
+
+    func uint32(in data: Data, at offset: Int) -> UInt32 {
+        switch self {
+        case .littleEndian: data.littleEndian(at: offset)
+        case .bigEndian:
+            UInt32(data[offset]) << 24 | UInt32(data[offset + 1]) << 16 | UInt32(data[offset + 2]) << 8 | UInt32(data[offset + 3])
+        }
+    }
+}
+
+private func canonicalLittleEndian(_ value: Data, vr: DICOMVR) -> Data {
+    let width: Int
+    switch vr {
+    case .US, .SS, .OW: width = 2
+    case .UL, .SL, .FL, .OL, .OF: width = 4
+    case .UV, .SV, .FD, .OD, .OV: width = 8
+    case .AT: width = 2
+    default: return value
+    }
+    guard value.count.isMultiple(of: width) else { return value }
+    var canonical = Data()
+    canonical.reserveCapacity(value.count)
+    for offset in stride(from: 0, to: value.count, by: width) {
+        canonical.append(contentsOf: value[offset..<(offset + width)].reversed())
+    }
+    return canonical
 }

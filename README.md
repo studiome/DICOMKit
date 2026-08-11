@@ -19,6 +19,9 @@ See the [changelog](CHANGELOG.md) for the current implementation status.
 - Exposes a lightweight Swift object model: `DICOMFile`, `DICOMDataset`,
   `DICOMElement`, `DICOMTag`, and `DICOMVR`
 - Provides typed access for common string and `UInt16` values
+- Converts supported in-memory datasets to and from typed DICOM JSON
+  (PS3.18 Annex F), including string VRs, `US`, sequences, and inline binary
+  values
 - Renders uncompressed 8-bit `MONOCHROME1`, `MONOCHROME2`, and interleaved
   `RGB` Pixel Data as `CGImage`
 - Renders uncompressed 16-bit monochrome Pixel Data with correct handling of
@@ -29,6 +32,8 @@ See the [changelog](CHANGELOG.md) for the current implementation status.
   Lossless Pixel Data
 - Decodes multi-frame RLE Lossless Pixel Data when it includes a Basic Offset
   Table, exposed as `DICOMFile.pixelDataFrames`
+- Provides `DICOMFile.makeLazyPixelData()` to defer Pixel Data frame decoding
+  until a consumer requests it, with thread-safe memoization of the result
 - Decodes JPEG Lossless, Non-Hierarchical (Process 14) Pixel Data for `.57`
   and `.70`: single-component `MONOCHROME1` / `MONOCHROME2` and interleaved
   1:1:1 `RGB`, with 2–16-bit precision, Selection Values 1–7, Point Transform,
@@ -81,6 +86,9 @@ let rows = file.dataset[.rows]?.uint16Value
 let columns = file.dataset[.columns]?.uint16Value
 let referencedStudies = file.dataset[.referencedStudySequence]?.sequenceItems
 
+let dicomJSON = DICOMJSONDataset(dataset: file.dataset)
+let restoredDataset = try dicomJSON.dicomDataset()
+
 if let pixelData = file.pixelData {
     // For 16-bit monochrome data, windowCenter/windowWidth are in the
     // *rescaled* unit (Hounsfield Units for CT), not raw stored values,
@@ -92,6 +100,14 @@ if let pixelData = file.pixelData {
     // min/max value.
     let image = try pixelData.cgImage(windowCenter: 40, windowWidth: 400)
 }
+```
+
+For views that may never display an image, defer frame decoding until it is
+needed:
+
+```swift
+let lazyPixelData = file.makeLazyPixelData()
+let firstFrame = lazyPixelData?.loadFirstFrame()
 ```
 
 ```swift

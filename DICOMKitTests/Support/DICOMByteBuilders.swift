@@ -22,6 +22,11 @@ func uint32(_ value: UInt32) -> Data {
     ])
 }
 
+/// Little-endian encoding of a 64-bit value.
+func uint64(_ value: UInt64) -> Data {
+    Data((0..<8).map { UInt8((value >> UInt64($0 * 8)) & 0xFF) })
+}
+
 private func tagBytes(_ tag: DICOMTag) -> Data {
     uint16(tag.group) + uint16(tag.element)
 }
@@ -73,6 +78,7 @@ func imageFile(
     bitsStored: UInt16? = nil,
     windowCenter: String? = nil,
     windowWidth: String? = nil,
+    windowCenterWidthExplanation: String? = nil,
     pixelData: Data
 ) -> Data {
     imageFile(
@@ -87,6 +93,7 @@ func imageFile(
         bitsStored: bitsStored,
         windowCenter: windowCenter,
         windowWidth: windowWidth,
+        windowCenterWidthExplanation: windowCenterWidthExplanation,
         pixelDataElement: element(tag: .pixelData, vr: bitsAllocated > 8 ? .OW : .OB, value: pixelData)
     )
 }
@@ -109,6 +116,7 @@ func imageFile(
     bitsStored: UInt16? = nil,
     windowCenter: String? = nil,
     windowWidth: String? = nil,
+    windowCenterWidthExplanation: String? = nil,
     pixelDataElement: Data
 ) -> Data {
     var elements = [
@@ -132,6 +140,9 @@ func imageFile(
     }
     if let windowWidth {
         elements.append(element(tag: .windowWidth, vr: .DS, value: windowWidth))
+    }
+    if let windowCenterWidthExplanation {
+        elements.append(element(tag: .windowCenterWidthExplanation, vr: .LO, value: windowCenterWidthExplanation))
     }
     elements.append(pixelDataElement)
 

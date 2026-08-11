@@ -3,6 +3,23 @@ import Testing
 @testable import DICOMKit
 
 struct RLELosslessDecoderTests {
+    @Test func decodesSingleFrame16BitRGBRLELosslessPixelData() throws {
+        let data = imageFile(
+            transferSyntaxUID: TransferSyntax.rleLossless.uid,
+            samplesPerPixel: 3,
+            photometricInterpretation: .rgb,
+            rows: 1,
+            columns: 1,
+            bitsAllocated: 16,
+            pixelDataElement: encapsulatedPixelData(fragments: [rleFrame(segments: [
+                Data([0x00, 0xFF]), Data([0x00, 0x00]), // red: 0xFF00
+                Data([0x00, 0x00]), Data([0x00, 0x00]),
+                Data([0x00, 0x00]), Data([0x00, 0x00])
+            ])])
+        )
+
+        #expect(try imageBytes(#require(DICOMFile(data: data).pixelData).cgImage()) == Data([255, 0, 0]))
+    }
     @Test func decodesSingleFrame8BitRLELosslessPixelData() throws {
         let data = imageFile(
             transferSyntaxUID: TransferSyntax.rleLossless.uid,
@@ -86,6 +103,25 @@ struct RLELosslessDecoderTests {
         let frames = try #require(file.pixelDataFrames)
 
         #expect(frames.count == 2)
+        #expect(try imageBytes(frames[0].cgImage()) == Data([0x12]))
+        #expect(try imageBytes(frames[1].cgImage()) == Data([0x34]))
+    }
+
+    @Test func decodesMultiFrameRLEUsingExtendedOffsetTable() throws {
+        let firstFrame = rleFrame(segment: Data([0x00, 0x12]))
+        let secondFrame = rleFrame(segment: Data([0x00, 0x34]))
+        let data = part10File(transferSyntaxUID: TransferSyntax.rleLossless.uid, datasetElements: [
+            element(tag: .samplesPerPixel, vr: .US, value: uint16(1)),
+            element(tag: .numberOfFrames, vr: .IS, value: "2"),
+            element(tag: .photometricInterpretation, vr: .CS, value: "MONOCHROME2"),
+            element(tag: .rows, vr: .US, value: uint16(1)),
+            element(tag: .columns, vr: .US, value: uint16(1)),
+            element(tag: .bitsAllocated, vr: .US, value: uint16(8)),
+            element(tag: .extendedOffsetTable, vr: .OV, value: uint64(0) + uint64(74)),
+            encapsulatedPixelData(fragments: [firstFrame, secondFrame])
+        ])
+
+        let frames = try #require(DICOMFile(data: data).pixelDataFrames)
         #expect(try imageBytes(frames[0].cgImage()) == Data([0x12]))
         #expect(try imageBytes(frames[1].cgImage()) == Data([0x34]))
     }

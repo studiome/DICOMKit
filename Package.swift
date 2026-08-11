@@ -52,8 +52,14 @@ let package = Package(
             publicHeadersPath: "include"
         ),
         .target(
+            name: "CZlib",
+            path: "Sources/CZlib",
+            publicHeadersPath: "include",
+            linkerSettings: [.linkedLibrary("z")]
+        ),
+        .target(
             name: "DICOMKit",
-            dependencies: ["CCharLS", "CTurboJPEG"],
+            dependencies: ["CCharLS", "CTurboJPEG", "CZlib"],
             path: "DICOMKit",
             swiftSettings: [
                 .swiftLanguageMode(.v6)

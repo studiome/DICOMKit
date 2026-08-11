@@ -30,7 +30,9 @@ if let pixelData = file.pixelData {
 
 - ``DICOMFile`` — Parse a DICOM Part 10 file.
 - ``DICOMDataset`` — Look up and iterate over data elements.
+- ``DICOMJSONDataset`` — Convert supported values to and from typed DICOM JSON.
 - ``DICOMPixelData`` — Render supported uncompressed Pixel Data.
+- ``DICOMLazyPixelData`` — Defer Pixel Data frame decoding until it is needed.
 
 The library supports defined-length and undefined-length sequences, a focused
 set of uncompressed image formats and 8-bit/16-bit monochrome plus 8-bit RGB
@@ -61,6 +63,10 @@ fallback while fixture-output comparisons are accumulated. JPEG
 DIMSE remains outside the current scope.
 Pixel Padding Value
 `(0028,0120)` is also not yet applied.
+
+Use ``DICOMFile/makeLazyPixelData()`` when image frames may not be displayed
+immediately. It defers and memoizes frame decoding; the parsed file's encoded
+Pixel Data remains retained, so it is not a streaming file-I/O API.
 
 DICOMKit also writes Part 10 files through ``DICOMWriter`` and
 ``DICOMFile/encodedData(sequenceLengthEncoding:)``. The writer supports

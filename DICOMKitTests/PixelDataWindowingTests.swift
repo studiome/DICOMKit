@@ -5,6 +5,91 @@ import Testing
 /// The 16-bit monochrome path, where stored samples are masked, sign-extended,
 /// rescaled, and windowed before they become 8-bit gray.
 struct PixelDataWindowingTests {
+    @Test func appliesPerFrameFunctionalGroupRenderingAttributes() throws {
+        func group(intercept: String, center: String) -> DICOMDataset {
+            let transform = DICOMDataset(elements: [
+                DICOMElement(tag: .rescaleSlope, vr: .DS, value: Data("1".utf8)),
+                DICOMElement(tag: .rescaleIntercept, vr: .DS, value: Data(intercept.utf8))
+            ])
+            let voi = DICOMDataset(elements: [
+                DICOMElement(tag: .windowCenter, vr: .DS, value: Data(center.utf8)),
+                DICOMElement(tag: .windowWidth, vr: .DS, value: Data("100".utf8))
+            ])
+            return DICOMDataset(elements: [
+                DICOMElement(tag: .pixelValueTransformationSequence, vr: .SQ, value: Data(), sequenceItems: [transform]),
+                DICOMElement(tag: .frameVOILUTSequence, vr: .SQ, value: Data(), sequenceItems: [voi])
+            ])
+        }
+        let dataset = DICOMDataset(elements: [
+            DICOMElement(tag: .samplesPerPixel, vr: .US, value: uint16(1)),
+            DICOMElement(tag: .numberOfFrames, vr: .IS, value: Data("2".utf8)),
+            DICOMElement(tag: .photometricInterpretation, vr: .CS, value: Data("MONOCHROME2".utf8)),
+            DICOMElement(tag: .rows, vr: .US, value: uint16(1)),
+            DICOMElement(tag: .columns, vr: .US, value: uint16(1)),
+            DICOMElement(tag: .bitsAllocated, vr: .US, value: uint16(16)),
+            DICOMElement(tag: .perFrameFunctionalGroupsSequence, vr: .SQ, value: Data(), sequenceItems: [group(intercept: "-1000", center: "-950"), group(intercept: "0", center: "50")]),
+            DICOMElement(tag: .pixelData, vr: .OW, value: uint16(50) + uint16(50))
+        ])
+        let frames = try #require(DICOMFile(data: DICOMWriter.write(dataset: dataset)).pixelDataFrames)
+
+        #expect(frames.map(\.rescaleIntercept) == [-1000, 0])
+        #expect(frames.map(\.defaultWindowCenter) == [-950, 50])
+    }
+
+    @Test func appliesVOILUTWhenNoExplicitWindowIsRequested() throws {
+        let lut = try DICOMVOILUT(firstMappedValue: 0, bitsPerEntry: 8, entries: [0, 255])
+        let pixelData = DICOMPixelData(
+            value: uint16(0) + uint16(1), rows: 1, columns: 2,
+            samplesPerPixel: 1, bitsAllocated: 16,
+            photometricInterpretation: .monochrome2, voiLUTs: [lut]
+        )
+
+        #expect(try imageBytes(pixelData.cgImage()) == Data([0, 255]))
+        #expect(try imageBytes(pixelData.cgImage(windowCenter: 0, windowWidth: 2)) != Data([0, 255]))
+    }
+
+    @Test func readsVOILUTSequenceFromDataset() throws {
+        let item = DICOMDataset(elements: [
+            DICOMElement(tag: .lutDescriptor, vr: .SS, value: uint16(2) + uint16(0) + uint16(8)),
+            DICOMElement(tag: .lutExplanation, vr: .LO, value: Data("Binary".utf8)),
+            DICOMElement(tag: .lutData, vr: .OB, value: Data([0, 255]))
+        ])
+        let dataset = DICOMDataset(elements: [
+            DICOMElement(tag: .samplesPerPixel, vr: .US, value: uint16(1)),
+            DICOMElement(tag: .photometricInterpretation, vr: .CS, value: Data("MONOCHROME2".utf8)),
+            DICOMElement(tag: .rows, vr: .US, value: uint16(1)),
+            DICOMElement(tag: .columns, vr: .US, value: uint16(2)),
+            DICOMElement(tag: .bitsAllocated, vr: .US, value: uint16(16)),
+            DICOMElement(tag: .voiLUTSequence, vr: .SQ, value: Data(), sequenceItems: [item]),
+            DICOMElement(tag: .pixelData, vr: .OW, value: uint16(0) + uint16(1))
+        ])
+        let data = try DICOMWriter.write(dataset: dataset)
+        let pixelData = try #require(DICOMFile(data: data).pixelData)
+
+        #expect(pixelData.voiLUTs.first?.explanation == "Binary")
+        #expect(try imageBytes(pixelData.cgImage()) == Data([0, 255]))
+    }
+
+    @Test func exposesMultipleDatasetWindowPresets() throws {
+        let file = try DICOMFile(data: imageFile(
+            rows: 1,
+            columns: 1,
+            bitsAllocated: 16,
+            windowCenter: "40\\200",
+            windowWidth: "400\\1000",
+            windowCenterWidthExplanation: "Soft\\Bone",
+            pixelData: uint16(0)
+        ))
+
+        let pixelData = try #require(file.pixelData)
+        #expect(pixelData.windowPresets == [
+            DICOMWindowPreset(center: 40, width: 400, explanation: "Soft"),
+            DICOMWindowPreset(center: 200, width: 1000, explanation: "Bone")
+        ])
+        #expect(pixelData.defaultWindowCenter == 40)
+        #expect(pixelData.defaultWindowWidth == 400)
+    }
+
     @Test(arguments: [
         (PhotometricInterpretation.monochrome1, Data([255, 0])),
         (PhotometricInterpretation.monochrome2, Data([0, 255]))

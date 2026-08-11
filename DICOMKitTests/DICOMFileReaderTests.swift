@@ -3,6 +3,66 @@ import Testing
 @testable import DICOMKit
 
 struct DICOMFileReaderTests {
+    @Test func defersPixelDataDecodingUntilRequested() throws {
+        let file = try DICOMFile(data: part10File(
+            transferSyntaxUID: TransferSyntax.explicitVRLittleEndian.uid,
+            datasetElements: [
+                element(tag: .rows, vr: .US, value: uint16(1)),
+                element(tag: .columns, vr: .US, value: uint16(2)),
+                element(tag: .samplesPerPixel, vr: .US, value: uint16(1)),
+                element(tag: .photometricInterpretation, vr: .CS, value: "MONOCHROME2"),
+                element(tag: .bitsAllocated, vr: .US, value: uint16(8)),
+                element(tag: .pixelData, vr: .OB, value: Data([0x12, 0x34]))
+            ]
+        ))
+
+        let lazyPixelData = try #require(file.makeLazyPixelData())
+        #expect(!lazyPixelData.isLoaded)
+
+        let firstFrame = try #require(lazyPixelData.loadFirstFrame())
+        #expect(firstFrame.value == Data([0x12, 0x34]))
+        #expect(lazyPixelData.isLoaded)
+        #expect(lazyPixelData.loadFrames()?.count == 1)
+    }
+
+    @Test func readsExplicitVRBigEndianDataset() throws {
+        var data = Data(repeating: 0, count: 128)
+        data.append(Data("DICM".utf8))
+        data.append(element(tag: .transferSyntaxUID, vr: .UI, value: TransferSyntax.explicitVRBigEndian.uid))
+        data.append(bigEndianElement(tag: .patientName, vr: .PN, value: Data("Doe^Jane".utf8)))
+        data.append(bigEndianElement(tag: .rows, vr: .US, value: Data([0x02, 0x00])))
+
+        let file = try DICOMFile(data: data)
+
+        #expect(file.transferSyntax == .explicitVRBigEndian)
+        #expect(file.dataset[.patientName]?.stringValue == "Doe^Jane")
+        #expect(file.dataset[.rows]?.uint16Value == 512)
+    }
+
+    @Test func readsDeflatedExplicitVRLittleEndianDataset() throws {
+        let rawDataset = element(tag: .patientName, vr: .PN, value: "Doe^Jane")
+        var data = Data(repeating: 0, count: 128)
+        data.append(Data("DICM".utf8))
+        data.append(element(tag: .transferSyntaxUID, vr: .UI, value: TransferSyntax.deflatedExplicitVRLittleEndian.uid))
+        data.append(try DeflateCodec.deflateRaw(rawDataset))
+
+        let file = try DICOMFile(data: data)
+
+        #expect(file.transferSyntax == .deflatedExplicitVRLittleEndian)
+        #expect(file.dataset[.patientName]?.stringValue == "Doe^Jane")
+    }
+
+    @Test func readsRawDatasetWithExplicitTransferSyntax() throws {
+        let rawDataset = element(tag: .patientName, vr: .PN, value: "Doe^Jane") +
+            element(tag: .rows, vr: .US, value: uint16(512))
+
+        let file = try DICOMFile(datasetData: rawDataset, transferSyntax: .explicitVRLittleEndian)
+
+        #expect(file.metaInformation.isEmpty)
+        #expect(file.dataset[.patientName]?.stringValue == "Doe^Jane")
+        #expect(file.dataset[.rows]?.uint16Value == 512)
+    }
+
     @Test func readsExplicitVRLittleEndianPart10File() throws {
         let file = try DICOMFile(data: part10File(
             transferSyntaxUID: TransferSyntax.explicitVRLittleEndian.uid,
@@ -129,6 +189,24 @@ struct DICOMFileReaderTests {
     }
 }
 
+private func bigEndianElement(tag: DICOMTag, vr: DICOMVR, value: Data) -> Data {
+    var result = Data([
+        UInt8(tag.group >> 8), UInt8(tag.group & 0xFF),
+        UInt8(tag.element >> 8), UInt8(tag.element & 0xFF)
+    ])
+    result.append(Data(vr.rawValue.utf8))
+    if vr.uses32BitLength {
+        result.append(Data([0, 0, 0, 0]))
+        let length = UInt32(value.count)
+        result.append(Data([UInt8(length >> 24), UInt8(length >> 16), UInt8(length >> 8), UInt8(length & 0xFF)]))
+    } else {
+        let length = UInt16(value.count)
+        result.append(Data([UInt8(length >> 8), UInt8(length & 0xFF)]))
+    }
+    result.append(value)
+    return result
+}
+
 // MARK: - Malformed input
 
 struct DICOMFileReaderErrorTests {
@@ -203,12 +281,10 @@ struct DICOMFileReaderErrorTests {
         }
     }
 
-    @Test func rejectsExplicitVRBigEndianTransferSyntax() {
+    @Test func acceptsExplicitVRBigEndianTransferSyntax() throws {
         let data = part10File(transferSyntaxUID: TransferSyntax.explicitVRBigEndian.uid, datasetElements: [])
 
-        #expect(throws: DICOMError.unsupportedTransferSyntax(TransferSyntax.explicitVRBigEndian.uid)) {
-            _ = try DICOMFile(data: data)
-        }
+        #expect(try DICOMFile(data: data).transferSyntax == .explicitVRBigEndian)
     }
 
     @Test func rejectsUnknownTransferSyntaxUID() {
