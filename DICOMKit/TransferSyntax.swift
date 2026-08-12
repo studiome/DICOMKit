@@ -67,11 +67,11 @@ public enum TransferSyntax: Sendable, Equatable {
     /// Whether ``DICOMWriter`` can serialize datasets using this syntax.
     var isWritable: Bool {
         switch self {
-        case .implicitVRLittleEndian, .explicitVRLittleEndian, .rleLossless,
+        case .implicitVRLittleEndian, .explicitVRLittleEndian, .explicitVRBigEndian, .deflatedExplicitVRLittleEndian, .rleLossless,
              .jpegBaseline, .jpegLossless, .jpegLosslessSV1, .jpegLSLossless,
              .jpegLSNearLossless, .jpeg2000Lossless, .jpeg2000:
             true
-        case .explicitVRBigEndian, .deflatedExplicitVRLittleEndian, .unknown:
+        case .unknown:
             false
         }
     }

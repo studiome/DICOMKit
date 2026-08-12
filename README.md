@@ -53,10 +53,11 @@ See the [changelog](CHANGELOG.md) for the current implementation status.
   `YBR_FULL_422`) or single-sample
   `MONOCHROME1` / `MONOCHROME2`; multiple frames use a Basic Offset Table,
   Extended Offset Table, or one-fragment-per-frame empty Basic Offset Table
-- Writes DICOM Part 10 files using Explicit VR Little Endian or Implicit VR
-  Little Endian, including defined- or undefined-length Sequences and native
-  Pixel Data; writes caller-supplied compressed fragments with generated Basic
-  Offset Tables for supported encapsulated transfer syntaxes
+- Writes DICOM Part 10 files using Explicit VR Little Endian, Explicit VR Big
+  Endian, Deflated Explicit VR Little Endian, or Implicit VR Little Endian,
+  including defined- or undefined-length Sequences and native Pixel Data;
+  writes caller-supplied compressed fragments with generated Basic Offset
+  Tables for supported encapsulated transfer syntaxes
 - Provides async DICOMweb clients for QIDO-RS study searches, WADO-RS
   instance retrieval, and STOW-RS multipart instance storage; transports are
   injectable for application authentication and testing

@@ -71,8 +71,9 @@ Pixel Data remains retained, so it is not a streaming file-I/O API.
 
 DICOMKit also writes Part 10 files through ``DICOMWriter`` and
 ``DICOMFile/encodedData(sequenceLengthEncoding:)``. The writer supports
-Explicit VR Little Endian and Implicit VR Little Endian, defined- and
-undefined-length sequences, and native Pixel Data. It can also serialize
+Explicit VR Little Endian, Explicit VR Big Endian, Deflated Explicit VR Little
+Endian, and Implicit VR Little Endian, defined- and undefined-length
+sequences, and native Pixel Data. It can also serialize
 caller-supplied compressed fragments through
 ``DICOMElement/init(encapsulatedPixelDataFrames:vr:)`` with a generated Basic
 Offset Table; it does not compress samples itself.

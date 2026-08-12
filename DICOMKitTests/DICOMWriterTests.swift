@@ -74,6 +74,30 @@ struct DICOMWriterTests {
         #expect(file.dataset == dataset)
     }
 
+    @Test func writesDeflatedExplicitVRLittleEndianPart10File() throws {
+        let dataset = DICOMDataset(elements: [
+            DICOMElement(tag: .patientName, vr: .PN, value: Data("Doe^Jane".utf8)),
+            DICOMElement(tag: .rows, vr: .US, value: uint16(2))
+        ])
+
+        let file = try DICOMFile(data: DICOMWriter.write(dataset: dataset, transferSyntax: .deflatedExplicitVRLittleEndian))
+
+        #expect(file.transferSyntax == .deflatedExplicitVRLittleEndian)
+        #expect(file.dataset == dataset)
+    }
+
+    @Test func writesExplicitVRBigEndianPart10File() throws {
+        let dataset = DICOMDataset(elements: [
+            DICOMElement(tag: .patientName, vr: .PN, value: Data("Doe^Jane".utf8)),
+            DICOMElement(tag: .rows, vr: .US, value: uint16(512))
+        ])
+
+        let file = try DICOMFile(data: DICOMWriter.write(dataset: dataset, transferSyntax: .explicitVRBigEndian))
+
+        #expect(file.transferSyntax == .explicitVRBigEndian)
+        #expect(file.dataset == dataset)
+    }
+
     @Test func writesNativePixelData() throws {
         let dataset = DICOMDataset(elements: [
             DICOMElement(tag: .rows, vr: .US, value: uint16(1)),

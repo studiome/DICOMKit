@@ -60,66 +60,68 @@ public enum DICOMWriter {
             sequenceLengthEncoding: .defined
         )
         output.append(encodedMeta)
+        var encodedDataset = Data()
         for element in dataset where element.tag.group != 0x0002 {
             if element.tag == .pixelData,
                transferSyntax.usesEncapsulatedPixelData,
                element.encapsulatedFragments == nil {
                 throw DICOMError.invalidEncapsulatedPixelData
             }
-            try append(element, to: &output, explicitVR: transferSyntax != .implicitVRLittleEndian, sequenceLengthEncoding: sequenceLengthEncoding)
+            try append(element, to: &encodedDataset, explicitVR: transferSyntax != .implicitVRLittleEndian, sequenceLengthEncoding: sequenceLengthEncoding, byteOrder: transferSyntax == .explicitVRBigEndian ? .bigEndian : .littleEndian)
         }
+        output.append(transferSyntax == .deflatedExplicitVRLittleEndian ? try DeflateCodec.deflateRaw(encodedDataset) : encodedDataset)
         return output
     }
 
-    private static func append(_ element: DICOMElement, to output: inout Data, explicitVR: Bool, sequenceLengthEncoding: SequenceLengthEncoding) throws {
+    private static func append(_ element: DICOMElement, to output: inout Data, explicitVR: Bool, sequenceLengthEncoding: SequenceLengthEncoding, byteOrder: ByteOrder = .littleEndian) throws {
         if element.tag == .pixelData, let fragments = element.encapsulatedFragments {
             guard explicitVR, let basicOffsetTable = element.basicOffsetTable else { throw DICOMError.invalidEncapsulatedPixelData }
-            appendUInt16(element.tag.group, to: &output)
-            appendUInt16(element.tag.element, to: &output)
+            appendUInt16(element.tag.group, to: &output, byteOrder: byteOrder)
+            appendUInt16(element.tag.element, to: &output, byteOrder: byteOrder)
             output.append(contentsOf: element.vr.rawValue.utf8)
             output.append(contentsOf: [0, 0])
-            appendUInt32(.max, to: &output)
-            appendItem(basicOffsetTable, to: &output)
-            for fragment in fragments { appendItem(fragment, to: &output) }
-            appendItemTag(0xE0DD, to: &output)
+            appendUInt32(.max, to: &output, byteOrder: byteOrder)
+            appendItem(basicOffsetTable, to: &output, byteOrder: byteOrder)
+            for fragment in fragments { appendItem(fragment, to: &output, byteOrder: byteOrder) }
+            appendItemTag(0xE0DD, to: &output, byteOrder: byteOrder)
             return
         }
-        appendUInt16(element.tag.group, to: &output)
-        appendUInt16(element.tag.element, to: &output)
+        appendUInt16(element.tag.group, to: &output, byteOrder: byteOrder)
+        appendUInt16(element.tag.element, to: &output, byteOrder: byteOrder)
         let value: Data
         if element.vr == .SQ {
-            value = try encodedSequence(element.sequenceItems ?? [], explicitVR: explicitVR, sequenceLengthEncoding: sequenceLengthEncoding)
+            value = try encodedSequence(element.sequenceItems ?? [], explicitVR: explicitVR, sequenceLengthEncoding: sequenceLengthEncoding, byteOrder: byteOrder)
         } else {
-            value = paddedValue(element.value, vr: element.vr)
+            value = paddedValue(byteOrder == .bigEndian ? bigEndianValue(element.value, vr: element.vr) : element.value, vr: element.vr)
         }
         if element.vr == .SQ, sequenceLengthEncoding == .undefined {
             if explicitVR { output.append(contentsOf: element.vr.rawValue.utf8); output.append(contentsOf: [0, 0]) }
-            appendUInt32(.max, to: &output)
+            appendUInt32(.max, to: &output, byteOrder: byteOrder)
         } else if !explicitVR {
-            appendUInt32(UInt32(value.count), to: &output)
+            appendUInt32(UInt32(value.count), to: &output, byteOrder: byteOrder)
         } else if element.vr.uses32BitLength {
             output.append(contentsOf: element.vr.rawValue.utf8)
             output.append(contentsOf: [0, 0])
-            appendUInt32(UInt32(value.count), to: &output)
+            appendUInt32(UInt32(value.count), to: &output, byteOrder: byteOrder)
         } else {
             output.append(contentsOf: element.vr.rawValue.utf8)
             guard value.count <= Int(UInt16.max) else { throw DICOMError.truncatedData }
-            appendUInt16(UInt16(value.count), to: &output)
+            appendUInt16(UInt16(value.count), to: &output, byteOrder: byteOrder)
         }
         output.append(value)
-        if element.vr == .SQ, sequenceLengthEncoding == .undefined { appendItemTag(0xE0DD, to: &output) }
+        if element.vr == .SQ, sequenceLengthEncoding == .undefined { appendItemTag(0xE0DD, to: &output, byteOrder: byteOrder) }
     }
 
-    private static func encodedSequence(_ items: [DICOMDataset], explicitVR: Bool, sequenceLengthEncoding: SequenceLengthEncoding) throws -> Data {
+    private static func encodedSequence(_ items: [DICOMDataset], explicitVR: Bool, sequenceLengthEncoding: SequenceLengthEncoding, byteOrder: ByteOrder) throws -> Data {
         var output = Data()
         for item in items {
             var encodedItem = Data()
-            for element in item { try append(element, to: &encodedItem, explicitVR: explicitVR, sequenceLengthEncoding: sequenceLengthEncoding) }
-            appendUInt16(0xFFFE, to: &output)
-            appendUInt16(0xE000, to: &output)
-            appendUInt32(sequenceLengthEncoding == .undefined ? .max : UInt32(encodedItem.count), to: &output)
+            for element in item { try append(element, to: &encodedItem, explicitVR: explicitVR, sequenceLengthEncoding: sequenceLengthEncoding, byteOrder: byteOrder) }
+            appendUInt16(0xFFFE, to: &output, byteOrder: byteOrder)
+            appendUInt16(0xE000, to: &output, byteOrder: byteOrder)
+            appendUInt32(sequenceLengthEncoding == .undefined ? .max : UInt32(encodedItem.count), to: &output, byteOrder: byteOrder)
             output.append(encodedItem)
-            if sequenceLengthEncoding == .undefined { appendItemTag(0xE00D, to: &output) }
+            if sequenceLengthEncoding == .undefined { appendItemTag(0xE00D, to: &output, byteOrder: byteOrder) }
         }
         return output
     }
@@ -131,20 +133,43 @@ public enum DICOMWriter {
         return padded
     }
 
-    private static func appendUInt16(_ value: UInt16, to data: inout Data) {
-        data.append(UInt8(value & 0xFF)); data.append(UInt8(value >> 8))
+    private static func appendUInt16(_ value: UInt16, to data: inout Data, byteOrder: ByteOrder = .littleEndian) {
+        switch byteOrder {
+        case .littleEndian: data.append(UInt8(value & 0xFF)); data.append(UInt8(value >> 8))
+        case .bigEndian: data.append(UInt8(value >> 8)); data.append(UInt8(value & 0xFF))
+        }
     }
-    private static func appendUInt32(_ value: UInt32, to data: inout Data) {
-        data.append(UInt8(value & 0xFF)); data.append(UInt8((value >> 8) & 0xFF)); data.append(UInt8((value >> 16) & 0xFF)); data.append(UInt8(value >> 24))
+    private static func appendUInt32(_ value: UInt32, to data: inout Data, byteOrder: ByteOrder = .littleEndian) {
+        switch byteOrder {
+        case .littleEndian: data.append(UInt8(value & 0xFF)); data.append(UInt8((value >> 8) & 0xFF)); data.append(UInt8((value >> 16) & 0xFF)); data.append(UInt8(value >> 24))
+        case .bigEndian: data.append(UInt8(value >> 24)); data.append(UInt8((value >> 16) & 0xFF)); data.append(UInt8((value >> 8) & 0xFF)); data.append(UInt8(value & 0xFF))
+        }
     }
-    private static func appendItemTag(_ element: UInt16, to data: inout Data) {
-        appendUInt16(0xFFFE, to: &data); appendUInt16(element, to: &data); appendUInt32(0, to: &data)
+    private static func appendItemTag(_ element: UInt16, to data: inout Data, byteOrder: ByteOrder = .littleEndian) {
+        appendUInt16(0xFFFE, to: &data, byteOrder: byteOrder); appendUInt16(element, to: &data, byteOrder: byteOrder); appendUInt32(0, to: &data, byteOrder: byteOrder)
     }
 
-    private static func appendItem(_ value: Data, to data: inout Data) {
+    private static func appendItem(_ value: Data, to data: inout Data, byteOrder: ByteOrder = .littleEndian) {
         let padded = paddedValue(value, vr: .OB)
-        appendUInt16(0xFFFE, to: &data); appendUInt16(0xE000, to: &data)
-        appendUInt32(UInt32(padded.count), to: &data)
+        appendUInt16(0xFFFE, to: &data, byteOrder: byteOrder); appendUInt16(0xE000, to: &data, byteOrder: byteOrder)
+        appendUInt32(UInt32(padded.count), to: &data, byteOrder: byteOrder)
         data.append(padded)
+    }
+
+    private static func bigEndianValue(_ value: Data, vr: DICOMVR) -> Data {
+        let width: Int
+        switch vr {
+        case .US, .SS, .OW, .AT: width = 2
+        case .UL, .SL, .FL, .OL, .OF: width = 4
+        case .UV, .SV, .FD, .OD, .OV: width = 8
+        default: return value
+        }
+        guard value.count.isMultiple(of: width) else { return value }
+        var output = Data()
+        output.reserveCapacity(value.count)
+        for offset in stride(from: 0, to: value.count, by: width) {
+            output.append(contentsOf: value[offset..<(offset + width)].reversed())
+        }
+        return output
     }
 }
