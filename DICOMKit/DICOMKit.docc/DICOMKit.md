@@ -111,7 +111,10 @@ A-ABORT or A-RELEASE-RQ rather than treating it as an unexpected PDU.
 
 As an SCU, ``DICOMAssociation`` performs C-ECHO, C-STORE, C-FIND, C-MOVE,
 C-GET, and C-CANCEL, returning a classified ``DICOMDIMSEStatus`` and, for
-C-MOVE and C-GET, ``DICOMSubOperationCounts``. As an SCP, it accepts an
+C-MOVE and C-GET, ``DICOMSubOperationCounts``. C-GET takes an `onStore`
+handler: the peer returns each matching instance as a C-STORE sub-operation on
+a storage presentation context, and the handler's returned status is sent back
+in the C-STORE-RSP. As an SCP, it accepts an
 association against a ``DICOMAssociationPolicy``, receives requests through
 ``DICOMAssociation/receiveRequest()``, and answers them with the matching
 `respondTo…` method. Applications negotiate one presentation context per SOP

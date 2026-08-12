@@ -147,7 +147,130 @@ struct DICOMULTests {
         ])
         let association = DICOMAssociation(transport: transport)
         _ = try await association.request(DICOMAssociationRequest(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, abstractSyntaxUID: DICOMSOPClass.studyRootQueryRetrieveGet, transferSyntaxUIDs: ["1.2.840.10008.1.2"])]))
-        #expect(try await association.cGet(messageID: 18, contextID: 1, sopClassUID: DICOMSOPClass.studyRootQueryRetrieveGet, identifier: Data()).status == .success)
+        let result = try await association.cGet(messageID: 18, contextID: 1, sopClassUID: DICOMSOPClass.studyRootQueryRetrieveGet, identifier: Data()) { _ in
+            Issue.record("onStore should not be invoked when the peer sends no sub-operation")
+            return .success
+        }
+        #expect(result.status == .success)
+    }
+
+    @Test func cGetDeliversSubOperationToHandlerAndSendsCStoreResponse() async throws {
+        let store = DICOMDIMSECommand.cStoreRequest(messageID: 100, affectedSOPClassUID: DICOMSOPClass.ctImageStorage, affectedSOPInstanceUID: "1.2.3.4")
+        let finalCounts = DICOMSubOperationCounts(remaining: 0, completed: 1, failed: 0, warning: 0)
+        let recorder = DICOMCStoreRequestRecorder()
+        let transport = DICOMULMockTransport(received: [
+            .associationAcceptance(DICOMAssociationAcceptance(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [
+                .init(id: 1, result: .acceptance, transferSyntaxUID: "1.2.840.10008.1.2"),
+                .init(id: 3, result: .acceptance, transferSyntaxUID: "1.2.840.10008.1.2")
+            ])),
+            .pData(try store.commandPDVs(contextID: 3, maximumPayloadLength: 1024)),
+            .pData([DICOMPDataValue(contextID: 3, isCommand: false, isLastFragment: true, data: Data([9, 9, 9]))]),
+            .pData(try DICOMDIMSECommand.cGetResponse(messageIDBeingRespondedTo: 30, status: .pending, identifierFollows: false, subOperations: DICOMSubOperationCounts(remaining: 1, completed: 0, failed: 0, warning: 0), errorComment: nil).commandPDVs(contextID: 1, maximumPayloadLength: 1024)),
+            .pData(try DICOMDIMSECommand.cGetResponse(messageIDBeingRespondedTo: 30, status: .success, identifierFollows: false, subOperations: finalCounts, errorComment: nil).commandPDVs(contextID: 1, maximumPayloadLength: 1024))
+        ])
+        let association = DICOMAssociation(transport: transport)
+        _ = try await association.request(DICOMAssociationRequest(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [
+            .init(id: 1, abstractSyntaxUID: DICOMSOPClass.studyRootQueryRetrieveGet, transferSyntaxUIDs: ["1.2.840.10008.1.2"]),
+            .init(id: 3, abstractSyntaxUID: DICOMSOPClass.ctImageStorage, transferSyntaxUIDs: ["1.2.840.10008.1.2"])
+        ]))
+        let result = try await association.cGet(messageID: 30, contextID: 1, sopClassUID: DICOMSOPClass.studyRootQueryRetrieveGet, identifier: Data()) { request in
+            await recorder.record(request)
+            return .success
+        }
+        let received = await recorder.requests
+        #expect(received.count == 1)
+        #expect(received.first?.sopClassUID == DICOMSOPClass.ctImageStorage)
+        #expect(received.first?.sopInstanceUID == "1.2.3.4")
+        #expect(received.first?.dataset == Data([9, 9, 9]))
+        #expect(result.status == .success)
+        #expect(result.subOperations == finalCounts)
+
+        let sent = await transport.sent
+        guard case .pData(let storeResponseValues) = sent[3] else { Issue.record("expected a C-STORE-RSP PDU"); return }
+        #expect(storeResponseValues.allSatisfy { $0.contextID == 3 })
+        let responseCommand = Data(storeResponseValues.flatMap { Array($0.data) })
+        guard case .cStoreResponse(let respondedID, let status) = try DICOMDIMSECommand.decodeCommandSet(responseCommand) else { Issue.record("expected a decoded cStoreResponse"); return }
+        #expect(respondedID == 100)
+        #expect(status == .success)
+    }
+
+    @Test func cGetReassemblesFragmentedSubOperationDataset() async throws {
+        let store = DICOMDIMSECommand.cStoreRequest(messageID: 101, affectedSOPClassUID: DICOMSOPClass.ctImageStorage, affectedSOPInstanceUID: "1.2.3.5")
+        let recorder = DICOMCStoreRequestRecorder()
+        let transport = DICOMULMockTransport(received: [
+            .associationAcceptance(DICOMAssociationAcceptance(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [
+                .init(id: 1, result: .acceptance, transferSyntaxUID: "1.2.840.10008.1.2"),
+                .init(id: 3, result: .acceptance, transferSyntaxUID: "1.2.840.10008.1.2")
+            ])),
+            .pData(try store.commandPDVs(contextID: 3, maximumPayloadLength: 1024)),
+            .pData([DICOMPDataValue(contextID: 3, isCommand: false, isLastFragment: false, data: Data([1, 2]))]),
+            .pData([DICOMPDataValue(contextID: 3, isCommand: false, isLastFragment: true, data: Data([3, 4]))]),
+            .pData(try DICOMDIMSECommand.cGetResponse(messageIDBeingRespondedTo: 41, status: .success, identifierFollows: false, subOperations: nil, errorComment: nil).commandPDVs(contextID: 1, maximumPayloadLength: 1024))
+        ])
+        let association = DICOMAssociation(transport: transport)
+        _ = try await association.request(DICOMAssociationRequest(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [
+            .init(id: 1, abstractSyntaxUID: DICOMSOPClass.studyRootQueryRetrieveGet, transferSyntaxUIDs: ["1.2.840.10008.1.2"]),
+            .init(id: 3, abstractSyntaxUID: DICOMSOPClass.ctImageStorage, transferSyntaxUIDs: ["1.2.840.10008.1.2"])
+        ]))
+        _ = try await association.cGet(messageID: 41, contextID: 1, sopClassUID: DICOMSOPClass.studyRootQueryRetrieveGet, identifier: Data()) { request in
+            await recorder.record(request)
+            return .success
+        }
+        let received = await recorder.requests
+        #expect(received.count == 1)
+        #expect(received.first?.dataset == Data([1, 2, 3, 4]))
+    }
+
+    @Test func cGetDeliversTwoSubOperationsSequentially() async throws {
+        let firstStore = DICOMDIMSECommand.cStoreRequest(messageID: 102, affectedSOPClassUID: DICOMSOPClass.ctImageStorage, affectedSOPInstanceUID: "1.2.3.6")
+        let secondStore = DICOMDIMSECommand.cStoreRequest(messageID: 103, affectedSOPClassUID: DICOMSOPClass.ctImageStorage, affectedSOPInstanceUID: "1.2.3.7")
+        let recorder = DICOMCStoreRequestRecorder()
+        let transport = DICOMULMockTransport(received: [
+            .associationAcceptance(DICOMAssociationAcceptance(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [
+                .init(id: 1, result: .acceptance, transferSyntaxUID: "1.2.840.10008.1.2"),
+                .init(id: 3, result: .acceptance, transferSyntaxUID: "1.2.840.10008.1.2")
+            ])),
+            .pData(try firstStore.commandPDVs(contextID: 3, maximumPayloadLength: 1024)),
+            .pData([DICOMPDataValue(contextID: 3, isCommand: false, isLastFragment: true, data: Data([1]))]),
+            .pData(try secondStore.commandPDVs(contextID: 3, maximumPayloadLength: 1024)),
+            .pData([DICOMPDataValue(contextID: 3, isCommand: false, isLastFragment: true, data: Data([2]))]),
+            .pData(try DICOMDIMSECommand.cGetResponse(messageIDBeingRespondedTo: 42, status: .success, identifierFollows: false, subOperations: nil, errorComment: nil).commandPDVs(contextID: 1, maximumPayloadLength: 1024))
+        ])
+        let association = DICOMAssociation(transport: transport)
+        _ = try await association.request(DICOMAssociationRequest(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [
+            .init(id: 1, abstractSyntaxUID: DICOMSOPClass.studyRootQueryRetrieveGet, transferSyntaxUIDs: ["1.2.840.10008.1.2"]),
+            .init(id: 3, abstractSyntaxUID: DICOMSOPClass.ctImageStorage, transferSyntaxUIDs: ["1.2.840.10008.1.2"])
+        ]))
+        _ = try await association.cGet(messageID: 42, contextID: 1, sopClassUID: DICOMSOPClass.studyRootQueryRetrieveGet, identifier: Data()) { request in
+            await recorder.record(request)
+            return .success
+        }
+        let received = await recorder.requests
+        #expect(received.map(\.sopInstanceUID) == ["1.2.3.6", "1.2.3.7"])
+        let sent = await transport.sent
+        let storeResponses = sent.filter { pdu in
+            guard case .pData(let values) = pdu else { return false }
+            return values.contains { $0.contextID == 3 }
+        }
+        #expect(storeResponses.count == 2)
+    }
+
+    @Test func cGetThrowsOnNonCStoreSubOperationCommand() async throws {
+        let transport = DICOMULMockTransport(received: [
+            .associationAcceptance(DICOMAssociationAcceptance(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [
+                .init(id: 1, result: .acceptance, transferSyntaxUID: "1.2.840.10008.1.2"),
+                .init(id: 3, result: .acceptance, transferSyntaxUID: "1.2.840.10008.1.2")
+            ])),
+            .pData(try DICOMDIMSECommand.cEchoRequest(messageID: 1).commandPDVs(contextID: 3, maximumPayloadLength: 1024))
+        ])
+        let association = DICOMAssociation(transport: transport)
+        _ = try await association.request(DICOMAssociationRequest(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [
+            .init(id: 1, abstractSyntaxUID: DICOMSOPClass.studyRootQueryRetrieveGet, transferSyntaxUIDs: ["1.2.840.10008.1.2"]),
+            .init(id: 3, abstractSyntaxUID: DICOMSOPClass.ctImageStorage, transferSyntaxUIDs: ["1.2.840.10008.1.2"])
+        ]))
+        await #expect(throws: DICOMAssociationError.unexpectedDIMSECommand) {
+            _ = try await association.cGet(messageID: 43, contextID: 1, sopClassUID: DICOMSOPClass.studyRootQueryRetrieveGet, identifier: Data()) { _ in .success }
+        }
     }
 
     @Test func associationReceivesCStoreAndReplies() async throws {
@@ -983,6 +1106,12 @@ private actor DICOMULMockTransport: DICOMULTransport {
     func send(_ pdu: DICOMULPDU) async throws { sent.append(pdu) }
     func receive() async throws -> DICOMULPDU { received.removeFirst() }
     func close() async {}
+}
+
+/// Records the C-STORE sub-operations a C-GET hands to its `onStore` handler.
+private actor DICOMCStoreRequestRecorder {
+    var requests: [DICOMCStoreRequest] = []
+    func record(_ request: DICOMCStoreRequest) { requests.append(request) }
 }
 
 /// Fails every `send`, to prove a failure sending A-ASSOCIATE-AC/RJ leaves the transport closed

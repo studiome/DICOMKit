@@ -97,7 +97,9 @@ See the [changelog](CHANGELOG.md) for the current implementation status.
   - Network.framework TCP/TLS transport, and `NetworkDICOMULListener` for
     inbound connections
   - SCU services: C-ECHO, C-STORE, C-FIND, C-MOVE, C-GET, and C-CANCEL, with
-    classified DIMSE statuses and C-MOVE / C-GET sub-operation counts
+    classified DIMSE statuses and C-MOVE / C-GET sub-operation counts; C-GET
+    delivers each retrieved instance to a caller-supplied handler and answers
+    the peer with the status it returns
   - SCP services: association acceptance and presentation-context negotiation
     driven by a `DICOMAssociationPolicy`, `receiveRequest()`, and C-ECHO,
     C-STORE, C-FIND, C-MOVE, and C-GET responses

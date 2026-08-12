@@ -294,34 +294,72 @@ public actor DICOMAssociation {
         acceptance?.roleSelections.first { $0.sopClassUID == sopClassUID }
     }
 
-    /// Performs C-GET and returns the final DIMSE status. The caller must
-    /// separately negotiate storage presentation contexts to accept C-STORE
-    /// sub-operations sent by the peer during a pending C-GET response. Per
-    /// PS3.7 Annex D.3.3.4, a C-GET SCU must propose an SCP role in SCP/SCU
-    /// role selection negotiation for each storage SOP Class it expects to
-    /// receive during the exchange.
-    public func cGet(messageID: UInt16, contextID: UInt8, sopClassUID: String, identifier: Data) async throws -> DICOMCGetResult {
+    /// Performs C-GET and returns the final DIMSE status with its sub-operation counts.
+    ///
+    /// Per PS3.4 C.4.3 the peer returns each matching instance as a C-STORE
+    /// sub-operation on a storage presentation context, interleaved with pending
+    /// C-GET responses on this context, so the caller must negotiate a storage
+    /// presentation context for every SOP Class it expects to receive. Per PS3.7
+    /// Annex D.3.3.4 it must also propose an SCP role in SCP/SCU role selection
+    /// negotiation for each of those SOP Classes.
+    ///
+    /// `onStore` receives every retrieved instance and returns the DIMSE status sent
+    /// back to the peer in the C-STORE-RSP. It is awaited inside this actor, so it
+    /// must not call back into this same ``DICOMAssociation``.
+    public func cGet(
+        messageID: UInt16,
+        contextID: UInt8,
+        sopClassUID: String,
+        identifier: Data,
+        onStore: @Sendable (DICOMCStoreRequest) async -> DICOMDIMSEStatus
+    ) async throws -> DICOMCGetResult {
         guard let acceptance, acceptance.presentationContexts.contains(where: { $0.id == contextID && $0.result == .acceptance }) else { throw DICOMAssociationError.notAssociated }
         let maximumPayload = max(1, Int(acceptance.maximumPDULength) - 12)
         try await transport.send(.pData(try DICOMDIMSECommand.cGetRequest(messageID: messageID, affectedSOPClassUID: sopClassUID).commandPDVs(contextID: contextID, maximumPayloadLength: maximumPayload)))
         try await transport.send(.pData(pdvs(data: identifier, contextID: contextID, maximumPayloadLength: maximumPayload)))
         var response = Data()
+        var subCommands: [UInt8: Data] = [:]
+        var pendingStore: (messageID: UInt16, sopClassUID: String, sopInstanceUID: String, contextID: UInt8)?
+        var subDataset = Data()
         while true {
             guard case .pData(let values) = try await receivePDU() else { throw DICOMAssociationError.unexpectedPDU }
-            for value in values where value.contextID == contextID && value.isCommand {
-                response.append(value.data)
-                guard value.isLastFragment else { continue }
-                guard case .cGetResponse(let responseID, let status, _, let subOperations, let errorComment) = try DICOMDIMSECommand.decodeCommandSet(response), responseID == messageID else { throw DICOMAssociationError.unexpectedDIMSECommand }
-                response.removeAll(keepingCapacity: true)
-                if !status.isPending { return DICOMCGetResult(status: status, subOperations: subOperations, errorComment: errorComment) }
+            for value in values {
+                if value.contextID == contextID, value.isCommand {
+                    response.append(value.data)
+                    guard value.isLastFragment else { continue }
+                    guard case .cGetResponse(let responseID, let status, _, let subOperations, let errorComment) = try DICOMDIMSECommand.decodeCommandSet(response), responseID == messageID else { throw DICOMAssociationError.unexpectedDIMSECommand }
+                    response.removeAll(keepingCapacity: true)
+                    if !status.isPending { return DICOMCGetResult(status: status, subOperations: subOperations, errorComment: errorComment) }
+                } else if value.isCommand {
+                    subCommands[value.contextID, default: Data()].append(value.data)
+                    guard value.isLastFragment, let command = subCommands.removeValue(forKey: value.contextID) else { continue }
+                    guard case .cStoreRequest(let storeID, let storeClassUID, let storeInstanceUID) = try DICOMDIMSECommand.decodeCommandSet(command) else { throw DICOMAssociationError.unexpectedDIMSECommand }
+                    pendingStore = (storeID, storeClassUID, storeInstanceUID, value.contextID)
+                    subDataset.removeAll(keepingCapacity: true)
+                } else if let store = pendingStore, value.contextID == store.contextID {
+                    subDataset.append(value.data)
+                    guard value.isLastFragment else { continue }
+                    let request = DICOMCStoreRequest(messageID: store.messageID, contextID: store.contextID, sopClassUID: store.sopClassUID, sopInstanceUID: store.sopInstanceUID, dataset: subDataset)
+                    let status = await onStore(request)
+                    try await respond(to: request, status: status)
+                    pendingStore = nil
+                    subDataset.removeAll(keepingCapacity: true)
+                }
+                // Any remaining data PDV is the C-GET response's optional failed-SOP-
+                // instance-UID-list identifier, which this API does not surface.
             }
         }
     }
 
     /// Performs C-GET using the accepted presentation context for `sopClassUID`.
-    public func cGet(messageID: UInt16, sopClassUID: String, identifier: Data) async throws -> DICOMCGetResult {
+    public func cGet(
+        messageID: UInt16,
+        sopClassUID: String,
+        identifier: Data,
+        onStore: @Sendable (DICOMCStoreRequest) async -> DICOMDIMSEStatus
+    ) async throws -> DICOMCGetResult {
         guard let contextID = presentationContextID(for: sopClassUID) else { throw DICOMAssociationError.notAssociated }
-        return try await cGet(messageID: messageID, contextID: contextID, sopClassUID: sopClassUID, identifier: identifier)
+        return try await cGet(messageID: messageID, contextID: contextID, sopClassUID: sopClassUID, identifier: identifier, onStore: onStore)
     }
 
     /// Receives the next DIMSE request: reassembles the command set from command PDVs
@@ -356,7 +394,12 @@ public actor DICOMAssociation {
     }
 
     /// Receives the next C-STORE request and its complete dataset. This is the
-    /// SCP-side primitive used directly by C-STORE servers and C-GET clients.
+    /// SCP-side primitive for a C-STORE server.
+    ///
+    /// It is not usable by a C-GET client: a C-GET SCP interleaves pending C-GET
+    /// responses with its C-STORE sub-operations, and those decode as non-C-STORE
+    /// commands, so this method would throw partway through the retrieval. Use
+    /// ``cGet(messageID:contextID:sopClassUID:identifier:onStore:)`` instead.
     public func receiveCStore() async throws -> DICOMCStoreRequest {
         let request = try await receiveRequest()
         guard case .cStoreRequest(let messageID, let sopClassUID, let sopInstanceUID) = request.command, let dataset = request.dataset else { throw DICOMAssociationError.unexpectedDIMSECommand }

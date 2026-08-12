@@ -28,6 +28,25 @@ All notable changes to DICOMKit are documented here.
 - Fixed a `NetworkDICOMULTransport.connect()` crash: its connection state
   handler stayed attached after the connection settled, so a later
   cancellation resumed the same continuation twice.
+- Fixed C-GET discarding every instance it retrieved. The C-STORE
+  sub-operations the peer sends on the storage presentation contexts were
+  filtered out of the receive loop and never answered, so the operation
+  reported success while delivering nothing. `cGet` now takes an `onStore`
+  handler, reassembles each sub-operation, and sends the C-STORE-RSP.
+- Fixed `responseTimeout` never firing against `NetworkDICOMULTransport`: the
+  timeout task group awaited a receive that ignores cancellation, so the call
+  hung instead of throwing. `DICOMULTransport.close()` is now documented to
+  unblock an in-flight `receive()`, and a timeout closes the transport.
+- Fixed a trap when a User Information sub-item exceeded 64 KB; oversized user
+  identity credentials and server responses now throw `pduTooLarge`.
+- Fixed `cFind` reporting each fragment of a split identifier as a separate
+  match, invalid presentation context IDs being accepted on decode and only
+  rejected while encoding the response, a crash negotiating a presentation
+  context proposed with no transfer syntaxes, a missing Command Data Set Type
+  being read as "a data set follows", and a peer's absent Implementation Class
+  UID being reported as DICOMKit's own.
+- Fixed `NetworkDICOMULListener` leaking a continuation when the task awaiting
+  `accept()` was cancelled, and leaving queued connections open on `stop()`.
 - Added `DICOMwebClient` for QIDO-RS study searches, WADO-RS single-instance
   retrieval, and STOW-RS multipart instance storage.
 - Added injectable `DICOMwebTransport` and response validation for testable
