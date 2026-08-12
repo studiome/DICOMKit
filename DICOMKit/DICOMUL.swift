@@ -69,6 +69,16 @@ public struct DICOMAssociationAcceptance: Sendable, Equatable {
     }
 }
 
+/// The reason supplied by a peer that refuses an association request.
+public struct DICOMAssociationRejection: Sendable, Equatable {
+    public enum Result: UInt8, Sendable, Equatable { case permanent = 1, transient = 2 }
+    public enum Source: UInt8, Sendable, Equatable { case serviceUser = 1, serviceProviderACSE = 2, serviceProviderPresentation = 3 }
+    public let result: Result
+    public let source: Source
+    public let reason: UInt8
+    public init(result: Result, source: Source, reason: UInt8) { self.result = result; self.source = source; self.reason = reason }
+}
+
 /// One PDV in a P-DATA-TF PDU.
 public struct DICOMPDataValue: Sendable, Equatable {
     public let contextID: UInt8
@@ -92,6 +102,7 @@ public struct DICOMPDataValue: Sendable, Equatable {
 public enum DICOMULPDU: Sendable, Equatable {
     case associationRequest(DICOMAssociationRequest)
     case associationAcceptance(DICOMAssociationAcceptance)
+    case associationRejection(DICOMAssociationRejection)
     case pData([DICOMPDataValue])
     case releaseRequest
     case releaseResponse
@@ -108,6 +119,9 @@ public enum DICOMULPDU: Sendable, Equatable {
         case .associationAcceptance(let acceptance):
             type = 0x02
             body = try Self.encodeAssociationAcceptance(acceptance)
+        case .associationRejection(let rejection):
+            type = 0x03
+            body = Data([0, rejection.result.rawValue, rejection.source.rawValue, rejection.reason])
         case .pData(let values):
             type = 0x04
             body = try Self.encodePData(values)
@@ -134,6 +148,11 @@ public enum DICOMULPDU: Sendable, Equatable {
         switch data[0] {
         case 0x01: return .associationRequest(try decodeAssociationRequest(Data(body)))
         case 0x02: return .associationAcceptance(try decodeAssociationAcceptance(Data(body)))
+        case 0x03:
+            guard body.count == 4, body[body.startIndex] == 0,
+                  let result = DICOMAssociationRejection.Result(rawValue: body[body.startIndex + 1]),
+                  let source = DICOMAssociationRejection.Source(rawValue: body[body.startIndex + 2]) else { throw DICOMULError.malformedPDU }
+            return .associationRejection(DICOMAssociationRejection(result: result, source: source, reason: body[body.startIndex + 3]))
         case 0x04: return .pData(try decodePData(Data(body)))
         case 0x05:
             guard body.count == 4 else { throw DICOMULError.malformedPDU }; return .releaseRequest

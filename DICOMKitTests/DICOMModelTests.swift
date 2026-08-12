@@ -46,6 +46,11 @@ struct DICOMULTests {
         let pdu = DICOMULPDU.associationAcceptance(acceptance)
         #expect(try DICOMULPDU.decode(pdu.encoded()) == pdu)
     }
+
+    @Test func encodesAndDecodesAssociationRejection() throws {
+        let pdu = DICOMULPDU.associationRejection(DICOMAssociationRejection(result: .permanent, source: .serviceUser, reason: 7))
+        #expect(try DICOMULPDU.decode(pdu.encoded()) == pdu)
+    }
 }
 
 struct DICOMTagTests {
