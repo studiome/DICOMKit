@@ -151,6 +151,12 @@ public actor DICOMAssociation {
         }
     }
 
+    /// Performs C-FIND using the accepted presentation context for `sopClassUID`.
+    public func cFind(messageID: UInt16, sopClassUID: String, identifier: Data) async throws -> DICOMCFindResult {
+        guard let contextID = presentationContextID(for: sopClassUID) else { throw DICOMAssociationError.notAssociated }
+        return try await cFind(messageID: messageID, contextID: contextID, sopClassUID: sopClassUID, identifier: identifier)
+    }
+
     /// Performs C-MOVE and returns its final DIMSE status. Pending progress
     /// responses are consumed until the peer emits a final response.
     public func cMove(messageID: UInt16, contextID: UInt8, sopClassUID: String, destination: String, identifier: Data) async throws -> UInt16 {
@@ -172,6 +178,12 @@ public actor DICOMAssociation {
         }
     }
 
+    /// Performs C-MOVE using the accepted presentation context for `sopClassUID`.
+    public func cMove(messageID: UInt16, sopClassUID: String, destination: String, identifier: Data) async throws -> UInt16 {
+        guard let contextID = presentationContextID(for: sopClassUID) else { throw DICOMAssociationError.notAssociated }
+        return try await cMove(messageID: messageID, contextID: contextID, sopClassUID: sopClassUID, destination: destination, identifier: identifier)
+    }
+
     /// Performs C-GET and returns the final DIMSE status. The caller must
     /// separately negotiate storage presentation contexts to accept C-STORE
     /// sub-operations sent by the peer during a pending C-GET response.
@@ -191,6 +203,12 @@ public actor DICOMAssociation {
                 if !isPending(status) { return status }
             }
         }
+    }
+
+    /// Performs C-GET using the accepted presentation context for `sopClassUID`.
+    public func cGet(messageID: UInt16, sopClassUID: String, identifier: Data) async throws -> UInt16 {
+        guard let contextID = presentationContextID(for: sopClassUID) else { throw DICOMAssociationError.notAssociated }
+        return try await cGet(messageID: messageID, contextID: contextID, sopClassUID: sopClassUID, identifier: identifier)
     }
 
     /// Receives the next C-STORE request and its complete dataset. This is the

@@ -192,6 +192,17 @@ struct DICOMULTests {
         _ = try await association.request(DICOMAssociationRequest(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 3, abstractSyntaxUID: sopClass, transferSyntaxUIDs: ["1.2.840.10008.1.2"])]))
         #expect(try await association.cStore(messageID: 21, sopClassUID: sopClass, sopInstanceUID: "1.2.3", dataset: Data()) == 0)
     }
+
+    @Test func associationSelectsPresentationContextForCFind() async throws {
+        let sopClass = "1.2.840.10008.5.1.4.1.2.2.1"
+        let transport = DICOMULMockTransport(received: [
+            .associationAcceptance(DICOMAssociationAcceptance(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 5, result: .acceptance, transferSyntaxUID: "1.2.840.10008.1.2")])),
+            .pData(try DICOMDIMSECommand.cFindResponse(messageIDBeingRespondedTo: 22, status: 0).commandPDVs(contextID: 5, maximumPayloadLength: 1024))
+        ])
+        let association = DICOMAssociation(transport: transport)
+        _ = try await association.request(DICOMAssociationRequest(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 5, abstractSyntaxUID: sopClass, transferSyntaxUIDs: ["1.2.840.10008.1.2"])]))
+        #expect(try await association.cFind(messageID: 22, sopClassUID: sopClass, identifier: Data()).status == 0)
+    }
 }
 
 private actor DICOMULMockTransport: DICOMULTransport {
