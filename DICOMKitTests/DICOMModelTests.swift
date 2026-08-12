@@ -99,6 +99,41 @@ struct DICOMElementValueTests {
 }
 
 struct DICOMDatasetTests {
+    @Test func validatesCommonCTImageIODRequirements() {
+        let validator = DICOMIODValidator.ctImageStorage
+        let dataset = DICOMDataset(elements: [
+            DICOMElement(tag: .sopClassUID, vr: .UI, value: Data("1.2.840.10008.5.1.4.1.1.2".utf8)),
+            DICOMElement(tag: .sopInstanceUID, vr: .UI, value: Data("1.2.3".utf8)),
+            DICOMElement(tag: DICOMTag(group: 0x0008, element: 0x0060), vr: .CS, value: Data("CT".utf8)),
+            DICOMElement(tag: .patientName, vr: .PN, value: Data()),
+            DICOMElement(tag: DICOMTag(group: 0x0010, element: 0x0020), vr: .LO, value: Data()),
+            DICOMElement(tag: .studyInstanceUID, vr: .UI, value: Data("1.2.4".utf8)),
+            DICOMElement(tag: .seriesInstanceUID, vr: .UI, value: Data("1.2.5".utf8)),
+            DICOMElement(tag: .rows, vr: .US, value: uint16(1)),
+            DICOMElement(tag: .columns, vr: .US, value: uint16(1)),
+            DICOMElement(tag: .bitsAllocated, vr: .US, value: uint16(16)),
+            DICOMElement(tag: .bitsStored, vr: .US, value: uint16(12)),
+            DICOMElement(tag: .highBit, vr: .US, value: uint16(11)),
+            DICOMElement(tag: .pixelRepresentation, vr: .US, value: uint16(0)),
+            DICOMElement(tag: .pixelData, vr: .OW, value: uint16(0))
+        ])
+
+        #expect(validator.validate(dataset) == [])
+    }
+
+    @Test func validatesFileMetaSOPIdentifiersAgainstDataset() throws {
+        let dataset = DICOMDataset(elements: [
+            DICOMElement(tag: .sopClassUID, vr: .UI, value: Data("1.2.3".utf8)),
+            DICOMElement(tag: .sopInstanceUID, vr: .UI, value: Data("4.5.6".utf8))
+        ])
+        let metadata = DICOMFileMetaInformation(
+            mediaStorageSOPClassUID: "1.2.3", mediaStorageSOPInstanceUID: "4.5.6",
+            implementationClassUID: "1.2.826.0.1"
+        )
+
+        try metadata.validate(against: dataset)
+    }
+
     @Test func resolvesDICOMJSONBulkDataOnlyThroughExplicitResolver() async throws {
         let uri = URL(string: "https://example.test/bulk/pixel-data")!
         let json = DICOMJSONDataset(elements: [

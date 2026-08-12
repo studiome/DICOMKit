@@ -86,3 +86,34 @@ public struct DICOMModuleValidator: Sendable {
         return element.value.isEmpty
     }
 }
+
+/// Focused Type 1/Type 2 requirement sets for commonly exchanged image IODs.
+///
+/// These validators cover the shared identification and image-pixel modules
+/// that DICOMKit uses. They are not a claim of full SOP Class conformance;
+/// conditional and modality-specific modules remain application responsibilities.
+public enum DICOMIODValidator {
+    /// Common requirements for CT Image Storage datasets.
+    public static let ctImageStorage = DICOMModuleValidator(requirements: commonImageRequirements)
+    /// Common requirements for MR Image Storage datasets.
+    public static let mrImageStorage = DICOMModuleValidator(requirements: commonImageRequirements)
+    /// Common requirements for Secondary Capture Image Storage datasets.
+    public static let secondaryCaptureImageStorage = DICOMModuleValidator(requirements: commonImageRequirements)
+
+    private static let commonImageRequirements: [DICOMModuleRequirement] = [
+        .init(tag: .sopClassUID, vr: .UI, requirement: .type1),
+        .init(tag: .sopInstanceUID, vr: .UI, requirement: .type1),
+        .init(tag: DICOMTag(group: 0x0008, element: 0x0060), vr: .CS, requirement: .type1),
+        .init(tag: .patientName, vr: .PN, requirement: .type2),
+        .init(tag: DICOMTag(group: 0x0010, element: 0x0020), vr: .LO, requirement: .type2),
+        .init(tag: .studyInstanceUID, vr: .UI, requirement: .type1),
+        .init(tag: .seriesInstanceUID, vr: .UI, requirement: .type1),
+        .init(tag: .rows, vr: .US, requirement: .type1),
+        .init(tag: .columns, vr: .US, requirement: .type1),
+        .init(tag: .bitsAllocated, vr: .US, requirement: .type1),
+        .init(tag: .bitsStored, vr: .US, requirement: .type1),
+        .init(tag: .highBit, vr: .US, requirement: .type1),
+        .init(tag: .pixelRepresentation, vr: .US, requirement: .type1),
+        .init(tag: .pixelData, vr: .OW, requirement: .type1)
+    ]
+}

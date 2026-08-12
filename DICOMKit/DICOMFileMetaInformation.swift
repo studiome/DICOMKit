@@ -1,5 +1,15 @@
 import Foundation
 
+/// Errors reported when File Meta Information does not match its dataset.
+public enum DICOMFileMetaValidationError: Error, Sendable, Equatable {
+    /// The File Meta Information lacks a required non-empty identifier.
+    case missingRequiredIdentifier
+    /// Media Storage SOP Class UID does not match the dataset SOP Class UID.
+    case sopClassUIDMismatch
+    /// Media Storage SOP Instance UID does not match the dataset SOP Instance UID.
+    case sopInstanceUIDMismatch
+}
+
 /// Required File Meta Information identifiers for writing an interoperable
 /// DICOM Part 10 file.
 public struct DICOMFileMetaInformation: Sendable, Equatable {
@@ -29,5 +39,18 @@ public struct DICOMFileMetaInformation: Sendable, Equatable {
             implementationClassUID: implementationClassUID,
             implementationVersionName: implementationVersionName
         )
+    }
+
+    /// Validates required File Meta identifiers and their consistency with a dataset.
+    public func validate(against dataset: DICOMDataset) throws {
+        guard !mediaStorageSOPClassUID.isEmpty, !mediaStorageSOPInstanceUID.isEmpty, !implementationClassUID.isEmpty else {
+            throw DICOMFileMetaValidationError.missingRequiredIdentifier
+        }
+        guard dataset[.sopClassUID]?.stringValue == mediaStorageSOPClassUID else {
+            throw DICOMFileMetaValidationError.sopClassUIDMismatch
+        }
+        guard dataset[.sopInstanceUID]?.stringValue == mediaStorageSOPInstanceUID else {
+            throw DICOMFileMetaValidationError.sopInstanceUIDMismatch
+        }
     }
 }

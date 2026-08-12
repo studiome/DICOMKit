@@ -107,7 +107,10 @@ to test requests without a network connection.
 - ``DICOMVR``
 - ``TransferSyntax``
 - ``DICOMError``
+- ``DICOMFileMetaInformation``
+- ``DICOMFileMetaValidationError``
 - ``DICOMModuleValidator``
+- ``DICOMIODValidator``
 - ``DICOMModuleRequirement``
 - ``DICOMValidationIssue``
 

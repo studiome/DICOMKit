@@ -32,7 +32,8 @@ See the [changelog](CHANGELOG.md) for the current implementation status.
   conformance claim
 - Validates caller-supplied DICOM module Type 1 and Type 2 requirements,
   including missing attributes, empty Type 1 values, and unexpected VRs; this
-  is a reusable building block rather than complete IOD conformance validation
+  is a reusable building block rather than complete IOD conformance validation;
+  includes focused common validators for CT, MR, and Secondary Capture images
 - Provides typed access for common string and `UInt16` values
 - Converts supported in-memory datasets to and from typed DICOM JSON
   (PS3.18 Annex F), including string VRs, `US`, sequences, and inline binary
