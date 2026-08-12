@@ -53,6 +53,8 @@ public struct DICOMPixelData: Sendable {
     /// The color lookup tables used when ``photometricInterpretation`` is
     /// ``PhotometricInterpretation/paletteColor``.
     public let paletteColorLUT: DICOMPaletteColorLUT?
+    /// Stored sample values excluded from automatic window calculation.
+    public let pixelPaddingRange: ClosedRange<Double>?
 
     /// Creates uncompressed pixel data and its rendering attributes.
     ///
@@ -78,7 +80,8 @@ public struct DICOMPixelData: Sendable {
         defaultWindowWidth: Double? = nil,
         windowPresets: [DICOMWindowPreset] = [],
         voiLUTs: [DICOMVOILUT] = [],
-        paletteColorLUT: DICOMPaletteColorLUT? = nil
+        paletteColorLUT: DICOMPaletteColorLUT? = nil,
+        pixelPaddingRange: ClosedRange<Double>? = nil
     ) {
         self.value = value
         self.rows = rows
@@ -96,6 +99,7 @@ public struct DICOMPixelData: Sendable {
         self.windowPresets = windowPresets
         self.voiLUTs = voiLUTs
         self.paletteColorLUT = paletteColorLUT
+        self.pixelPaddingRange = pixelPaddingRange
     }
 
     /// Creates a Core Graphics image for 8-bit monochrome, interleaved RGB,
@@ -304,7 +308,7 @@ public struct DICOMPixelData: Sendable {
     /// parameters, the dataset defaults, and the rescaled sample data, per
     /// the priority order documented on ``cgImage(windowCenter:windowWidth:)``.
     private func resolvedWindow(explicitCenter: Double?, explicitWidth: Double?, samples: [Double]) -> (center: Double, width: Double) {
-        let computed = computedWindow(from: samples)
+        let computed = computedWindow(from: pixelPaddingRange.map { range in samples.filter { !range.contains($0) } } ?? samples)
         let center = explicitCenter ?? defaultWindowCenter ?? computed.center
         let width = explicitWidth ?? defaultWindowWidth ?? computed.width
         return (center, width)

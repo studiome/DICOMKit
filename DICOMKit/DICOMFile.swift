@@ -366,8 +366,30 @@ public struct DICOMFile: Sendable {
             windowPresets: windowPresets,
             voiLUTs: voiLUTs,
             paletteColorLUT: paletteColorLUT
+            , pixelPaddingRange: pixelPaddingRange()
             )
         }
+    }
+
+    private func pixelPaddingRange() -> ClosedRange<Double>? {
+        guard let valueElement = dataset[.pixelPaddingValue] else { return nil }
+        let stored: Int
+        if dataset[.pixelRepresentation]?.uint16Value == 1 {
+            guard let value = valueElement.int16Value else { return nil }; stored = Int(value)
+        } else {
+            guard let value = valueElement.uint16Value else { return nil }; stored = Int(value)
+        }
+        let limit: Int
+        if let limitElement = dataset[.pixelPaddingRangeLimit] {
+            if dataset[.pixelRepresentation]?.uint16Value == 1 {
+                guard let value = limitElement.int16Value else { return nil }; limit = Int(value)
+            } else {
+                guard let value = limitElement.uint16Value else { return nil }; limit = Int(value)
+            }
+        } else { limit = stored }
+        let slope = dataset[.rescaleSlope]?.doubleValue ?? 1
+        let intercept = dataset[.rescaleIntercept]?.doubleValue ?? 0
+        return min(Double(stored) * slope + intercept, Double(limit) * slope + intercept)...max(Double(stored) * slope + intercept, Double(limit) * slope + intercept)
     }
 
     private func renderingAttributes(frameCount: Int) -> [FrameRenderingAttributes] {

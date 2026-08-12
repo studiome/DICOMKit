@@ -49,6 +49,7 @@ enum DICOMDictionary {
         .rows: .US, .columns: .US,
         .pixelSpacing: .DS, .pixelAspectRatio: .IS,
         .bitsAllocated: .US, .bitsStored: .US, .highBit: .US, .pixelRepresentation: .US,
+        .pixelPaddingValue: .US, .pixelPaddingRangeLimit: .US,
         .redPaletteColorLookupTableDescriptor: .US,
         .greenPaletteColorLookupTableDescriptor: .US,
         .bluePaletteColorLookupTableDescriptor: .US,

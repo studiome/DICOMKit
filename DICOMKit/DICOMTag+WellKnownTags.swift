@@ -77,6 +77,10 @@ extension DICOMTag {
     public static let rescaleIntercept = DICOMTag(group: 0x0028, element: 0x1052)
     /// Rescale Slope `(0028,1053)`.
     public static let rescaleSlope = DICOMTag(group: 0x0028, element: 0x1053)
+    /// Pixel Padding Value `(0028,0120)`.
+    public static let pixelPaddingValue = DICOMTag(group: 0x0028, element: 0x0120)
+    /// Pixel Padding Range Limit `(0028,0121)`.
+    public static let pixelPaddingRangeLimit = DICOMTag(group: 0x0028, element: 0x0121)
     /// Frame VOI LUT Sequence `(0028,9132)`.
     public static let frameVOILUTSequence = DICOMTag(group: 0x0028, element: 0x9132)
     /// Pixel Value Transformation Sequence `(0028,9145)`.

@@ -5,6 +5,31 @@ import Testing
 /// The 16-bit monochrome path, where stored samples are masked, sign-extended,
 /// rescaled, and windowed before they become 8-bit gray.
 struct PixelDataWindowingTests {
+    @Test func excludesPixelPaddingFromAutomaticWindow() throws {
+        let pixelData = DICOMPixelData(
+            value: uint16(0) + uint16(100) + uint16(200), rows: 1, columns: 3,
+            samplesPerPixel: 1, bitsAllocated: 16, photometricInterpretation: .monochrome2,
+            pixelPaddingRange: 0...0
+        )
+
+        #expect(try imageBytes(pixelData.cgImage()) == Data([0, 0, 255]))
+    }
+
+    @Test func readsPixelPaddingRangeFromDataset() throws {
+        let dataset = DICOMDataset(elements: [
+            DICOMElement(tag: .samplesPerPixel, vr: .US, value: uint16(1)),
+            DICOMElement(tag: .photometricInterpretation, vr: .CS, value: Data("MONOCHROME2".utf8)),
+            DICOMElement(tag: .rows, vr: .US, value: uint16(1)),
+            DICOMElement(tag: .columns, vr: .US, value: uint16(3)),
+            DICOMElement(tag: .bitsAllocated, vr: .US, value: uint16(16)),
+            DICOMElement(tag: .pixelPaddingValue, vr: .US, value: uint16(0)),
+            DICOMElement(tag: .pixelData, vr: .OW, value: uint16(0) + uint16(100) + uint16(200))
+        ])
+        let pixelData = try #require(DICOMFile(data: DICOMWriter.write(dataset: dataset)).pixelData)
+
+        #expect(pixelData.pixelPaddingRange == 0...0)
+        #expect(try imageBytes(pixelData.cgImage()) == Data([0, 0, 255]))
+    }
     @Test func appliesPerFrameFunctionalGroupRenderingAttributes() throws {
         func group(intercept: String, center: String) -> DICOMDataset {
             let transform = DICOMDataset(elements: [
