@@ -161,7 +161,7 @@ public actor DICOMAssociation {
                 if value.isCommand {
                     responseCommand.append(value.data)
                     guard value.isLastFragment else { continue }
-                    guard case .cFindResponse(let responseID, let status, _) = try DICOMDIMSECommand.decodeCommandSet(responseCommand), responseID == messageID else { throw DICOMAssociationError.unexpectedDIMSECommand }
+                    guard case .cFindResponse(let responseID, let status, _, _) = try DICOMDIMSECommand.decodeCommandSet(responseCommand), responseID == messageID else { throw DICOMAssociationError.unexpectedDIMSECommand }
                     responseCommand.removeAll(keepingCapacity: true)
                     if !status.isPending { return DICOMCFindResult(status: status, identifiers: identifiers) }
                 } else {
@@ -193,7 +193,7 @@ public actor DICOMAssociation {
             for value in values where value.contextID == contextID && value.isCommand {
                 response.append(value.data)
                 guard value.isLastFragment else { continue }
-                guard case .cMoveResponse(let responseID, let status, let subOperations, let errorComment) = try DICOMDIMSECommand.decodeCommandSet(response), responseID == messageID else { throw DICOMAssociationError.unexpectedDIMSECommand }
+                guard case .cMoveResponse(let responseID, let status, _, let subOperations, let errorComment) = try DICOMDIMSECommand.decodeCommandSet(response), responseID == messageID else { throw DICOMAssociationError.unexpectedDIMSECommand }
                 response.removeAll(keepingCapacity: true)
                 if !status.isPending { return DICOMCMoveResult(status: status, subOperations: subOperations, errorComment: errorComment) }
             }
@@ -229,7 +229,7 @@ public actor DICOMAssociation {
             for value in values where value.contextID == contextID && value.isCommand {
                 response.append(value.data)
                 guard value.isLastFragment else { continue }
-                guard case .cGetResponse(let responseID, let status, let subOperations, let errorComment) = try DICOMDIMSECommand.decodeCommandSet(response), responseID == messageID else { throw DICOMAssociationError.unexpectedDIMSECommand }
+                guard case .cGetResponse(let responseID, let status, _, let subOperations, let errorComment) = try DICOMDIMSECommand.decodeCommandSet(response), responseID == messageID else { throw DICOMAssociationError.unexpectedDIMSECommand }
                 response.removeAll(keepingCapacity: true)
                 if !status.isPending { return DICOMCGetResult(status: status, subOperations: subOperations, errorComment: errorComment) }
             }

@@ -92,9 +92,9 @@ struct DICOMULTests {
     @Test func associationCollectsCFindResponses() async throws {
         let transport = DICOMULMockTransport(received: [
             .associationAcceptance(DICOMAssociationAcceptance(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, result: .acceptance, transferSyntaxUID: "1.2.840.10008.1.2")])),
-            .pData(try DICOMDIMSECommand.cFindResponse(messageIDBeingRespondedTo: 14, status: .pending, errorComment: nil).commandPDVs(contextID: 1, maximumPayloadLength: 1024)),
+            .pData(try DICOMDIMSECommand.cFindResponse(messageIDBeingRespondedTo: 14, status: .pending, identifierFollows: true, errorComment: nil).commandPDVs(contextID: 1, maximumPayloadLength: 1024)),
             .pData([DICOMPDataValue(contextID: 1, isCommand: false, isLastFragment: true, data: Data([4, 5]))]),
-            .pData(try DICOMDIMSECommand.cFindResponse(messageIDBeingRespondedTo: 14, status: .success, errorComment: nil).commandPDVs(contextID: 1, maximumPayloadLength: 1024))
+            .pData(try DICOMDIMSECommand.cFindResponse(messageIDBeingRespondedTo: 14, status: .success, identifierFollows: false, errorComment: nil).commandPDVs(contextID: 1, maximumPayloadLength: 1024))
         ])
         let association = DICOMAssociation(transport: transport)
         _ = try await association.request(DICOMAssociationRequest(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, abstractSyntaxUID: "1.2.840.10008.5.1.4.1.2.2.1", transferSyntaxUIDs: ["1.2.840.10008.1.2"])]))
@@ -111,7 +111,7 @@ struct DICOMULTests {
     @Test func associationPerformsCMove() async throws {
         let transport = DICOMULMockTransport(received: [
             .associationAcceptance(DICOMAssociationAcceptance(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, result: .acceptance, transferSyntaxUID: "1.2.840.10008.1.2")])),
-            .pData(try DICOMDIMSECommand.cMoveResponse(messageIDBeingRespondedTo: 16, status: .success, subOperations: nil, errorComment: nil).commandPDVs(contextID: 1, maximumPayloadLength: 1024))
+            .pData(try DICOMDIMSECommand.cMoveResponse(messageIDBeingRespondedTo: 16, status: .success, identifierFollows: false, subOperations: nil, errorComment: nil).commandPDVs(contextID: 1, maximumPayloadLength: 1024))
         ])
         let association = DICOMAssociation(transport: transport)
         _ = try await association.request(DICOMAssociationRequest(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, abstractSyntaxUID: "1.2.840.10008.5.1.4.1.2.2.2", transferSyntaxUIDs: ["1.2.840.10008.1.2"])]))
@@ -126,7 +126,7 @@ struct DICOMULTests {
     @Test func associationPerformsCGet() async throws {
         let transport = DICOMULMockTransport(received: [
             .associationAcceptance(DICOMAssociationAcceptance(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, result: .acceptance, transferSyntaxUID: "1.2.840.10008.1.2")])),
-            .pData(try DICOMDIMSECommand.cGetResponse(messageIDBeingRespondedTo: 18, status: .success, subOperations: nil, errorComment: nil).commandPDVs(contextID: 1, maximumPayloadLength: 1024))
+            .pData(try DICOMDIMSECommand.cGetResponse(messageIDBeingRespondedTo: 18, status: .success, identifierFollows: false, subOperations: nil, errorComment: nil).commandPDVs(contextID: 1, maximumPayloadLength: 1024))
         ])
         let association = DICOMAssociation(transport: transport)
         _ = try await association.request(DICOMAssociationRequest(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, abstractSyntaxUID: "1.2.840.10008.5.1.4.1.2.2.3", transferSyntaxUIDs: ["1.2.840.10008.1.2"])]))
@@ -197,7 +197,7 @@ struct DICOMULTests {
         let sopClass = "1.2.840.10008.5.1.4.1.2.2.1"
         let transport = DICOMULMockTransport(received: [
             .associationAcceptance(DICOMAssociationAcceptance(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 5, result: .acceptance, transferSyntaxUID: "1.2.840.10008.1.2")])),
-            .pData(try DICOMDIMSECommand.cFindResponse(messageIDBeingRespondedTo: 22, status: .success, errorComment: nil).commandPDVs(contextID: 5, maximumPayloadLength: 1024))
+            .pData(try DICOMDIMSECommand.cFindResponse(messageIDBeingRespondedTo: 22, status: .success, identifierFollows: false, errorComment: nil).commandPDVs(contextID: 5, maximumPayloadLength: 1024))
         ])
         let association = DICOMAssociation(transport: transport)
         _ = try await association.request(DICOMAssociationRequest(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 5, abstractSyntaxUID: sopClass, transferSyntaxUIDs: ["1.2.840.10008.1.2"])]))
@@ -391,6 +391,7 @@ struct DICOMULTests {
         let response = DICOMDIMSECommand.cMoveResponse(
             messageIDBeingRespondedTo: 23,
             status: .refusedOutOfResources,
+            identifierFollows: true,
             subOperations: DICOMSubOperationCounts(remaining: 1, completed: 4, failed: 2, warning: 3),
             errorComment: "out of resources"
         )
@@ -398,8 +399,8 @@ struct DICOMULTests {
     }
 
     @Test func cMoveResponseWithoutCountElementsDecodesNilSubOperations() throws {
-        let response = DICOMDIMSECommand.cMoveResponse(messageIDBeingRespondedTo: 24, status: .success, subOperations: nil, errorComment: nil)
-        guard case .cMoveResponse(_, _, let subOperations, _) = try DICOMDIMSECommand.decodeCommandSet(response.encodedCommandSet()) else {
+        let response = DICOMDIMSECommand.cMoveResponse(messageIDBeingRespondedTo: 24, status: .success, identifierFollows: false, subOperations: nil, errorComment: nil)
+        guard case .cMoveResponse(_, _, _, let subOperations, _) = try DICOMDIMSECommand.decodeCommandSet(response.encodedCommandSet()) else {
             Issue.record("expected cMoveResponse"); return
         }
         #expect(subOperations == nil)
@@ -430,11 +431,12 @@ struct DICOMULTests {
         raw.append(element(group: 0x0000, element: 0x1023, value: uint16(2))) // Number of Warning Sub-operations
         raw.append(element(group: 0x0000, element: 0x0902, value: Data("oops".utf8))) // Error Comment
 
-        guard case .cMoveResponse(let messageID, let status, let subOperations, let errorComment) = try DICOMDIMSECommand.decodeCommandSet(raw) else {
+        guard case .cMoveResponse(let messageID, let status, let identifierFollows, let subOperations, let errorComment) = try DICOMDIMSECommand.decodeCommandSet(raw) else {
             Issue.record("expected cMoveResponse"); return
         }
         #expect(messageID == 25)
         #expect(status == .pending)
+        #expect(!identifierFollows)
         #expect(subOperations == DICOMSubOperationCounts(remaining: 3, completed: 4, failed: 1, warning: 2))
         #expect(errorComment == "oops")
     }
@@ -442,8 +444,8 @@ struct DICOMULTests {
     @Test func cMoveSurfacesSubOperationCountsFromFinalResponseAfterPendingResponse() async throws {
         let transport = DICOMULMockTransport(received: [
             .associationAcceptance(DICOMAssociationAcceptance(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, result: .acceptance, transferSyntaxUID: "1.2.840.10008.1.2")])),
-            .pData(try DICOMDIMSECommand.cMoveResponse(messageIDBeingRespondedTo: 26, status: .pending, subOperations: DICOMSubOperationCounts(remaining: 2, completed: 0, failed: 0, warning: 0), errorComment: nil).commandPDVs(contextID: 1, maximumPayloadLength: 1024)),
-            .pData(try DICOMDIMSECommand.cMoveResponse(messageIDBeingRespondedTo: 26, status: .success, subOperations: DICOMSubOperationCounts(remaining: 0, completed: 2, failed: 0, warning: 0), errorComment: nil).commandPDVs(contextID: 1, maximumPayloadLength: 1024))
+            .pData(try DICOMDIMSECommand.cMoveResponse(messageIDBeingRespondedTo: 26, status: .pending, identifierFollows: false, subOperations: DICOMSubOperationCounts(remaining: 2, completed: 0, failed: 0, warning: 0), errorComment: nil).commandPDVs(contextID: 1, maximumPayloadLength: 1024)),
+            .pData(try DICOMDIMSECommand.cMoveResponse(messageIDBeingRespondedTo: 26, status: .success, identifierFollows: false, subOperations: DICOMSubOperationCounts(remaining: 0, completed: 2, failed: 0, warning: 0), errorComment: nil).commandPDVs(contextID: 1, maximumPayloadLength: 1024))
         ])
         let association = DICOMAssociation(transport: transport)
         _ = try await association.request(DICOMAssociationRequest(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, abstractSyntaxUID: "1.2.840.10008.5.1.4.1.2.2.2", transferSyntaxUIDs: ["1.2.840.10008.1.2"])]))
@@ -451,6 +453,70 @@ struct DICOMULTests {
         #expect(result.status == .success)
         #expect(result.subOperations == DICOMSubOperationCounts(remaining: 0, completed: 2, failed: 0, warning: 0))
     }
+
+    /// Proves Command Data Set Type (0000,0800) is encoded from `identifierFollows` per
+    /// PS3.7 E.2 (`0x0101` means no dataset follows; any other value means one does),
+    /// not hardcoded, and that decoding recovers the same flag.
+    @Test func cFindResponseEncodesDataSetTypeFromIdentifierFollows() throws {
+        let pending = DICOMDIMSECommand.cFindResponse(messageIDBeingRespondedTo: 30, status: .pending, identifierFollows: true, errorComment: nil)
+        let pendingEncoded = try pending.encodedCommandSet()
+        #expect(commandSetUInt16(tag: 0x08000000, in: pendingEncoded) == 0x0000)
+        #expect(try DICOMDIMSECommand.decodeCommandSet(pendingEncoded) == pending)
+        #expect(pending.hasDataset)
+
+        let final = DICOMDIMSECommand.cFindResponse(messageIDBeingRespondedTo: 30, status: .success, identifierFollows: false, errorComment: nil)
+        let finalEncoded = try final.encodedCommandSet()
+        #expect(commandSetUInt16(tag: 0x08000000, in: finalEncoded) == 0x0101)
+        #expect(try DICOMDIMSECommand.decodeCommandSet(finalEncoded) == final)
+        #expect(!final.hasDataset)
+    }
+
+    @Test func cMoveAndCGetResponsesEncodeDataSetTypeFromIdentifierFollows() throws {
+        let moveWithIdentifier = DICOMDIMSECommand.cMoveResponse(messageIDBeingRespondedTo: 31, status: DICOMDIMSEStatus(rawValue: 0xB000), identifierFollows: true, subOperations: nil, errorComment: nil)
+        #expect(commandSetUInt16(tag: 0x08000000, in: try moveWithIdentifier.encodedCommandSet()) == 0x0000)
+        #expect(moveWithIdentifier.hasDataset)
+
+        let getWithoutIdentifier = DICOMDIMSECommand.cGetResponse(messageIDBeingRespondedTo: 32, status: .success, identifierFollows: false, subOperations: nil, errorComment: nil)
+        #expect(commandSetUInt16(tag: 0x08000000, in: try getWithoutIdentifier.encodedCommandSet()) == 0x0101)
+        #expect(!getWithoutIdentifier.hasDataset)
+    }
+
+    @Test func hasDatasetReflectsCommandKind() {
+        #expect(!DICOMDIMSECommand.cEchoRequest(messageID: 1).hasDataset)
+        #expect(!DICOMDIMSECommand.cEchoResponse(messageIDBeingRespondedTo: 1, status: .success).hasDataset)
+        #expect(DICOMDIMSECommand.cStoreRequest(messageID: 1, affectedSOPClassUID: "1.2", affectedSOPInstanceUID: "1.3").hasDataset)
+        #expect(!DICOMDIMSECommand.cStoreResponse(messageIDBeingRespondedTo: 1, status: .success).hasDataset)
+        #expect(DICOMDIMSECommand.cFindRequest(messageID: 1, affectedSOPClassUID: "1.2").hasDataset)
+        #expect(DICOMDIMSECommand.cFindResponse(messageIDBeingRespondedTo: 1, status: .pending, identifierFollows: true, errorComment: nil).hasDataset)
+        #expect(!DICOMDIMSECommand.cFindResponse(messageIDBeingRespondedTo: 1, status: .success, identifierFollows: false, errorComment: nil).hasDataset)
+        #expect(DICOMDIMSECommand.cMoveRequest(messageID: 1, affectedSOPClassUID: "1.2", moveDestination: "DEST").hasDataset)
+        #expect(DICOMDIMSECommand.cMoveResponse(messageIDBeingRespondedTo: 1, status: .success, identifierFollows: true, subOperations: nil, errorComment: nil).hasDataset)
+        #expect(!DICOMDIMSECommand.cMoveResponse(messageIDBeingRespondedTo: 1, status: .success, identifierFollows: false, subOperations: nil, errorComment: nil).hasDataset)
+        #expect(DICOMDIMSECommand.cGetRequest(messageID: 1, affectedSOPClassUID: "1.2").hasDataset)
+        #expect(DICOMDIMSECommand.cGetResponse(messageIDBeingRespondedTo: 1, status: .success, identifierFollows: true, subOperations: nil, errorComment: nil).hasDataset)
+        #expect(!DICOMDIMSECommand.cGetResponse(messageIDBeingRespondedTo: 1, status: .success, identifierFollows: false, subOperations: nil, errorComment: nil).hasDataset)
+        #expect(!DICOMDIMSECommand.cCancelRequest(messageIDBeingRespondedTo: 1).hasDataset)
+    }
+}
+
+/// Reads a single element's value from an encoded DIMSE command set by tag, to assert exact
+/// wire bytes independent of the codec under test.
+private func commandSetElementValue(tag: UInt32, in data: Data) -> Data? {
+    var offset = 0
+    while offset + 8 <= data.count {
+        let elementTag = UInt32(data[offset]) | UInt32(data[offset + 1]) << 8 | UInt32(data[offset + 2]) << 16 | UInt32(data[offset + 3]) << 24
+        let length = Int(UInt32(data[offset + 4]) | UInt32(data[offset + 5]) << 8 | UInt32(data[offset + 6]) << 16 | UInt32(data[offset + 7]) << 24)
+        offset += 8
+        guard offset + length <= data.count else { return nil }
+        if elementTag == tag { return data.subdata(in: offset..<(offset + length)) }
+        offset += length
+    }
+    return nil
+}
+
+private func commandSetUInt16(tag: UInt32, in data: Data) -> UInt16? {
+    guard let value = commandSetElementValue(tag: tag, in: data), value.count == 2 else { return nil }
+    return UInt16(value[0]) | UInt16(value[1]) << 8
 }
 
 /// Builds a raw Upper Layer sub-item / item (4-byte header: type, reserved, 2-byte BE length).

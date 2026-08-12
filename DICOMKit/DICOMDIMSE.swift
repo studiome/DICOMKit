@@ -72,12 +72,25 @@ public enum DICOMDIMSECommand: Sendable, Equatable {
     case cStoreRequest(messageID: UInt16, affectedSOPClassUID: String, affectedSOPInstanceUID: String)
     case cStoreResponse(messageIDBeingRespondedTo: UInt16, status: DICOMDIMSEStatus)
     case cFindRequest(messageID: UInt16, affectedSOPClassUID: String)
-    case cFindResponse(messageIDBeingRespondedTo: UInt16, status: DICOMDIMSEStatus, errorComment: String?)
+    case cFindResponse(messageIDBeingRespondedTo: UInt16, status: DICOMDIMSEStatus, identifierFollows: Bool, errorComment: String?)
     case cMoveRequest(messageID: UInt16, affectedSOPClassUID: String, moveDestination: String)
-    case cMoveResponse(messageIDBeingRespondedTo: UInt16, status: DICOMDIMSEStatus, subOperations: DICOMSubOperationCounts?, errorComment: String?)
+    case cMoveResponse(messageIDBeingRespondedTo: UInt16, status: DICOMDIMSEStatus, identifierFollows: Bool, subOperations: DICOMSubOperationCounts?, errorComment: String?)
     case cGetRequest(messageID: UInt16, affectedSOPClassUID: String)
-    case cGetResponse(messageIDBeingRespondedTo: UInt16, status: DICOMDIMSEStatus, subOperations: DICOMSubOperationCounts?, errorComment: String?)
+    case cGetResponse(messageIDBeingRespondedTo: UInt16, status: DICOMDIMSEStatus, identifierFollows: Bool, subOperations: DICOMSubOperationCounts?, errorComment: String?)
     case cCancelRequest(messageIDBeingRespondedTo: UInt16)
+
+    /// `true` when a data set follows this command's PDVs, per the Command Data Set
+    /// Type element (0000,0800): fixed by command kind for requests, and by
+    /// `identifierFollows` for the C-FIND/C-MOVE/C-GET responses.
+    public var hasDataset: Bool {
+        switch self {
+        case .cEchoRequest, .cEchoResponse, .cStoreResponse, .cCancelRequest: return false
+        case .cStoreRequest, .cFindRequest, .cMoveRequest, .cGetRequest: return true
+        case .cFindResponse(_, _, let identifierFollows, _): return identifierFollows
+        case .cMoveResponse(_, _, let identifierFollows, _, _): return identifierFollows
+        case .cGetResponse(_, _, let identifierFollows, _, _): return identifierFollows
+        }
+    }
 
     /// Serializes this command set using the mandatory Implicit VR Little Endian syntax.
     public func encodedCommandSet() throws -> Data {
@@ -110,10 +123,10 @@ public enum DICOMDIMSECommand: Sendable, Equatable {
             Self.appendElement(tag: 0x01100000, value: Self.uint16(messageID), to: &content)
             Self.appendElement(tag: 0x07000000, value: Self.uint16(0), to: &content)
             Self.appendElement(tag: 0x08000000, value: Self.uint16(0), to: &content)
-        case .cFindResponse(let messageID, let status, let errorComment):
+        case .cFindResponse(let messageID, let status, let identifierFollows, let errorComment):
             Self.appendElement(tag: 0x01000000, value: Self.uint16(0x8020), to: &content)
             Self.appendElement(tag: 0x01200000, value: Self.uint16(messageID), to: &content)
-            Self.appendElement(tag: 0x08000000, value: Self.uint16(0), to: &content)
+            Self.appendElement(tag: 0x08000000, value: Self.uint16(identifierFollows ? 0x0000 : 0x0101), to: &content)
             Self.appendElement(tag: 0x09000000, value: Self.uint16(status.rawValue), to: &content)
             if let errorComment { Self.appendElement(tag: 0x09020000, value: Self.lo(errorComment), to: &content) }
         case .cMoveRequest(let messageID, let sopClassUID, let destination):
@@ -124,10 +137,10 @@ public enum DICOMDIMSECommand: Sendable, Equatable {
             Self.appendElement(tag: 0x06000000, value: Self.ae(destination), to: &content)
             Self.appendElement(tag: 0x07000000, value: Self.uint16(0), to: &content)
             Self.appendElement(tag: 0x08000000, value: Self.uint16(0), to: &content)
-        case .cMoveResponse(let messageID, let status, let subOperations, let errorComment):
+        case .cMoveResponse(let messageID, let status, let identifierFollows, let subOperations, let errorComment):
             Self.appendElement(tag: 0x01000000, value: Self.uint16(0x8021), to: &content)
             Self.appendElement(tag: 0x01200000, value: Self.uint16(messageID), to: &content)
-            Self.appendElement(tag: 0x08000000, value: Self.uint16(0x0101), to: &content)
+            Self.appendElement(tag: 0x08000000, value: Self.uint16(identifierFollows ? 0x0000 : 0x0101), to: &content)
             Self.appendElement(tag: 0x09000000, value: Self.uint16(status.rawValue), to: &content)
             if let subOperations { Self.appendSubOperationCounts(subOperations, to: &content) }
             if let errorComment { Self.appendElement(tag: 0x09020000, value: Self.lo(errorComment), to: &content) }
@@ -137,10 +150,10 @@ public enum DICOMDIMSECommand: Sendable, Equatable {
             Self.appendElement(tag: 0x01100000, value: Self.uint16(messageID), to: &content)
             Self.appendElement(tag: 0x07000000, value: Self.uint16(0), to: &content)
             Self.appendElement(tag: 0x08000000, value: Self.uint16(0), to: &content)
-        case .cGetResponse(let messageID, let status, let subOperations, let errorComment):
+        case .cGetResponse(let messageID, let status, let identifierFollows, let subOperations, let errorComment):
             Self.appendElement(tag: 0x01000000, value: Self.uint16(0x8010), to: &content)
             Self.appendElement(tag: 0x01200000, value: Self.uint16(messageID), to: &content)
-            Self.appendElement(tag: 0x08000000, value: Self.uint16(0x0101), to: &content)
+            Self.appendElement(tag: 0x08000000, value: Self.uint16(identifierFollows ? 0x0000 : 0x0101), to: &content)
             Self.appendElement(tag: 0x09000000, value: Self.uint16(status.rawValue), to: &content)
             if let subOperations { Self.appendSubOperationCounts(subOperations, to: &content) }
             if let errorComment { Self.appendElement(tag: 0x09020000, value: Self.lo(errorComment), to: &content) }
@@ -189,19 +202,22 @@ public enum DICOMDIMSECommand: Sendable, Equatable {
             return .cFindRequest(messageID: messageID, affectedSOPClassUID: sopClassUID)
         case 0x8020:
             guard let messageID = values[0x01200000].flatMap(readUInt16), let status = values[0x09000000].flatMap(readUInt16) else { throw DICOMDIMSEError.malformedCommandSet }
-            return .cFindResponse(messageIDBeingRespondedTo: messageID, status: DICOMDIMSEStatus(rawValue: status), errorComment: values[0x09020000].flatMap(readLO))
+            let identifierFollows = values[0x08000000].flatMap(readUInt16) != 0x0101
+            return .cFindResponse(messageIDBeingRespondedTo: messageID, status: DICOMDIMSEStatus(rawValue: status), identifierFollows: identifierFollows, errorComment: values[0x09020000].flatMap(readLO))
         case 0x0021:
             guard let messageID = values[0x01100000].flatMap(readUInt16), values[0x08000000].flatMap(readUInt16) == 0, let sopClassUID = values[0x00020000].flatMap(readUI), let destination = values[0x06000000].flatMap(readAE) else { throw DICOMDIMSEError.malformedCommandSet }
             return .cMoveRequest(messageID: messageID, affectedSOPClassUID: sopClassUID, moveDestination: destination)
         case 0x8021:
-            guard values[0x08000000].flatMap(readUInt16) == 0x0101, let messageID = values[0x01200000].flatMap(readUInt16), let status = values[0x09000000].flatMap(readUInt16) else { throw DICOMDIMSEError.malformedCommandSet }
-            return .cMoveResponse(messageIDBeingRespondedTo: messageID, status: DICOMDIMSEStatus(rawValue: status), subOperations: Self.readSubOperationCounts(values), errorComment: values[0x09020000].flatMap(readLO))
+            guard let messageID = values[0x01200000].flatMap(readUInt16), let status = values[0x09000000].flatMap(readUInt16) else { throw DICOMDIMSEError.malformedCommandSet }
+            let identifierFollows = values[0x08000000].flatMap(readUInt16) != 0x0101
+            return .cMoveResponse(messageIDBeingRespondedTo: messageID, status: DICOMDIMSEStatus(rawValue: status), identifierFollows: identifierFollows, subOperations: Self.readSubOperationCounts(values), errorComment: values[0x09020000].flatMap(readLO))
         case 0x0010:
             guard let messageID = values[0x01100000].flatMap(readUInt16), values[0x08000000].flatMap(readUInt16) == 0, let sopClassUID = values[0x00020000].flatMap(readUI) else { throw DICOMDIMSEError.malformedCommandSet }
             return .cGetRequest(messageID: messageID, affectedSOPClassUID: sopClassUID)
         case 0x8010:
-            guard values[0x08000000].flatMap(readUInt16) == 0x0101, let messageID = values[0x01200000].flatMap(readUInt16), let status = values[0x09000000].flatMap(readUInt16) else { throw DICOMDIMSEError.malformedCommandSet }
-            return .cGetResponse(messageIDBeingRespondedTo: messageID, status: DICOMDIMSEStatus(rawValue: status), subOperations: Self.readSubOperationCounts(values), errorComment: values[0x09020000].flatMap(readLO))
+            guard let messageID = values[0x01200000].flatMap(readUInt16), let status = values[0x09000000].flatMap(readUInt16) else { throw DICOMDIMSEError.malformedCommandSet }
+            let identifierFollows = values[0x08000000].flatMap(readUInt16) != 0x0101
+            return .cGetResponse(messageIDBeingRespondedTo: messageID, status: DICOMDIMSEStatus(rawValue: status), identifierFollows: identifierFollows, subOperations: Self.readSubOperationCounts(values), errorComment: values[0x09020000].flatMap(readLO))
         case 0x0FFF:
             guard values[0x08000000].flatMap(readUInt16) == 0x0101, let messageID = values[0x01200000].flatMap(readUInt16) else { throw DICOMDIMSEError.malformedCommandSet }
             return .cCancelRequest(messageIDBeingRespondedTo: messageID)
