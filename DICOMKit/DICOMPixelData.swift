@@ -62,6 +62,14 @@ public struct DICOMPixelData: Sendable {
     /// transform entirely. Only consulted by the 16-bit monochrome
     /// rendering path.
     public let modalityLUT: DICOMModalityLUT?
+    /// The Display Shutter module (PS3.3 C.7.6.11) declared by `(0018,1600)`
+    /// and related attributes, when present.
+    ///
+    /// Applied in ``cgImage(windowCenter:windowWidth:)`` after every other
+    /// photometric transform, including `MONOCHROME1` inversion: the
+    /// Shutter Presentation Value is already a display P-Value, so it must
+    /// not be inverted or otherwise reprocessed.
+    public let displayShutter: DICOMDisplayShutter?
 
     /// Creates uncompressed pixel data and its rendering attributes.
     ///
@@ -89,7 +97,8 @@ public struct DICOMPixelData: Sendable {
         voiLUTs: [DICOMVOILUT] = [],
         paletteColorLUT: DICOMPaletteColorLUT? = nil,
         pixelPaddingRange: ClosedRange<Double>? = nil,
-        modalityLUT: DICOMModalityLUT? = nil
+        modalityLUT: DICOMModalityLUT? = nil,
+        displayShutter: DICOMDisplayShutter? = nil
     ) {
         self.value = value
         self.rows = rows
@@ -109,6 +118,7 @@ public struct DICOMPixelData: Sendable {
         self.paletteColorLUT = paletteColorLUT
         self.pixelPaddingRange = pixelPaddingRange
         self.modalityLUT = modalityLUT
+        self.displayShutter = displayShutter
     }
 
     /// Creates a Core Graphics image for 8-bit monochrome, interleaved RGB,
@@ -368,6 +378,24 @@ public struct DICOMPixelData: Sendable {
     }
 
     private func makeImage(data: Data, colorSpace: CGColorSpace, bitsPerPixel: Int, bytesPerRow: Int) throws -> CGImage {
+        var data = data
+        // Applied last, after every photometric transform (RGB conversion,
+        // palette lookup, VOI/window mapping, MONOCHROME1 inversion): the
+        // Shutter Presentation Value is already a display P-Value, so it
+        // must not be inverted or otherwise reprocessed.
+        if let displayShutter {
+            let bytesPerComponent = bitsPerPixel / 8
+            let shutterByte = displayShutter.presentationValue.map { UInt8($0 >> 8) } ?? 0
+            let base = data.startIndex
+            for row in 0..<rows {
+                for column in 0..<columns where displayShutter.obscures(row: row + 1, column: column + 1) {
+                    let pixelOffset = base + row * bytesPerRow + column * bytesPerComponent
+                    for component in 0..<bytesPerComponent {
+                        data[pixelOffset + component] = shutterByte
+                    }
+                }
+            }
+        }
         guard let provider = CGDataProvider(data: data as CFData),
               let image = CGImage(
                 width: columns,
