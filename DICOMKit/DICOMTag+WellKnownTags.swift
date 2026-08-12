@@ -87,6 +87,10 @@ extension DICOMTag {
     public static let pixelValueTransformationSequence = DICOMTag(group: 0x0028, element: 0x9145)
     /// Pixel Data `(7FE0,0010)`.
     public static let pixelData = DICOMTag(group: 0x7FE0, element: 0x0010)
+    /// Float Pixel Data `(7FE0,0008)`.
+    public static let floatPixelData = DICOMTag(group: 0x7FE0, element: 0x0008)
+    /// Double Float Pixel Data `(7FE0,0009)`.
+    public static let doubleFloatPixelData = DICOMTag(group: 0x7FE0, element: 0x0009)
     /// Shared Functional Groups Sequence `(5200,9229)`.
     public static let sharedFunctionalGroupsSequence = DICOMTag(group: 0x5200, element: 0x9229)
     /// Per-frame Functional Groups Sequence `(5200,9230)`.

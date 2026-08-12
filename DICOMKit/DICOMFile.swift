@@ -69,6 +69,24 @@ public struct DICOMFile: Sendable {
         pixelDataFrames?.first
     }
 
+    /// Native Float or Double Float Pixel Data frames, preserving IEEE 754 values.
+    public var floatingPixelDataFrames: [DICOMFloatingPixelData]? {
+        guard let rows = dataset[.rows]?.uint16Value,
+              let columns = dataset[.columns]?.uint16Value,
+              let frameCount = Int(dataset[.numberOfFrames]?.stringValue ?? "1"), frameCount > 0 else { return nil }
+        let pixelsPerFrame = Int(rows) * Int(columns)
+        let values: [Double]
+        if let element = dataset[.floatPixelData], let floats = element.float32Values {
+            values = floats.map(Double.init)
+        } else if let element = dataset[.doubleFloatPixelData], let doubles = element.float64Values {
+            values = doubles
+        } else { return nil }
+        guard values.count == pixelsPerFrame * frameCount else { return nil }
+        return (0..<frameCount).map { frame in
+            DICOMFloatingPixelData(rows: Int(rows), columns: Int(columns), values: Array(values[frame * pixelsPerFrame..<(frame + 1) * pixelsPerFrame]))
+        }
+    }
+
     /// Returns a handle that decodes Pixel Data only when its frames are read.
     ///
     /// The returned handle memoizes both a successful decode and an

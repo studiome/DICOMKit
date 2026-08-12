@@ -3,6 +3,19 @@ import Testing
 @testable import DICOMKit
 
 struct DICOMFileReaderTests {
+    @Test func readsFloatAndDoubleFloatPixelData() throws {
+        let floatBits = Float(1.5).bitPattern
+        let doubleBits = 2.25.bitPattern
+        let common = [
+            DICOMElement(tag: .rows, vr: .US, value: uint16(1)),
+            DICOMElement(tag: .columns, vr: .US, value: uint16(1))
+        ]
+        let floatFile = try DICOMFile(data: DICOMWriter.write(dataset: DICOMDataset(elements: common + [DICOMElement(tag: .floatPixelData, vr: .OF, value: uint32(floatBits))])))
+        let doubleFile = try DICOMFile(data: DICOMWriter.write(dataset: DICOMDataset(elements: common + [DICOMElement(tag: .doubleFloatPixelData, vr: .OD, value: uint64(doubleBits))])))
+
+        #expect(floatFile.floatingPixelDataFrames?.first?.values == [1.5])
+        #expect(doubleFile.floatingPixelDataFrames?.first?.values == [2.25])
+    }
     @Test func defersPixelDataDecodingUntilRequested() throws {
         let file = try DICOMFile(data: part10File(
             transferSyntaxUID: TransferSyntax.explicitVRLittleEndian.uid,

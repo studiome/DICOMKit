@@ -64,7 +64,7 @@ enum DICOMDictionary {
         DICOMTag(group: 0x0028, element: 0x1056): .CS,
         .sharedFunctionalGroupsSequence: .SQ,
         .perFrameFunctionalGroupsSequence: .SQ,
-        .pixelData: .OW
+        .pixelData: .OW, .floatPixelData: .OF, .doubleFloatPixelData: .OD
         , .extendedOffsetTable: .OV
     ]
 }

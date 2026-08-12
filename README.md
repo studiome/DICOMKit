@@ -34,6 +34,8 @@ See the [changelog](CHANGELOG.md) for the current implementation status.
   Table, exposed as `DICOMFile.pixelDataFrames`
 - Provides `DICOMFile.makeLazyPixelData()` to defer Pixel Data frame decoding
   until a consumer requests it, with thread-safe memoization of the result
+- Exposes native Float and Double Float Pixel Data frames through
+  `DICOMFile.floatingPixelDataFrames`, preserving IEEE 754 values
 - Decodes JPEG Lossless, Non-Hierarchical (Process 14) Pixel Data for `.57`
   and `.70`: single-component `MONOCHROME1` / `MONOCHROME2` and interleaved
   1:1:1 `RGB`, with 2–16-bit precision, Selection Values 1–7, Point Transform,
