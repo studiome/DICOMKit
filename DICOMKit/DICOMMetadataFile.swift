@@ -37,6 +37,33 @@ public struct DICOMEncapsulatedPixelDataReference: Sendable, Equatable {
         guard data.count == range.count else { throw DICOMError.truncatedData }
         return data
     }
+
+    /// Loads just the compressed fragments belonging to one Basic Offset Table
+    /// frame. An empty offset table is unambiguous only for a single frame.
+    public func loadFrameFragments(frameIndex: Int, numberOfFrames: Int = 1) throws -> [Data] {
+        guard frameIndex >= 0, numberOfFrames > 0 else { throw DICOMError.invalidEncapsulatedPixelData }
+        guard !basicOffsetTable.isEmpty else {
+            guard numberOfFrames == 1, frameIndex == 0 else { throw DICOMError.invalidEncapsulatedPixelData }
+            return try fragmentRanges.indices.map(loadFragment(at:))
+        }
+        guard basicOffsetTable.count.isMultiple(of: 4) else { throw DICOMError.invalidEncapsulatedPixelData }
+        var offsets: [Int] = []
+        for index in stride(from: 0, to: basicOffsetTable.count, by: 4) {
+            let low = UInt32(basicOffsetTable[index]) | UInt32(basicOffsetTable[index + 1]) << 8
+            let high = UInt32(basicOffsetTable[index + 2]) << 16 | UInt32(basicOffsetTable[index + 3]) << 24
+            offsets.append(Int(low | high))
+        }
+        guard offsets.indices.contains(frameIndex), let firstRange = fragmentRanges.first else { throw DICOMError.invalidEncapsulatedPixelData }
+        let lower = offsets[frameIndex]
+        let upper = frameIndex + 1 < offsets.count ? offsets[frameIndex + 1] : .max
+        let base = firstRange.lowerBound - 8
+        let indexes = fragmentRanges.indices.filter { index in
+            let relativeItemOffset = fragmentRanges[index].lowerBound - 8 - base
+            return relativeItemOffset >= lower && relativeItemOffset < upper
+        }
+        guard !indexes.isEmpty else { throw DICOMError.invalidEncapsulatedPixelData }
+        return try indexes.map(loadFragment(at:))
+    }
 }
 
 /// Metadata retained from a file while Pixel Data is loaded only on demand.

@@ -51,6 +51,7 @@ struct DICOMFileReaderTests {
         #expect(metadata.dataset[.pixelData] == nil)
         #expect(reference.fragmentRanges.count == 1)
         #expect(try reference.loadFragment(at: 0) == Data([0xAA, 0xBB]))
+        #expect(try reference.loadFrameFragments(frameIndex: 0) == [Data([0xAA, 0xBB])])
     }
 
     @Test func readsFloatAndDoubleFloatPixelData() throws {
