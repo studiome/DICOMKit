@@ -5,6 +5,8 @@ public enum DICOMError: Error, Sendable, Equatable {
     case invalidDeflatedData
     /// A DICOM JSON representation cannot be converted to a DICOM element.
     case invalidDICOMJSON
+    /// A DICOMDIR dataset does not contain a valid Directory Record Sequence.
+    case invalidDICOMDirectory
     /// The dataset doesn't contain the SOP Class UID needed for File Meta Information.
     case missingSOPClassUID
     /// The dataset doesn't contain the SOP Instance UID needed for File Meta Information.

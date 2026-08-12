@@ -93,6 +93,8 @@ to test requests without a network connection.
 - ``DICOMFile``
 - ``DICOMWriter``
 - ``DICOMDataset``
+- ``DICOMDirectory``
+- ``DICOMDirectoryRecord``
 - ``DICOMElement``
 - ``DICOMTag``
 - ``DICOMVR``

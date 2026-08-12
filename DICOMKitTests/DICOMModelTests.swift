@@ -93,6 +93,25 @@ struct DICOMElementValueTests {
 }
 
 struct DICOMDatasetTests {
+    @Test func readsDICOMDirectoryRecords() throws {
+        let record = DICOMDataset(elements: [
+            DICOMElement(tag: .directoryRecordType, vr: .CS, value: Data("IMAGE".utf8)),
+            DICOMElement(tag: .referencedFileID, vr: .CS, value: Data("IMAGES\\0001".utf8)),
+            DICOMElement(tag: .referencedSOPClassUIDInFile, vr: .UI, value: Data("1.2.840.10008.5.1.4.1.1.2".utf8)),
+            DICOMElement(tag: .referencedSOPInstanceUIDInFile, vr: .UI, value: Data("1.2.3.4".utf8))
+        ])
+        let dataset = DICOMDataset(elements: [
+            DICOMElement(tag: .directoryRecordSequence, vr: .SQ, value: Data(), sequenceItems: [record])
+        ])
+
+        let directory = try DICOMDirectory(dataset: dataset)
+
+        #expect(directory.records == [DICOMDirectoryRecord(
+            recordType: "IMAGE", referencedFileID: ["IMAGES", "0001"],
+            referencedSOPClassUID: "1.2.840.10008.5.1.4.1.1.2", referencedSOPInstanceUID: "1.2.3.4"
+        )])
+    }
+
     @Test func rejectsDICOMJSONWithNonTagTopLevelKey() {
         let json = Data("{\"not-a-tag\":{\"vr\":\"PN\"}}".utf8)
 

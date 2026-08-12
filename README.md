@@ -20,6 +20,9 @@ See the [changelog](CHANGELOG.md) for the current implementation status.
   `DICOMElement`, `DICOMTag`, and `DICOMVR`
 - Groups files into `DICOMStudy` / `DICOMSeries` / `DICOMInstance` models and
   sorts instances by image position, instance number, then SOP Instance UID
+- Reads DICOMDIR Directory Record Sequences as ordered flat records, including
+  record type and referenced file/SOP identifiers (offset-linked tree recovery
+  is not yet implemented)
 - Provides a caller-configured recursive `DICOMAnonymizer` for removing or
   replacing attributes, including private tags; it is not a PS3.15 profile
   conformance claim

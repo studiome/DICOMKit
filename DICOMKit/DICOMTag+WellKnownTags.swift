@@ -10,6 +10,16 @@ extension DICOMTag {
     public static let mediaStorageSOPInstanceUID = DICOMTag(group: 0x0002, element: 0x0003)
     public static let implementationClassUID = DICOMTag(group: 0x0002, element: 0x0012)
     public static let implementationVersionName = DICOMTag(group: 0x0002, element: 0x0013)
+    /// Directory Record Sequence `(0004,1220)` in a DICOMDIR dataset.
+    public static let directoryRecordSequence = DICOMTag(group: 0x0004, element: 0x1220)
+    /// Directory Record Type `(0004,1430)` in a DICOMDIR record.
+    public static let directoryRecordType = DICOMTag(group: 0x0004, element: 0x1430)
+    /// Referenced File ID `(0004,1500)` in a DICOMDIR record.
+    public static let referencedFileID = DICOMTag(group: 0x0004, element: 0x1500)
+    /// Referenced SOP Class UID in File `(0004,1510)` in a DICOMDIR record.
+    public static let referencedSOPClassUIDInFile = DICOMTag(group: 0x0004, element: 0x1510)
+    /// Referenced SOP Instance UID in File `(0004,1511)` in a DICOMDIR record.
+    public static let referencedSOPInstanceUIDInFile = DICOMTag(group: 0x0004, element: 0x1511)
     public static let sopClassUID = DICOMTag(group: 0x0008, element: 0x0016)
     public static let sopInstanceUID = DICOMTag(group: 0x0008, element: 0x0018)
     /// Study Instance UID `(0020,000D)`.
