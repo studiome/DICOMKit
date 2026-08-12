@@ -103,6 +103,23 @@ struct DICOMULTests {
         #expect(result.identifiers == [Data([4, 5])])
     }
 
+    @Test func cFindReassemblesFragmentedIdentifier() async throws {
+        let transport = DICOMULMockTransport(received: [
+            .associationAcceptance(DICOMAssociationAcceptance(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, result: .acceptance, transferSyntaxUID: "1.2.840.10008.1.2")])),
+            .pData(try DICOMDIMSECommand.cFindResponse(messageIDBeingRespondedTo: 70, status: .pending, identifierFollows: true, errorComment: nil).commandPDVs(contextID: 1, maximumPayloadLength: 1024)),
+            .pData([DICOMPDataValue(contextID: 1, isCommand: false, isLastFragment: false, data: Data([1, 2]))]),
+            .pData([DICOMPDataValue(contextID: 1, isCommand: false, isLastFragment: false, data: Data([3, 4]))]),
+            .pData([DICOMPDataValue(contextID: 1, isCommand: false, isLastFragment: true, data: Data([5, 6]))]),
+            .pData(try DICOMDIMSECommand.cFindResponse(messageIDBeingRespondedTo: 70, status: .success, identifierFollows: false, errorComment: nil).commandPDVs(contextID: 1, maximumPayloadLength: 1024))
+        ])
+        let association = DICOMAssociation(transport: transport)
+        _ = try await association.request(DICOMAssociationRequest(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, abstractSyntaxUID: DICOMSOPClass.studyRootQueryRetrieveFind, transferSyntaxUIDs: ["1.2.840.10008.1.2"])]))
+        let result = try await association.cFind(messageID: 70, contextID: 1, sopClassUID: DICOMSOPClass.studyRootQueryRetrieveFind, identifier: Data([1]))
+        #expect(result.status == .success)
+        #expect(result.identifiers.count == 1)
+        #expect(result.identifiers == [Data([1, 2, 3, 4, 5, 6])])
+    }
+
     @Test func encodesAndDecodesCMoveRequest() throws {
         let request = DICOMDIMSECommand.cMoveRequest(messageID: 15, affectedSOPClassUID: DICOMSOPClass.studyRootQueryRetrieveMove, moveDestination: "STORE-SCP")
         #expect(try DICOMDIMSECommand.decodeCommandSet(request.encodedCommandSet()) == request)

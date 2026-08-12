@@ -222,6 +222,7 @@ public actor DICOMAssociation {
         try await transport.send(.pData(pdvs(data: identifier, contextID: contextID, maximumPayloadLength: maximumPayload)))
         var identifiers: [Data] = []
         var responseCommand = Data()
+        var identifierBuffer = Data()
         while true {
             guard case .pData(let values) = try await receivePDU() else { throw DICOMAssociationError.unexpectedPDU }
             for value in values where value.contextID == contextID {
@@ -232,9 +233,13 @@ public actor DICOMAssociation {
                     responseCommand.removeAll(keepingCapacity: true)
                     if !status.isPending { return DICOMCFindResult(status: status, identifiers: identifiers) }
                 } else {
-                    // Each pending response includes one identifier dataset. A production
+                    // Each pending response includes one identifier dataset, possibly split
+                    // across several PDVs; only the last carries isLastFragment. A production
                     // SCP sends the command PDU before this dataset PDU.
-                    identifiers.append(value.data)
+                    identifierBuffer.append(value.data)
+                    guard value.isLastFragment else { continue }
+                    identifiers.append(identifierBuffer)
+                    identifierBuffer.removeAll(keepingCapacity: true)
                 }
             }
         }
