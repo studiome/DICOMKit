@@ -670,6 +670,22 @@ public struct DICOMFile: Sendable {
     public func encodedData(sequenceLengthEncoding: DICOMWriter.SequenceLengthEncoding = .defined) throws -> Data {
         try DICOMWriter.write(metaInformation: metaInformation, dataset: dataset, transferSyntax: transferSyntax, sequenceLengthEncoding: sequenceLengthEncoding)
     }
+
+    /// Serializes just this file's dataset, without Part 10 framing — the
+    /// payload a DIMSE service such as C-STORE transfers.
+    ///
+    /// A `nil` `transferSyntax` reuses the file's own. This method does not
+    /// compress or decompress Pixel Data: when the requested transfer syntax
+    /// differs from the file's own and either one uses encapsulated Pixel
+    /// Data, transcoding would be required, so this throws
+    /// ``DICOMError/unsupportedTransferSyntax(_:)`` naming the requested UID.
+    public func encodedDatasetData(transferSyntax: TransferSyntax? = nil, sequenceLengthEncoding: DICOMWriter.SequenceLengthEncoding = .defined) throws -> Data {
+        let targetSyntax = transferSyntax ?? self.transferSyntax
+        guard targetSyntax == self.transferSyntax || (!targetSyntax.usesEncapsulatedPixelData && !self.transferSyntax.usesEncapsulatedPixelData) else {
+            throw DICOMError.unsupportedTransferSyntax(targetSyntax.uid)
+        }
+        return try DICOMWriter.encodeDataset(dataset, transferSyntax: targetSyntax, sequenceLengthEncoding: sequenceLengthEncoding)
+    }
 }
 
 private func ybrFullToRGB(_ value: Data) -> Data {

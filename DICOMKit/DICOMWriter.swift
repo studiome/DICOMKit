@@ -60,6 +60,24 @@ public enum DICOMWriter {
             sequenceLengthEncoding: .defined
         )
         output.append(encodedMeta)
+        output.append(try encodeDataset(dataset, transferSyntax: transferSyntax, sequenceLengthEncoding: sequenceLengthEncoding))
+        return output
+    }
+
+    /// Serializes a dataset alone, without a 128-byte preamble, `DICM` magic,
+    /// or File Meta Information.
+    ///
+    /// This is the payload a DIMSE service such as C-STORE transfers — it is
+    /// NOT a Part 10 file. Use ``write(metaInformation:dataset:transferSyntax:requiredMetaInformation:sequenceLengthEncoding:)``
+    /// to produce a complete file.
+    public static func encodeDataset(
+        _ dataset: DICOMDataset,
+        transferSyntax: TransferSyntax = .explicitVRLittleEndian,
+        sequenceLengthEncoding: SequenceLengthEncoding = .defined
+    ) throws -> Data {
+        guard transferSyntax.isWritable else {
+            throw DICOMError.unsupportedTransferSyntax(transferSyntax.uid)
+        }
         var encodedDataset = Data()
         for element in dataset where element.tag.group != 0x0002 {
             if element.tag == .pixelData,
@@ -69,8 +87,7 @@ public enum DICOMWriter {
             }
             try append(element, to: &encodedDataset, explicitVR: transferSyntax != .implicitVRLittleEndian, sequenceLengthEncoding: sequenceLengthEncoding, byteOrder: transferSyntax == .explicitVRBigEndian ? .bigEndian : .littleEndian)
         }
-        output.append(transferSyntax == .deflatedExplicitVRLittleEndian ? try DeflateCodec.deflateRaw(encodedDataset) : encodedDataset)
-        return output
+        return transferSyntax == .deflatedExplicitVRLittleEndian ? try DeflateCodec.deflateRaw(encodedDataset) : encodedDataset
     }
 
     private static func append(_ element: DICOMElement, to output: inout Data, explicitVR: Bool, sequenceLengthEncoding: SequenceLengthEncoding, byteOrder: ByteOrder = .littleEndian) throws {

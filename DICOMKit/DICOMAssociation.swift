@@ -20,6 +20,9 @@ public enum DICOMAssociationError: Error, Sendable, Equatable {
     case timedOut
     case aborted(source: UInt8, reason: UInt8)
     case releasedByPeer
+    /// A dataset passed to ``DICOMAssociation/cStore(messageID:file:)`` is missing
+    /// SOP Class UID `(0008,0016)` or SOP Instance UID `(0008,0018)`.
+    case missingSOPInstanceIdentification
 }
 
 /// The final status and identifier datasets returned by a C-FIND operation.
@@ -184,6 +187,24 @@ public actor DICOMAssociation {
     /// Sends C-STORE using the accepted presentation context for `sopClassUID`.
     public func cStore(messageID: UInt16, sopClassUID: String, sopInstanceUID: String, dataset: Data) async throws -> DICOMDIMSEStatus {
         guard let contextID = presentationContextID(for: sopClassUID) else { throw DICOMAssociationError.notAssociated }
+        return try await cStore(messageID: messageID, contextID: contextID, sopClassUID: sopClassUID, sopInstanceUID: sopInstanceUID, dataset: dataset)
+    }
+
+    /// Sends C-STORE for `file`, using the accepted presentation context for its
+    /// SOP Class UID `(0008,0016)` and encoding its dataset in that context's
+    /// negotiated transfer syntax. Throws ``DICOMAssociationError/missingSOPInstanceIdentification``
+    /// if the dataset lacks SOP Class UID or SOP Instance UID `(0008,0018)`, and
+    /// ``DICOMAssociationError/notAssociated`` if no context was accepted for the SOP Class.
+    public func cStore(messageID: UInt16, file: DICOMFile) async throws -> DICOMDIMSEStatus {
+        guard let sopClassUID = file.dataset[.sopClassUID]?.stringValue,
+              let sopInstanceUID = file.dataset[.sopInstanceUID]?.stringValue else {
+            throw DICOMAssociationError.missingSOPInstanceIdentification
+        }
+        guard let contextID = presentationContextID(for: sopClassUID),
+              let negotiatedTransferSyntaxUID = acceptance?.presentationContexts.first(where: { $0.id == contextID })?.transferSyntaxUID else {
+            throw DICOMAssociationError.notAssociated
+        }
+        let dataset = try file.encodedDatasetData(transferSyntax: TransferSyntax(uid: negotiatedTransferSyntaxUID))
         return try await cStore(messageID: messageID, contextID: contextID, sopClassUID: sopClassUID, sopInstanceUID: sopInstanceUID, dataset: dataset)
     }
 

@@ -663,6 +663,54 @@ struct DICOMULTests {
         #expect(request.contextID == 1)
     }
 
+    @Test func cStoreSendsFileDatasetUsingNegotiatedTransferSyntax() async throws {
+        let dataset = DICOMDataset(elements: [
+            DICOMElement(tag: .sopClassUID, vr: .UI, value: Data(DICOMSOPClass.ctImageStorage.utf8)),
+            DICOMElement(tag: .sopInstanceUID, vr: .UI, value: Data("1.2.3.4".utf8)),
+            DICOMElement(tag: .patientName, vr: .PN, value: Data("Doe^Jane".utf8))
+        ])
+        let file = try DICOMFile(data: DICOMWriter.write(dataset: dataset, transferSyntax: .explicitVRLittleEndian))
+
+        let transport = DICOMULMockTransport(received: [
+            .associationAcceptance(DICOMAssociationAcceptance(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, result: .acceptance, transferSyntaxUID: "1.2.840.10008.1.2.1")])),
+            .pData(try DICOMDIMSECommand.cStoreResponse(messageIDBeingRespondedTo: 60, status: .success).commandPDVs(contextID: 1, maximumPayloadLength: 1024))
+        ])
+        let association = DICOMAssociation(transport: transport)
+        _ = try await association.request(DICOMAssociationRequest(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, abstractSyntaxUID: DICOMSOPClass.ctImageStorage, transferSyntaxUIDs: ["1.2.840.10008.1.2.1"])]))
+
+        let status = try await association.cStore(messageID: 60, file: file)
+
+        #expect(status == .success)
+        let sent = await transport.sent
+        #expect(sent.count == 3) // association request, command PDV, data PDV
+        guard case .pData(let commandValues) = sent[1] else { Issue.record("expected command pData"); return }
+        let commandData = Data(commandValues.flatMap { Array($0.data) })
+        guard case .cStoreRequest(let messageID, let sopClassUID, let sopInstanceUID) = try DICOMDIMSECommand.decodeCommandSet(commandData) else {
+            Issue.record("expected cStoreRequest"); return
+        }
+        #expect(messageID == 60)
+        #expect(sopClassUID == DICOMSOPClass.ctImageStorage)
+        #expect(sopInstanceUID == "1.2.3.4")
+        guard case .pData(let dataValues) = sent[2] else { Issue.record("expected data pData"); return }
+        #expect(dataValues.allSatisfy { !$0.isCommand })
+    }
+
+    @Test func cStoreThrowsMissingSOPInstanceIdentificationWithoutSOPInstanceUID() async throws {
+        let dataset = DICOMDataset(elements: [
+            DICOMElement(tag: .sopClassUID, vr: .UI, value: Data(DICOMSOPClass.ctImageStorage.utf8))
+        ])
+        let file = try DICOMFile(data: DICOMWriter.write(dataset: dataset))
+        let transport = DICOMULMockTransport(received: [
+            .associationAcceptance(DICOMAssociationAcceptance(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, result: .acceptance, transferSyntaxUID: "1.2.840.10008.1.2.1")]))
+        ])
+        let association = DICOMAssociation(transport: transport)
+        _ = try await association.request(DICOMAssociationRequest(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, abstractSyntaxUID: DICOMSOPClass.ctImageStorage, transferSyntaxUIDs: ["1.2.840.10008.1.2.1"])]))
+
+        await #expect(throws: DICOMAssociationError.missingSOPInstanceIdentification) {
+            try await association.cStore(messageID: 61, file: file)
+        }
+    }
+
     @Test func acceptSendsRejectionAndThrowsForUnrecognizedCalledAETitle() async throws {
         let associationRequest = DICOMAssociationRequest(calledAETitle: "OTHER", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, abstractSyntaxUID: DICOMSOPClass.verification, transferSyntaxUIDs: ["1.2.840.10008.1.2"])])
         let transport = DICOMULMockTransport(received: [.associationRequest(associationRequest)])

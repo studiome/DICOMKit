@@ -150,4 +150,37 @@ struct DICOMWriterTests {
 
         #expect(reread.dataset[.referencedStudySequence]?.sequenceItems?.first?[.patientName]?.stringValue == "Doe^Jane")
     }
+
+    @Test func encodeDatasetExcludesPart10FramingAndFileMetaInformation() throws {
+        let nonMetaDataset = DICOMDataset(elements: [
+            DICOMElement(tag: .patientName, vr: .PN, value: Data("Doe^Jane".utf8)),
+            DICOMElement(tag: .rows, vr: .US, value: uint16(2))
+        ])
+        var elements = Array(nonMetaDataset)
+        elements.append(DICOMElement(tag: DICOMTag(group: 0x0002, element: 0x0010), vr: .UI, value: Data(TransferSyntax.explicitVRLittleEndian.uid.utf8)))
+        let dataset = DICOMDataset(elements: elements)
+
+        let encoded = try DICOMWriter.encodeDataset(dataset)
+
+        #expect(encoded.range(of: Data("DICM".utf8)) == nil)
+        let reread = try DICOMFile(datasetData: encoded, transferSyntax: .explicitVRLittleEndian)
+        #expect(reread.dataset == nonMetaDataset)
+    }
+
+    @Test func encodedDatasetDataThrowsWhenTranscodingEncapsulatedPixelData() throws {
+        let firstFrame = rleFrame(segment: Data([0x00, 0x12]))
+        let dataset = DICOMDataset(elements: [
+            DICOMElement(tag: .rows, vr: .US, value: uint16(1)),
+            DICOMElement(tag: .columns, vr: .US, value: uint16(1)),
+            DICOMElement(tag: .samplesPerPixel, vr: .US, value: uint16(1)),
+            DICOMElement(tag: .photometricInterpretation, vr: .CS, value: Data("MONOCHROME2".utf8)),
+            DICOMElement(tag: .bitsAllocated, vr: .US, value: uint16(8)),
+            try DICOMElement(encapsulatedPixelDataFrames: [[firstFrame]])
+        ])
+        let file = try DICOMFile(data: DICOMWriter.write(dataset: dataset, transferSyntax: .rleLossless))
+
+        #expect(throws: DICOMError.unsupportedTransferSyntax(TransferSyntax.explicitVRLittleEndian.uid)) {
+            _ = try file.encodedDatasetData(transferSyntax: .explicitVRLittleEndian)
+        }
+    }
 }
