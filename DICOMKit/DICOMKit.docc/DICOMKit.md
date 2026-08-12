@@ -46,6 +46,8 @@ if let pixelData = file.pixelData {
 - ``DICOMPresentationLUTShape`` — Inspect presentation polarity.
 - ``DICOMLazyPixelData`` — Defer Pixel Data frame decoding until it is needed.
 - ``DICOMMetadataFile`` — Retain metadata and reopen local Pixel Data on demand.
+- ``DICOMAssociation`` — Perform DIMSE association and service operations.
+- ``NetworkDICOMULTransport`` — Connect a DIMSE association over TCP or TLS.
 
 The library supports defined-length and undefined-length sequences, a focused
 set of uncompressed image formats and 8-bit/16-bit monochrome plus 8-bit RGB
@@ -75,7 +77,14 @@ empty Basic Offset Table when each frame consists of exactly one fragment, and
 are available through ``DICOMFile/pixelDataFrames``. libjpeg-turbo is pinned as a checksum-verified
 SwiftPM binary target. The previous Process 14 decoder remains as a temporary
 fallback while fixture-output comparisons are accumulated. JPEG
-DIMSE remains outside the current scope. Pixel Padding Value `(0028,0120)`
+DIMSE provides a transport-independent Association actor backed by a caller-supplied
+``DICOMULTransport``. ``NetworkDICOMULTransport`` implements TCP or explicitly
+configured TLS using Network.framework. The current SCU APIs cover C-ECHO,
+C-STORE, C-FIND, C-MOVE, C-GET, and C-CANCEL; ``DICOMCStoreRequest`` and
+``DICOMAssociation/receiveCStore()`` provide the corresponding C-STORE SCP
+primitive. Applications should use a negotiated presentation context for each
+SOP Class, or use the SOP Class convenience overloads. This is a protocol
+foundation, not a clinical interoperability or PACS conformance claim. Pixel Padding Value `(0028,0120)`
 and Pixel Padding Range Limit `(0028,0121)` are excluded from automatically
 computed windows.
 

@@ -88,6 +88,10 @@ See the [changelog](CHANGELOG.md) for the current implementation status.
   QIDO-RS `limit` / `offset` pagination and transports are injectable for
   application authentication and testing; callers can opt into transient HTTP
   response retries
+- Provides a DIMSE SCU/SCP foundation: DICOM Upper Layer association PDUs,
+  Network.framework TCP/TLS transport, timeout handling, C-ECHO, C-STORE
+  (including SCP receipt), C-FIND, C-MOVE, C-GET, and C-CANCEL. Applications
+  select negotiated presentation contexts by SOP Class UID.
 - Uses the BSD-3-Clause CharLS codec through a Git submodule for JPEG-LS
   decoding, including sample, line, and plane interleave modes
 
