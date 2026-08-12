@@ -1,5 +1,12 @@
 import Foundation
 
+/// Retrieves a DICOM JSON `BulkDataURI` under the caller's authentication and
+/// network policy.
+public protocol DICOMJSONBulkDataResolver: Sendable {
+    /// Retrieves the bytes identified by a DICOM JSON `BulkDataURI`.
+    func retrieveBulkData(uri: URL) async throws -> Data
+}
+
 /// A typed DICOM JSON dataset (PS3.18 Annex F).
 public struct DICOMJSONDataset: Codable, Sendable, Equatable {
     public var elements: [String: DICOMJSONElement]
@@ -50,6 +57,24 @@ public struct DICOMJSONDataset: Codable, Sendable, Equatable {
             }
             return try value.dicomElement(tag: DICOMTag(group: group, element: element))
         })
+    }
+
+    /// Converts this JSON dataset after explicitly resolving every `BulkDataURI`.
+    ///
+    /// No request is made unless a resolver is supplied. This keeps bearer
+    /// tokens, authentication, and host allow-lists under application control.
+    public func dicomDataset(resolvingBulkDataWith resolver: some DICOMJSONBulkDataResolver) async throws -> DICOMDataset {
+        var decodedElements: [DICOMElement] = []
+        decodedElements.reserveCapacity(elements.count)
+        for (key, value) in elements {
+            guard key.count == 8,
+                  let group = UInt16(key.prefix(4), radix: 16),
+                  let element = UInt16(key.suffix(4), radix: 16) else {
+                throw DICOMError.invalidDICOMJSON
+            }
+            decodedElements.append(try await value.dicomElement(tag: DICOMTag(group: group, element: element), resolvingBulkDataWith: resolver))
+        }
+        return DICOMDataset(elements: decodedElements)
     }
 }
 
@@ -262,6 +287,28 @@ public struct DICOMJSONElement: Codable, Sendable, Equatable {
 
     private static func isInlineBinaryVR(_ vr: DICOMVR) -> Bool {
         switch vr { case .OB, .OD, .OF, .OL, .OV, .OW, .UN: true; default: false }
+    }
+
+    fileprivate func dicomElement(tag: DICOMTag, resolvingBulkDataWith resolver: some DICOMJSONBulkDataResolver) async throws -> DICOMElement {
+        if let bulkDataURI {
+            guard value == nil, inlineBinary == nil, let uri = URL(string: bulkDataURI) else {
+                throw DICOMError.invalidDICOMJSON
+            }
+            return DICOMElement(tag: tag, vr: vr, value: try await resolver.retrieveBulkData(uri: uri))
+        }
+        if vr == .SQ {
+            let items = try (value ?? []).map { item -> DICOMJSONDataset in
+                guard case .sequence(let dataset) = item else { throw DICOMError.invalidDICOMJSON }
+                return dataset
+            }
+            var decodedItems: [DICOMDataset] = []
+            decodedItems.reserveCapacity(items.count)
+            for item in items {
+                decodedItems.append(try await item.dicomDataset(resolvingBulkDataWith: resolver))
+            }
+            return DICOMElement(tag: tag, vr: vr, value: Data(), sequenceItems: decodedItems)
+        }
+        return try dicomElement(tag: tag)
     }
 }
 

@@ -34,7 +34,7 @@ See the [changelog](CHANGELOG.md) for the current implementation status.
 - Provides typed access for common string and `UInt16` values
 - Converts supported in-memory datasets to and from typed DICOM JSON
   (PS3.18 Annex F), including string VRs, `US`, sequences, and inline binary
-  values
+  values; resolves `BulkDataURI` only through a caller-supplied resolver
 - Renders uncompressed 8-bit `MONOCHROME1`, `MONOCHROME2`, and interleaved
   `RGB` Pixel Data as `CGImage`
 - Renders uncompressed 16-bit monochrome Pixel Data with correct handling of

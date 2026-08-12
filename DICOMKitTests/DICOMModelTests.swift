@@ -98,6 +98,17 @@ struct DICOMElementValueTests {
 }
 
 struct DICOMDatasetTests {
+    @Test func resolvesDICOMJSONBulkDataOnlyThroughExplicitResolver() async throws {
+        let uri = URL(string: "https://example.test/bulk/pixel-data")!
+        let json = DICOMJSONDataset(elements: [
+            "7FE00010": DICOMJSONElement(vr: .OW, bulkDataURI: uri.absoluteString)
+        ])
+
+        let dataset = try await json.dicomDataset(resolvingBulkDataWith: StaticBulkDataResolver(data: Data([1, 2, 3, 4])))
+
+        #expect(dataset[.pixelData]?.value == Data([1, 2, 3, 4]))
+    }
+
     @Test func readsDICOMDirectoryRecords() throws {
         let record = DICOMDataset(elements: [
             DICOMElement(tag: .directoryRecordType, vr: .CS, value: Data("IMAGE".utf8)),
@@ -253,4 +264,10 @@ struct DICOMVRTests {
 
         #expect(actual == explicitVR32BitLengthVRs)
     }
+}
+
+private struct StaticBulkDataResolver: DICOMJSONBulkDataResolver {
+    let data: Data
+
+    func retrieveBulkData(uri: URL) async throws -> Data { data }
 }

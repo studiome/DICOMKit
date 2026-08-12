@@ -115,6 +115,7 @@ to test requests without a network connection.
 - ``DICOMwebTransport``
 - ``DICOMwebError``
 - ``DICOMJSONDataset``
+- ``DICOMJSONBulkDataResolver``
 
 ### Image rendering
 
