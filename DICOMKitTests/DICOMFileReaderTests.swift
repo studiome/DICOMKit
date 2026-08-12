@@ -147,6 +147,25 @@ struct DICOMFileReaderTests {
         #expect(file.dataset[referencedImageSequence]?.sequenceItems?.first?[.referencedSOPClassUID]?.stringValue == "1.2.840.10008.5.1.4.1.1.4")
     }
 
+    @Test func readsExplicitUNWithUndefinedLengthAsSequence() throws {
+        let privateSequence = DICOMTag(group: 0x0011, element: 0x1010)
+        let value = implicitUndefinedLengthSequence(
+            tag: privateSequence,
+            itemElements: [element(tag: .patientName, vr: .PN, value: "Doe^Jane")]
+        )
+        // Reuse the sequence item's byte layout but replace the outer implicit
+        // element header with Explicit VR `UN` and an undefined length.
+        let itemPayload = value.dropFirst(8)
+        let elementData = explicitVRElement(tag: privateSequence, vr: .UN, declaredLength: .max, value: Data(itemPayload))
+        let file = try DICOMFile(data: part10File(
+            transferSyntaxUID: TransferSyntax.explicitVRLittleEndian.uid,
+            datasetElements: [elementData]
+        ))
+
+        #expect(file.dataset[privateSequence]?.vr == .UN)
+        #expect(file.dataset[privateSequence]?.sequenceItems?.first?[.patientName]?.stringValue == "Doe^Jane")
+    }
+
     @Test func explicitVRElementsAfterSVAndUVAreReadCorrectly() throws {
         let file = try DICOMFile(data: part10File(
             transferSyntaxUID: TransferSyntax.explicitVRLittleEndian.uid,

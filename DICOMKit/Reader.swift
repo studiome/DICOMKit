@@ -56,8 +56,8 @@ struct Reader {
             // Read the length before resolving the VR: when a tag isn't in
             // DICOMDictionary and its length is undefined (0xFFFFFFFF), the
             // Implicit VR convention is to treat it as a sequence (SQ) rather
-            // than as unknown (UN), since UN elements cannot have undefined
-            // length under this reader (see `unsupportedUndefinedLength`).
+            // than as unknown (UN). This lets sequences outside the small
+            // built-in dictionary still be parsed.
             // This lets sequences outside the small built-in dictionary
             // (e.g. Referenced Image Sequence) still be parsed.
             length = try readUInt32(byteOrder: .littleEndian)
@@ -66,7 +66,7 @@ struct Reader {
             throw DICOMError.unsupportedTransferSyntax(transferSyntax.uid)
         }
 
-        if vr == .SQ {
+        if vr == .SQ || (vr == .UN && length == .max) {
             return DICOMElement(tag: tag, vr: vr, value: Data(), sequenceItems: try readSequence(transferSyntax: transferSyntax, length: length))
         }
         if tag == .pixelData, length == .max {
