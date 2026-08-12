@@ -491,6 +491,63 @@ public struct DICOMFile: Sendable {
         }
     }
 
+    /// The frames ``pixelDataFrames`` would normally produce, with a
+    /// Grayscale Softcopy Presentation State's values substituted in:
+    ///
+    /// - `state`'s Display Shutter replaces the image's own when non-`nil`.
+    /// - The Softcopy VOI ``DICOMPresentationState/softcopyVOI(for:)``
+    ///   selects for this file's SOP Instance UID replaces `windowPresets`,
+    ///   `voiLUTs`, `defaultWindowCenter`, and `defaultWindowWidth` (using
+    ///   the first window preset for the two defaults). When no Softcopy VOI
+    ///   item applies, the image's own values are kept.
+    /// - `state`'s Presentation LUT Shape replaces the image's own when
+    ///   non-`nil`.
+    ///
+    /// `state`'s ``DICOMPresentationState/rotation``,
+    /// ``DICOMPresentationState/horizontalFlip``, and
+    /// ``DICOMPresentationState/displayedAreas`` are display transforms this
+    /// method does not apply; read those properties directly and apply them
+    /// in the caller's display pipeline.
+    ///
+    /// `nil` when this file has no Pixel Data (see ``pixelDataFrames``), or
+    /// when `state` doesn't reference this file's SOP Instance UID (see
+    /// ``DICOMPresentationState/appliesTo(sopInstanceUID:)``).
+    public func pixelDataFrames(applying state: DICOMPresentationState) -> [DICOMPixelData]? {
+        guard let sopInstanceUID = dataset[.sopInstanceUID]?.stringValue, state.appliesTo(sopInstanceUID: sopInstanceUID) else { return nil }
+        guard let frames = pixelDataFrames else { return nil }
+        let voi = state.softcopyVOI(for: sopInstanceUID)
+        let resolvedPresentationLUTShape = state.presentationLUTShape ?? presentationLUTShape
+        return frames.map { frame in
+            DICOMPixelData(
+                value: frame.value,
+                rows: frame.rows,
+                columns: frame.columns,
+                samplesPerPixel: frame.samplesPerPixel,
+                bitsAllocated: frame.bitsAllocated,
+                photometricInterpretation: frame.photometricInterpretation,
+                planarConfiguration: frame.planarConfiguration,
+                bitsStored: frame.bitsStored,
+                pixelRepresentation: frame.pixelRepresentation,
+                rescaleSlope: frame.rescaleSlope,
+                rescaleIntercept: frame.rescaleIntercept,
+                defaultWindowCenter: voi?.windowPresets.first?.center ?? frame.defaultWindowCenter,
+                defaultWindowWidth: voi?.windowPresets.first?.width ?? frame.defaultWindowWidth,
+                windowPresets: voi?.windowPresets ?? frame.windowPresets,
+                voiLUTs: voi?.voiLUTs ?? frame.voiLUTs,
+                paletteColorLUT: frame.paletteColorLUT,
+                pixelPaddingRange: frame.pixelPaddingRange,
+                modalityLUT: frame.modalityLUT,
+                displayShutter: state.displayShutter ?? frame.displayShutter,
+                presentationLUTShape: resolvedPresentationLUTShape
+            )
+        }
+    }
+
+    /// The first frame of ``pixelDataFrames(applying:)``, if available.
+    public func pixelData(applying state: DICOMPresentationState) -> DICOMPixelData? {
+        pixelDataFrames(applying: state)?.first
+    }
+
     private func pixelPaddingRange() -> ClosedRange<Double>? {
         guard let valueElement = dataset[.pixelPaddingValue] else { return nil }
         let stored: Int

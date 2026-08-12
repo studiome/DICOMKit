@@ -70,6 +70,16 @@ public struct DICOMPixelData: Sendable {
     /// Shutter Presentation Value is already a display P-Value, so it must
     /// not be inverted or otherwise reprocessed.
     public let displayShutter: DICOMDisplayShutter?
+    /// A Presentation LUT Shape `(2050,0020)` from a Grayscale Softcopy
+    /// Presentation State, when the caller has one to apply.
+    ///
+    /// Composes with ``photometricInterpretation`` rather than replacing it:
+    /// rendered polarity is inverted when exactly one of
+    /// `photometricInterpretation == .monochrome1` and
+    /// `presentationLUTShape == .inverse` holds (see ``invertsPolarity``).
+    /// An `INVERSE` shape on a `MONOCHROME1` image therefore renders as if
+    /// the image were `MONOCHROME2`.
+    public let presentationLUTShape: DICOMPresentationLUTShape?
 
     /// Creates uncompressed pixel data and its rendering attributes.
     ///
@@ -98,7 +108,8 @@ public struct DICOMPixelData: Sendable {
         paletteColorLUT: DICOMPaletteColorLUT? = nil,
         pixelPaddingRange: ClosedRange<Double>? = nil,
         modalityLUT: DICOMModalityLUT? = nil,
-        displayShutter: DICOMDisplayShutter? = nil
+        displayShutter: DICOMDisplayShutter? = nil,
+        presentationLUTShape: DICOMPresentationLUTShape? = nil
     ) {
         self.value = value
         self.rows = rows
@@ -119,6 +130,19 @@ public struct DICOMPixelData: Sendable {
         self.pixelPaddingRange = pixelPaddingRange
         self.modalityLUT = modalityLUT
         self.displayShutter = displayShutter
+        self.presentationLUTShape = presentationLUTShape
+    }
+
+    /// Whether rendered polarity is inverted, as the exclusive-or of
+    /// `photometricInterpretation == .monochrome1` and
+    /// `presentationLUTShape == .inverse`.
+    ///
+    /// This is the single place the rule documented on
+    /// ``presentationLUTShape`` lives; every rendering path below composes
+    /// its own polarity through this property instead of testing
+    /// ``photometricInterpretation`` alone.
+    private var invertsPolarity: Bool {
+        (photometricInterpretation == .monochrome1) != (presentationLUTShape == .inverse)
     }
 
     /// Creates a Core Graphics image for 8-bit monochrome, interleaved RGB,
@@ -167,7 +191,7 @@ public struct DICOMPixelData: Sendable {
             let pixels = Data((0..<pixelCount).map { pixel in
                 let bit = (source[pixel / 8] >> UInt8(pixel % 8)) & 1
                 let rendered = bit == 0 ? UInt8(0) : UInt8(255)
-                return photometricInterpretation == .monochrome1 ? 255 - rendered : rendered
+                return invertsPolarity ? 255 - rendered : rendered
             })
             return try makeImage(data: pixels, colorSpace: CGColorSpaceCreateDeviceGray(), bitsPerPixel: 8, bytesPerRow: columns)
 
@@ -282,7 +306,7 @@ public struct DICOMPixelData: Sendable {
             if windowCenter == nil, windowWidth == nil, let voiLUT = voiLUTs.first {
                 let pixels = Data(samples.map { sample in
                     let rendered = voiLUT.renderedValue(for: sample)
-                    return photometricInterpretation == .monochrome1 ? 255 - rendered : rendered
+                    return invertsPolarity ? 255 - rendered : rendered
                 })
                 return try makeImage(data: pixels, colorSpace: CGColorSpaceCreateDeviceGray(), bitsPerPixel: 8, bytesPerRow: columns)
             }
@@ -293,7 +317,7 @@ public struct DICOMPixelData: Sendable {
 
             let pixels = Data(samples.map { sample in
                 let rendered = windowedSample(sample, center: center, width: width)
-                return photometricInterpretation == .monochrome1 ? 255 - rendered : rendered
+                return invertsPolarity ? 255 - rendered : rendered
             })
             return try makeImage(data: pixels, colorSpace: CGColorSpaceCreateDeviceGray(), bitsPerPixel: 8, bytesPerRow: columns)
 
