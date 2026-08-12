@@ -26,6 +26,18 @@ public struct DICOMCFindResult: Sendable, Equatable {
     public init(status: UInt16, identifiers: [Data]) { self.status = status; self.identifiers = identifiers }
 }
 
+/// An incoming C-STORE request awaiting an SCP response.
+public struct DICOMCStoreRequest: Sendable, Equatable {
+    public let messageID: UInt16
+    public let contextID: UInt8
+    public let sopClassUID: String
+    public let sopInstanceUID: String
+    public let dataset: Data
+    public init(messageID: UInt16, contextID: UInt8, sopClassUID: String, sopInstanceUID: String, dataset: Data) {
+        self.messageID = messageID; self.contextID = contextID; self.sopClassUID = sopClassUID; self.sopInstanceUID = sopInstanceUID; self.dataset = dataset
+    }
+}
+
 /// A serial DICOM SCU association built on a caller-supplied PDU transport.
 public actor DICOMAssociation {
     private let transport: any DICOMULTransport
@@ -153,6 +165,40 @@ public actor DICOMAssociation {
                 if !isPending(status) { return status }
             }
         }
+    }
+
+    /// Receives the next C-STORE request and its complete dataset. This is the
+    /// SCP-side primitive used directly by C-STORE servers and C-GET clients.
+    public func receiveCStore() async throws -> DICOMCStoreRequest {
+        guard acceptance != nil else { throw DICOMAssociationError.notAssociated }
+        var command = Data()
+        var contextID: UInt8?
+        while true {
+            guard case .pData(let values) = try await transport.receive() else { throw DICOMAssociationError.unexpectedPDU }
+            for value in values where value.isCommand {
+                contextID = contextID ?? value.contextID
+                guard contextID == value.contextID else { throw DICOMAssociationError.unexpectedDIMSECommand }
+                command.append(value.data)
+                guard value.isLastFragment else { continue }
+                guard case .cStoreRequest(let messageID, let sopClassUID, let sopInstanceUID) = try DICOMDIMSECommand.decodeCommandSet(command), let contextID else { throw DICOMAssociationError.unexpectedDIMSECommand }
+                var dataset = Data()
+                while true {
+                    guard case .pData(let datasetValues) = try await transport.receive() else { throw DICOMAssociationError.unexpectedPDU }
+                    for fragment in datasetValues where fragment.contextID == contextID && !fragment.isCommand {
+                        dataset.append(fragment.data)
+                        if fragment.isLastFragment { return DICOMCStoreRequest(messageID: messageID, contextID: contextID, sopClassUID: sopClassUID, sopInstanceUID: sopInstanceUID, dataset: dataset) }
+                    }
+                }
+            }
+        }
+    }
+
+    /// Sends C-STORE-RSP for a request received through ``receiveCStore()``.
+    public func respond(to request: DICOMCStoreRequest, status: UInt16) async throws {
+        guard let acceptance else { throw DICOMAssociationError.notAssociated }
+        let maximumPayload = max(1, Int(acceptance.maximumPDULength) - 12)
+        let response = DICOMDIMSECommand.cStoreResponse(messageIDBeingRespondedTo: request.messageID, status: status)
+        try await transport.send(.pData(try response.commandPDVs(contextID: request.contextID, maximumPayloadLength: maximumPayload)))
     }
 
     /// Releases an established association. This method is idempotent.

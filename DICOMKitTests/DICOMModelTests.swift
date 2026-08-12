@@ -132,6 +132,22 @@ struct DICOMULTests {
         _ = try await association.request(DICOMAssociationRequest(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, abstractSyntaxUID: "1.2.840.10008.5.1.4.1.2.2.3", transferSyntaxUIDs: ["1.2.840.10008.1.2"])]))
         #expect(try await association.cGet(messageID: 18, contextID: 1, sopClassUID: "1.2.840.10008.5.1.4.1.2.2.3", identifier: Data()) == 0)
     }
+
+    @Test func associationReceivesCStoreAndReplies() async throws {
+        let store = DICOMDIMSECommand.cStoreRequest(messageID: 19, affectedSOPClassUID: "1.2.840.10008.5.1.4.1.1.2", affectedSOPInstanceUID: "1.2.3")
+        let transport = DICOMULMockTransport(received: [
+            .associationAcceptance(DICOMAssociationAcceptance(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, result: .acceptance, transferSyntaxUID: "1.2.840.10008.1.2")])),
+            .pData(try store.commandPDVs(contextID: 1, maximumPayloadLength: 1024)),
+            .pData([DICOMPDataValue(contextID: 1, isCommand: false, isLastFragment: true, data: Data([7, 8]))])
+        ])
+        let association = DICOMAssociation(transport: transport)
+        _ = try await association.request(DICOMAssociationRequest(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, abstractSyntaxUID: "1.2.840.10008.5.1.4.1.1.2", transferSyntaxUIDs: ["1.2.840.10008.1.2"])]))
+        let received = try await association.receiveCStore()
+        #expect(received.dataset == Data([7, 8]))
+        #expect(received.sopInstanceUID == "1.2.3")
+        try await association.respond(to: received, status: 0)
+        #expect(await transport.sent.count == 2)
+    }
 }
 
 private actor DICOMULMockTransport: DICOMULTransport {
