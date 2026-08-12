@@ -18,6 +18,8 @@ public enum DICOMAssociationError: Error, Sendable, Equatable {
     case unexpectedPDU
     case unexpectedDIMSECommand
     case timedOut
+    case aborted(source: UInt8, reason: UInt8)
+    case releasedByPeer
 }
 
 /// The final status and identifier datasets returned by a C-FIND operation.
@@ -262,14 +264,30 @@ public actor DICOMAssociation {
         try await transport.send(.pData(try response.commandPDVs(contextID: request.contextID, maximumPayloadLength: maximumPayload)))
     }
 
-    /// Releases an established association. This method is idempotent.
+    /// Releases an established association. This method is idempotent, including
+    /// after an abort or a peer-initiated release.
     public func release() async throws {
         guard acceptance != nil else { return }
         try await transport.send(.releaseRequest)
         guard case .releaseResponse = try await receivePDU() else { throw DICOMAssociationError.unexpectedPDU }
+        tearDown()
+        await transport.close()
+    }
+
+    /// Sends A-ABORT and tears down the association locally. Per PS3.8 Table
+    /// 9-26, `source` 0 identifies the DICOM UL service-user and 2 the service
+    /// provider; `reason` is only meaningful for a service-provider abort. An
+    /// aborted association cannot be released — a subsequent ``release()``
+    /// call is a no-op.
+    public func abort(source: UInt8 = 0, reason: UInt8 = 0) async throws {
+        try await transport.send(.abort(source: source, reason: reason))
+        tearDown()
+        await transport.close()
+    }
+
+    private func tearDown() {
         acceptance = nil
         requestedPresentationContexts = []
-        await transport.close()
     }
 
     private func pdvs(data: Data, contextID: UInt8, maximumPayloadLength: Int) -> [DICOMPDataValue] {
@@ -280,7 +298,26 @@ public actor DICOMAssociation {
 
     private func isPending(_ status: UInt16) -> Bool { status == 0xFF00 || status == 0xFF01 }
 
+    /// Receives the next PDU, transparently handling a peer A-ABORT or
+    /// A-RELEASE-RQ by tearing down the association and throwing.
     private func receivePDU() async throws -> DICOMULPDU {
+        let pdu = try await receiveRawPDU()
+        switch pdu {
+        case .abort(let source, let reason):
+            tearDown()
+            await transport.close()
+            throw DICOMAssociationError.aborted(source: source, reason: reason)
+        case .releaseRequest:
+            try await transport.send(.releaseResponse)
+            tearDown()
+            await transport.close()
+            throw DICOMAssociationError.releasedByPeer
+        default:
+            return pdu
+        }
+    }
+
+    private func receiveRawPDU() async throws -> DICOMULPDU {
         guard let responseTimeout else { return try await transport.receive() }
         let transport = self.transport
         return try await withThrowingTaskGroup(of: DICOMULPDU.self) { group in

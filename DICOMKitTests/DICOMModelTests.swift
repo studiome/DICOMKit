@@ -325,6 +325,48 @@ struct DICOMULTests {
         let acceptance = DICOMAssociationAcceptance(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, result: .acceptance, transferSyntaxUID: "1.2.840.10008.1.2")], userIdentityResponse: Data([0xAA, 0xBB, 0xCC]))
         #expect(try DICOMULPDU.decode(DICOMULPDU.associationAcceptance(acceptance).encoded()) == .associationAcceptance(acceptance))
     }
+
+    @Test func peerAbortDuringDIMSEOperationThrowsAborted() async throws {
+        let transport = DICOMULMockTransport(received: [
+            .associationAcceptance(DICOMAssociationAcceptance(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, result: .acceptance, transferSyntaxUID: "1.2.840.10008.1.2")])),
+            .abort(source: 2, reason: 1)
+        ])
+        let association = DICOMAssociation(transport: transport)
+        _ = try await association.request(DICOMAssociationRequest(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, abstractSyntaxUID: "1.2.840.10008.1.1", transferSyntaxUIDs: ["1.2.840.10008.1.2"])]))
+        await #expect(throws: DICOMAssociationError.aborted(source: 2, reason: 1)) { try await association.cEcho(messageID: 9, contextID: 1) }
+    }
+
+    @Test func peerReleaseRequestDuringDIMSEOperationThrowsReleasedByPeerAndRepliesWithReleaseResponse() async throws {
+        let transport = DICOMULMockTransport(received: [
+            .associationAcceptance(DICOMAssociationAcceptance(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, result: .acceptance, transferSyntaxUID: "1.2.840.10008.1.2")])),
+            .releaseRequest
+        ])
+        let association = DICOMAssociation(transport: transport)
+        _ = try await association.request(DICOMAssociationRequest(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, abstractSyntaxUID: "1.2.840.10008.1.1", transferSyntaxUIDs: ["1.2.840.10008.1.2"])]))
+        await #expect(throws: DICOMAssociationError.releasedByPeer) { try await association.cEcho(messageID: 9, contextID: 1) }
+        #expect(await transport.sent.last == .releaseResponse)
+    }
+
+    @Test func abortSendsAAbortAndTearsDownAssociation() async throws {
+        let transport = DICOMULMockTransport(received: [
+            .associationAcceptance(DICOMAssociationAcceptance(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, result: .acceptance, transferSyntaxUID: "1.2.840.10008.1.2")]))
+        ])
+        let association = DICOMAssociation(transport: transport)
+        _ = try await association.request(DICOMAssociationRequest(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, abstractSyntaxUID: "1.2.840.10008.1.1", transferSyntaxUIDs: ["1.2.840.10008.1.2"])]))
+        try await association.abort(source: 0, reason: 0)
+        #expect(await transport.sent.last == .abort(source: 0, reason: 0))
+        await #expect(throws: DICOMAssociationError.notAssociated) { try await association.cEcho(messageID: 9, contextID: 1) }
+    }
+
+    @Test func releaseAfterAbortIsIdempotent() async throws {
+        let transport = DICOMULMockTransport(received: [
+            .associationAcceptance(DICOMAssociationAcceptance(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, result: .acceptance, transferSyntaxUID: "1.2.840.10008.1.2")]))
+        ])
+        let association = DICOMAssociation(transport: transport)
+        _ = try await association.request(DICOMAssociationRequest(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, abstractSyntaxUID: "1.2.840.10008.1.1", transferSyntaxUIDs: ["1.2.840.10008.1.2"])]))
+        try await association.abort()
+        try await association.release()
+    }
 }
 
 /// Builds a raw Upper Layer sub-item / item (4-byte header: type, reserved, 2-byte BE length).
