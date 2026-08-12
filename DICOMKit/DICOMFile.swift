@@ -133,6 +133,51 @@ public struct DICOMFile: Sendable {
         dataset[DICOMTag(group: 0x0028, element: 0x2000)]?.value
     }
 
+    /// The Display Shutter module (PS3.3 C.7.6.11), when the dataset names a
+    /// shape this type models.
+    ///
+    /// `nil` when Shutter Shape `(0018,1600)` is absent, or when every value
+    /// it names is one this type doesn't model.
+    public var displayShutter: DICOMDisplayShutter? {
+        guard let shapeNames = dataset[DICOMTag(group: 0x0018, element: 0x1600)]?.stringValues else { return nil }
+        var shapes: [DICOMShutterShape] = []
+        for name in shapeNames {
+            switch name.uppercased() {
+            case "RECTANGULAR":
+                guard let left = dataset[DICOMTag(group: 0x0018, element: 0x1602)]?.stringValue.flatMap(Int.init),
+                      let right = dataset[DICOMTag(group: 0x0018, element: 0x1604)]?.stringValue.flatMap(Int.init),
+                      let upper = dataset[DICOMTag(group: 0x0018, element: 0x1606)]?.stringValue.flatMap(Int.init),
+                      let lower = dataset[DICOMTag(group: 0x0018, element: 0x1608)]?.stringValue.flatMap(Int.init) else { continue }
+                shapes.append(.rectangular(left: left, right: right, upper: upper, lower: lower))
+            case "CIRCULAR":
+                guard let center = dataset[DICOMTag(group: 0x0018, element: 0x1610)]?.stringValues,
+                      center.count == 2,
+                      let row = Int(center[0]), let column = Int(center[1]),
+                      let radius = dataset[DICOMTag(group: 0x0018, element: 0x1612)]?.stringValue.flatMap(Int.init) else { continue }
+                shapes.append(.circular(center: DICOMShutterVertex(row: row, column: column), radius: radius))
+            case "POLYGONAL":
+                guard let coordinateStrings = dataset[DICOMTag(group: 0x0018, element: 0x1620)]?.stringValues else { continue }
+                let coordinates = coordinateStrings.compactMap(Int.init)
+                guard coordinates.count == coordinateStrings.count,
+                      coordinates.count >= 6, coordinates.count.isMultiple(of: 2) else { continue }
+                let vertices = stride(from: 0, to: coordinates.count, by: 2).map {
+                    DICOMShutterVertex(row: coordinates[$0], column: coordinates[$0 + 1])
+                }
+                shapes.append(.polygonal(vertices: vertices))
+            case "BITMAP":
+                guard let overlayGroup = dataset[DICOMTag(group: 0x0018, element: 0x1623)]?.uint16Value else { continue }
+                shapes.append(.bitmap(overlayGroup: overlayGroup))
+            default:
+                continue
+            }
+        }
+        guard !shapes.isEmpty else { return nil }
+        return DICOMDisplayShutter(
+            shapes: shapes,
+            presentationValue: dataset[DICOMTag(group: 0x0018, element: 0x1622)]?.uint16Value
+        )
+    }
+
     /// The Presentation LUT Shape `(2050,0020)`, when it is supported.
     public var presentationLUTShape: DICOMPresentationLUTShape? {
         switch dataset[DICOMTag(group: 0x2050, element: 0x0020)]?.stringValue?.uppercased() {
@@ -224,6 +269,7 @@ public struct DICOMFile: Sendable {
         let windowPresets = makeWindowPresets()
         let voiLUTs = makeVOILUTs()
         let modalityLUT = makeModalityLUT()
+        let shutter = displayShutter
         let frameAttributes = renderingAttributes(frameCount: frameCount)
         guard sourcePhotometric != .paletteColor || paletteColorLUT != nil else { return nil }
         let frames: [DecodedPixelDataFrame]
@@ -480,6 +526,7 @@ public struct DICOMFile: Sendable {
             paletteColorLUT: paletteColorLUT
             , pixelPaddingRange: pixelPaddingRange()
             , modalityLUT: modalityLUT
+            , displayShutter: shutter
             )
         }
     }
