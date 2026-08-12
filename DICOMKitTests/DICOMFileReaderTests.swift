@@ -26,6 +26,7 @@ struct DICOMFileReaderTests {
         let lazy = try #require(metadata.makeLazyPixelData())
 
         #expect(metadata.dataset[.pixelData] == nil)
+        #expect(try metadata.nativePixelDataReference?.load() == Data([0x12, 0x34]))
         #expect(!lazy.isLoaded)
         #expect(lazy.loadFirstFrame()?.value == Data([0x12, 0x34]))
     }

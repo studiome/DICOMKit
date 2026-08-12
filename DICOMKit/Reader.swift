@@ -8,6 +8,10 @@ import Foundation
 struct Reader {
     let data: Data
     var offset: Int
+    /// When enabled, native Pixel Data is skipped rather than copied and its
+    /// source range is retained for an offset-based reader.
+    var skipsNativePixelData = false
+    var skippedNativePixelDataRange: Range<Int>?
 
     mutating func readDataset(transferSyntax: TransferSyntax, endingAt endOffset: Int? = nil) throws -> [DICOMElement] {
         var elements: [DICOMElement] = []
@@ -82,6 +86,13 @@ struct Reader {
             )
         }
         guard length != .max else { throw DICOMError.unsupportedUndefinedLength(tag) }
+        if skipsNativePixelData, tag == .pixelData {
+            let valueStart = offset
+            guard Int(length) <= data.count - offset else { throw DICOMError.truncatedData }
+            offset += Int(length)
+            skippedNativePixelDataRange = valueStart..<offset
+            return DICOMElement(tag: tag, vr: vr, value: Data())
+        }
         let value = try readData(count: Int(length))
         return DICOMElement(tag: tag, vr: vr, value: byteOrder == .bigEndian ? canonicalLittleEndian(value, vr: vr) : value)
     }
