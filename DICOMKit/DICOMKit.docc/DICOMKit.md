@@ -30,6 +30,7 @@ if let pixelData = file.pixelData {
 
 - ``DICOMFile`` — Parse a DICOM Part 10 file.
 - ``DICOMDataset`` — Look up and iterate over data elements.
+- ``DICOMStudy`` — Group and order instances by study and series.
 - ``DICOMJSONDataset`` — Convert supported values to and from typed DICOM JSON.
 - ``DICOMPixelData`` — Render supported uncompressed Pixel Data.
 - ``DICOMFloatingPixelData`` — Access native Float and Double Float Pixel Data.

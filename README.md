@@ -18,6 +18,8 @@ See the [changelog](CHANGELOG.md) for the current implementation status.
 - Parses defined-length and undefined-length sequences recursively
 - Exposes a lightweight Swift object model: `DICOMFile`, `DICOMDataset`,
   `DICOMElement`, `DICOMTag`, and `DICOMVR`
+- Groups files into `DICOMStudy` / `DICOMSeries` / `DICOMInstance` models and
+  sorts instances by image position, instance number, then SOP Instance UID
 - Provides typed access for common string and `UInt16` values
 - Converts supported in-memory datasets to and from typed DICOM JSON
   (PS3.18 Annex F), including string VRs, `US`, sequences, and inline binary

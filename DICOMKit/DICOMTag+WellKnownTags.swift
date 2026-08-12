@@ -12,6 +12,12 @@ extension DICOMTag {
     public static let implementationVersionName = DICOMTag(group: 0x0002, element: 0x0013)
     public static let sopClassUID = DICOMTag(group: 0x0008, element: 0x0016)
     public static let sopInstanceUID = DICOMTag(group: 0x0008, element: 0x0018)
+    /// Study Instance UID `(0020,000D)`.
+    public static let studyInstanceUID = DICOMTag(group: 0x0020, element: 0x000D)
+    /// Series Instance UID `(0020,000E)`.
+    public static let seriesInstanceUID = DICOMTag(group: 0x0020, element: 0x000E)
+    /// Instance Number `(0020,0013)`.
+    public static let instanceNumber = DICOMTag(group: 0x0020, element: 0x0013)
     /// Referenced Study Sequence `(0008,1110)`.
     public static let referencedStudySequence = DICOMTag(group: 0x0008, element: 0x1110)
     /// Referenced SOP Class UID `(0008,1150)`.

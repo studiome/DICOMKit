@@ -93,6 +93,21 @@ struct DICOMElementValueTests {
 }
 
 struct DICOMDatasetTests {
+    @Test func groupsAndSortsStudyInstances() throws {
+        func file(uid: String, instance: String, z: String) throws -> DICOMFile {
+            try DICOMFile(data: DICOMWriter.write(dataset: DICOMDataset(elements: [
+                DICOMElement(tag: .studyInstanceUID, vr: .UI, value: Data("1.2.3".utf8)),
+                DICOMElement(tag: .seriesInstanceUID, vr: .UI, value: Data("4.5.6".utf8)),
+                DICOMElement(tag: .sopInstanceUID, vr: .UI, value: Data(uid.utf8)),
+                DICOMElement(tag: .instanceNumber, vr: .IS, value: Data(instance.utf8)),
+                DICOMElement(tag: .imagePositionPatient, vr: .DS, value: Data("0\\0\\\(z)".utf8))
+            ])))
+        }
+        let study = try DICOMStudy(studyInstanceUID: "1.2.3", files: [file(uid: "b", instance: "2", z: "10"), file(uid: "a", instance: "1", z: "0")])
+
+        #expect(study.series.count == 1)
+        #expect(study.series[0].instances.map(\.sopInstanceUID) == ["a", "b"])
+    }
     @Test func convertsTypedDICOMJSONDatasets() throws {
         let nested = DICOMDataset(elements: [DICOMElement(tag: .referencedSOPClassUID, vr: .UI, value: Data("1.2.3".utf8))])
         let dataset = DICOMDataset(elements: [
