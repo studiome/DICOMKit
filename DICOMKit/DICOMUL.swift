@@ -27,34 +27,79 @@ public struct DICOMPresentationContext: Sendable, Equatable {
 public enum DICOMUserIdentity: Sendable, Equatable {
     case username(String)
     case usernameAndPassword(username: String, password: String)
+    case kerberos(Data)
+    case saml(String)
+    case jwt(String)
 
-    fileprivate var encoded: Data? {
+    fileprivate func encoded(positiveResponseRequested: Bool) -> Data? {
         switch self {
-        case .username(let username): return encode(type: 1, primary: Data(username.utf8), secondary: Data())
-        case .usernameAndPassword(let username, let password): return encode(type: 2, primary: Data(username.utf8), secondary: Data(password.utf8))
+        case .username(let username): return encode(type: 1, positiveResponseRequested: positiveResponseRequested, primary: Data(username.utf8), secondary: Data())
+        case .usernameAndPassword(let username, let password): return encode(type: 2, positiveResponseRequested: positiveResponseRequested, primary: Data(username.utf8), secondary: Data(password.utf8))
+        case .kerberos(let ticket): return encode(type: 3, positiveResponseRequested: positiveResponseRequested, primary: ticket, secondary: Data())
+        case .saml(let assertion): return encode(type: 4, positiveResponseRequested: positiveResponseRequested, primary: Data(assertion.utf8), secondary: Data())
+        case .jwt(let token): return encode(type: 5, positiveResponseRequested: positiveResponseRequested, primary: Data(token.utf8), secondary: Data())
         }
     }
 
-    private func encode(type: UInt8, primary: Data, secondary: Data) -> Data? {
+    private func encode(type: UInt8, positiveResponseRequested: Bool, primary: Data, secondary: Data) -> Data? {
         guard primary.count <= Int(UInt16.max), secondary.count <= Int(UInt16.max) else { return nil }
-        var data = Data([type, 0, UInt8(primary.count >> 8), UInt8(primary.count & 0xFF)])
+        var data = Data([type, positiveResponseRequested ? 1 : 0, UInt8(primary.count >> 8), UInt8(primary.count & 0xFF)])
         data.append(primary); data.append(UInt8(secondary.count >> 8)); data.append(UInt8(secondary.count & 0xFF)); data.append(secondary)
         return data
     }
 
-    fileprivate static func decode(_ data: Data) throws -> DICOMUserIdentity {
+    fileprivate static func decode(_ data: Data) throws -> (identity: DICOMUserIdentity, positiveResponseRequested: Bool) {
         guard data.count >= 6 else { throw DICOMULError.malformedPDU }
+        let positiveResponseRequested = data[1] != 0
         let primaryLength = Int(UInt16(data[2]) << 8 | UInt16(data[3]))
         guard data.count >= 6 + primaryLength else { throw DICOMULError.malformedPDU }
         let primary = Data(data[4..<(4 + primaryLength)])
         let secondaryStart = 4 + primaryLength
         let secondaryLength = Int(UInt16(data[secondaryStart]) << 8 | UInt16(data[secondaryStart + 1]))
-        guard data.count == secondaryStart + 2 + secondaryLength, let username = String(data: primary, encoding: .utf8) else { throw DICOMULError.malformedPDU }
+        guard data.count == secondaryStart + 2 + secondaryLength else { throw DICOMULError.malformedPDU }
+        let secondary = Data(data[(secondaryStart + 2)..<data.count])
         switch data[0] {
-        case 1: guard secondaryLength == 0 else { throw DICOMULError.malformedPDU }; return .username(username)
-        case 2: guard let password = String(data: data[(secondaryStart + 2)..<data.count], encoding: .utf8) else { throw DICOMULError.malformedPDU }; return .usernameAndPassword(username: username, password: password)
+        case 1:
+            guard secondaryLength == 0, let username = String(data: primary, encoding: .utf8) else { throw DICOMULError.malformedPDU }
+            return (.username(username), positiveResponseRequested)
+        case 2:
+            guard let username = String(data: primary, encoding: .utf8), let password = String(data: secondary, encoding: .utf8) else { throw DICOMULError.malformedPDU }
+            return (.usernameAndPassword(username: username, password: password), positiveResponseRequested)
+        case 3:
+            guard secondaryLength == 0 else { throw DICOMULError.malformedPDU }
+            return (.kerberos(primary), positiveResponseRequested)
+        case 4:
+            guard secondaryLength == 0, let assertion = String(data: primary, encoding: .utf8) else { throw DICOMULError.malformedPDU }
+            return (.saml(assertion), positiveResponseRequested)
+        case 5:
+            guard secondaryLength == 0, let token = String(data: primary, encoding: .utf8) else { throw DICOMULError.malformedPDU }
+            return (.jwt(token), positiveResponseRequested)
         default: throw DICOMULError.malformedPDU
         }
+    }
+}
+
+/// A user identity negotiation item: the credentials plus whether the SCU requests a
+/// server response (PS3.7 D.3.3.7).
+public struct DICOMUserIdentityNegotiation: Sendable, Equatable {
+    public let identity: DICOMUserIdentity
+    public let positiveResponseRequested: Bool
+
+    public init(identity: DICOMUserIdentity, positiveResponseRequested: Bool = false) {
+        self.identity = identity
+        self.positiveResponseRequested = positiveResponseRequested
+    }
+}
+
+/// Limits on outstanding asynchronous DIMSE operations (PS3.7 D.3.3.3). Sub-item 0x53.
+/// A value of 0 in either field means unlimited.
+public struct DICOMAsynchronousOperationsWindow: Sendable, Equatable {
+    public let maximumInvoked: UInt16
+    public let maximumPerformed: UInt16
+
+    public init(maximumInvoked: UInt16, maximumPerformed: UInt16) {
+        self.maximumInvoked = maximumInvoked
+        self.maximumPerformed = maximumPerformed
     }
 }
 
@@ -99,9 +144,10 @@ public struct DICOMAssociationRequest: Sendable, Equatable {
     public let applicationContextUID: String
     public let presentationContexts: [DICOMPresentationContext]
     public let maximumPDULength: UInt32
-    public let userIdentity: DICOMUserIdentity?
+    public let userIdentity: DICOMUserIdentityNegotiation?
     public let implementation: DICOMImplementationIdentification
     public let roleSelections: [DICOMRoleSelection]
+    public let asynchronousOperationsWindow: DICOMAsynchronousOperationsWindow?
 
     public init(
         calledAETitle: String,
@@ -109,9 +155,10 @@ public struct DICOMAssociationRequest: Sendable, Equatable {
         applicationContextUID: String = DICOMAssociationRequest.dicomApplicationContextUID,
         presentationContexts: [DICOMPresentationContext],
         maximumPDULength: UInt32 = 16_384,
-        userIdentity: DICOMUserIdentity? = nil,
+        userIdentity: DICOMUserIdentityNegotiation? = nil,
         implementation: DICOMImplementationIdentification = .dicomKit,
-        roleSelections: [DICOMRoleSelection] = []
+        roleSelections: [DICOMRoleSelection] = [],
+        asynchronousOperationsWindow: DICOMAsynchronousOperationsWindow? = nil
     ) {
         self.calledAETitle = calledAETitle
         self.callingAETitle = callingAETitle
@@ -121,6 +168,7 @@ public struct DICOMAssociationRequest: Sendable, Equatable {
         self.userIdentity = userIdentity
         self.implementation = implementation
         self.roleSelections = roleSelections
+        self.asynchronousOperationsWindow = asynchronousOperationsWindow
     }
 }
 
@@ -142,8 +190,10 @@ public struct DICOMAssociationAcceptance: Sendable, Equatable {
     public let maximumPDULength: UInt32
     public let implementation: DICOMImplementationIdentification
     public let roleSelections: [DICOMRoleSelection]
-    public init(calledAETitle: String, callingAETitle: String, applicationContextUID: String = DICOMAssociationRequest.dicomApplicationContextUID, presentationContexts: [DICOMPresentationContextAcceptance], maximumPDULength: UInt32 = 16_384, implementation: DICOMImplementationIdentification = .dicomKit, roleSelections: [DICOMRoleSelection] = []) {
-        self.calledAETitle = calledAETitle; self.callingAETitle = callingAETitle; self.applicationContextUID = applicationContextUID; self.presentationContexts = presentationContexts; self.maximumPDULength = maximumPDULength; self.implementation = implementation; self.roleSelections = roleSelections
+    public let asynchronousOperationsWindow: DICOMAsynchronousOperationsWindow?
+    public let userIdentityResponse: Data?
+    public init(calledAETitle: String, callingAETitle: String, applicationContextUID: String = DICOMAssociationRequest.dicomApplicationContextUID, presentationContexts: [DICOMPresentationContextAcceptance], maximumPDULength: UInt32 = 16_384, implementation: DICOMImplementationIdentification = .dicomKit, roleSelections: [DICOMRoleSelection] = [], asynchronousOperationsWindow: DICOMAsynchronousOperationsWindow? = nil, userIdentityResponse: Data? = nil) {
+        self.calledAETitle = calledAETitle; self.callingAETitle = callingAETitle; self.applicationContextUID = applicationContextUID; self.presentationContexts = presentationContexts; self.maximumPDULength = maximumPDULength; self.implementation = implementation; self.roleSelections = roleSelections; self.asynchronousOperationsWindow = asynchronousOperationsWindow; self.userIdentityResponse = userIdentityResponse
     }
 }
 
@@ -264,8 +314,11 @@ public enum DICOMULPDU: Sendable, Equatable {
         appendUInt32(request.maximumPDULength, to: &maximumLength)
         appendItem(type: 0x51, value: maximumLength, to: &userInformation)
         appendImplementation(request.implementation, to: &userInformation)
+        if let window = request.asynchronousOperationsWindow { appendAsyncWindow(window, to: &userInformation) }
         for role in request.roleSelections { appendItem(type: 0x54, value: encodeRoleSelection(role), to: &userInformation) }
-        if let identity = request.userIdentity?.encoded { appendItem(type: 0x58, value: identity, to: &userInformation) }
+        if let negotiation = request.userIdentity, let identity = negotiation.identity.encoded(positiveResponseRequested: negotiation.positiveResponseRequested) {
+            appendItem(type: 0x58, value: identity, to: &userInformation)
+        }
         appendItem(type: 0x50, value: userInformation, to: &body)
         return body
     }
@@ -278,10 +331,11 @@ public enum DICOMULPDU: Sendable, Equatable {
         var applicationContext: String?
         var contexts: [DICOMPresentationContext] = []
         var maximumLength: UInt32 = 16_384
-        var userIdentity: DICOMUserIdentity?
+        var userIdentity: DICOMUserIdentityNegotiation?
         var implementationClassUID: String?
         var implementationVersionName: String?
         var roleSelections: [DICOMRoleSelection] = []
+        var asyncWindow: DICOMAsynchronousOperationsWindow?
         while offset < data.count {
             let item = try readItem(data, offset: &offset)
             switch item.type {
@@ -295,16 +349,20 @@ public enum DICOMULPDU: Sendable, Equatable {
                     let subitem = try readItem(item.value, offset: &userOffset)
                     if subitem.type == 0x51, subitem.value.count == 4 { maximumLength = readUInt32(subitem.value, at: 0) }
                     if subitem.type == 0x52 { implementationClassUID = try decodeTrimmed(subitem.value, padding: 0x00) }
+                    if subitem.type == 0x53 { asyncWindow = try decodeAsyncWindow(subitem.value) }
                     if subitem.type == 0x55 { implementationVersionName = try decodeTrimmed(subitem.value, padding: 0x20) }
                     if subitem.type == 0x54 { roleSelections.append(try decodeRoleSelection(subitem.value)) }
-                    if subitem.type == 0x58 { userIdentity = try DICOMUserIdentity.decode(subitem.value) }
+                    if subitem.type == 0x58 {
+                        let decoded = try DICOMUserIdentity.decode(subitem.value)
+                        userIdentity = DICOMUserIdentityNegotiation(identity: decoded.identity, positiveResponseRequested: decoded.positiveResponseRequested)
+                    }
                 }
             default: continue
             }
         }
         guard let applicationContext, !contexts.isEmpty else { throw DICOMULError.malformedPDU }
         let implementation = try DICOMImplementationIdentification(classUID: implementationClassUID ?? DICOMImplementationIdentification.dicomKit.classUID, versionName: implementationVersionName)
-        return DICOMAssociationRequest(calledAETitle: called, callingAETitle: calling, applicationContextUID: applicationContext, presentationContexts: contexts, maximumPDULength: maximumLength, userIdentity: userIdentity, implementation: implementation, roleSelections: roleSelections)
+        return DICOMAssociationRequest(calledAETitle: called, callingAETitle: calling, applicationContextUID: applicationContext, presentationContexts: contexts, maximumPDULength: maximumLength, userIdentity: userIdentity, implementation: implementation, roleSelections: roleSelections, asynchronousOperationsWindow: asyncWindow)
     }
 
     private static func encodeAssociationAcceptance(_ acceptance: DICOMAssociationAcceptance) throws -> Data {
@@ -319,7 +377,9 @@ public enum DICOMULPDU: Sendable, Equatable {
         }
         var user = Data(); var maximum = Data(); appendUInt32(acceptance.maximumPDULength, to: &maximum); appendItem(type: 0x51, value: maximum, to: &user)
         appendImplementation(acceptance.implementation, to: &user)
+        if let window = acceptance.asynchronousOperationsWindow { appendAsyncWindow(window, to: &user) }
         for role in acceptance.roleSelections { appendItem(type: 0x54, value: encodeRoleSelection(role), to: &user) }
+        if let response = acceptance.userIdentityResponse { try appendUserIdentityResponse(response, to: &user) }
         appendItem(type: 0x50, value: user, to: &body)
         return body
     }
@@ -330,6 +390,8 @@ public enum DICOMULPDU: Sendable, Equatable {
         var offset = 68; var applicationContext: String?; var contexts: [DICOMPresentationContextAcceptance] = []; var maximum: UInt32 = 16_384
         var implementationClassUID: String?; var implementationVersionName: String?
         var roleSelections: [DICOMRoleSelection] = []
+        var asyncWindow: DICOMAsynchronousOperationsWindow?
+        var userIdentityResponse: Data?
         while offset < data.count {
             let item = try readItem(data, offset: &offset)
             if item.type == 0x10 { applicationContext = String(data: item.value, encoding: .ascii) }
@@ -340,14 +402,16 @@ public enum DICOMULPDU: Sendable, Equatable {
                     let subitem = try readItem(item.value, offset: &userOffset)
                     if subitem.type == 0x51, subitem.value.count == 4 { maximum = readUInt32(subitem.value, at: 0) }
                     if subitem.type == 0x52 { implementationClassUID = try decodeTrimmed(subitem.value, padding: 0x00) }
+                    if subitem.type == 0x53 { asyncWindow = try decodeAsyncWindow(subitem.value) }
                     if subitem.type == 0x55 { implementationVersionName = try decodeTrimmed(subitem.value, padding: 0x20) }
                     if subitem.type == 0x54 { roleSelections.append(try decodeRoleSelection(subitem.value)) }
+                    if subitem.type == 0x59 { userIdentityResponse = try decodeUserIdentityResponse(subitem.value) }
                 }
             }
         }
         guard let applicationContext, !contexts.isEmpty else { throw DICOMULError.malformedPDU }
         let implementation = try DICOMImplementationIdentification(classUID: implementationClassUID ?? DICOMImplementationIdentification.dicomKit.classUID, versionName: implementationVersionName)
-        return DICOMAssociationAcceptance(calledAETitle: called, callingAETitle: calling, applicationContextUID: applicationContext, presentationContexts: contexts, maximumPDULength: maximum, implementation: implementation, roleSelections: roleSelections)
+        return DICOMAssociationAcceptance(calledAETitle: called, callingAETitle: calling, applicationContextUID: applicationContext, presentationContexts: contexts, maximumPDULength: maximum, implementation: implementation, roleSelections: roleSelections, asynchronousOperationsWindow: asyncWindow, userIdentityResponse: userIdentityResponse)
     }
 
     private static func decodeAcceptedPresentationContext(_ data: Data) throws -> DICOMPresentationContextAcceptance {
@@ -444,6 +508,31 @@ public enum DICOMULPDU: Sendable, Equatable {
         guard data.count == uidLength + 4, let uid = String(data: data.subdata(in: uidStart..<(uidStart + uidLength)), encoding: .ascii) else { throw DICOMULError.malformedPDU }
         let scu = data[uidStart + uidLength]; let scp = data[uidStart + uidLength + 1]
         return DICOMRoleSelection(sopClassUID: uid, supportsSCURole: scu != 0, supportsSCPRole: scp != 0)
+    }
+
+    private static func appendAsyncWindow(_ window: DICOMAsynchronousOperationsWindow, to userInformation: inout Data) {
+        var value = Data(); appendUInt16(window.maximumInvoked, to: &value); appendUInt16(window.maximumPerformed, to: &value)
+        appendItem(type: 0x53, value: value, to: &userInformation)
+    }
+
+    private static func decodeAsyncWindow(_ data: Data) throws -> DICOMAsynchronousOperationsWindow {
+        guard data.count == 4 else { throw DICOMULError.malformedPDU }
+        let invoked = UInt16(data[data.startIndex]) << 8 | UInt16(data[data.startIndex + 1])
+        let performed = UInt16(data[data.startIndex + 2]) << 8 | UInt16(data[data.startIndex + 3])
+        return DICOMAsynchronousOperationsWindow(maximumInvoked: invoked, maximumPerformed: performed)
+    }
+
+    private static func appendUserIdentityResponse(_ response: Data, to userInformation: inout Data) throws {
+        guard response.count <= Int(UInt16.max) else { throw DICOMULError.malformedPDU }
+        var value = Data(); appendUInt16(UInt16(response.count), to: &value); value.append(response)
+        appendItem(type: 0x59, value: value, to: &userInformation)
+    }
+
+    private static func decodeUserIdentityResponse(_ data: Data) throws -> Data {
+        guard data.count >= 2 else { throw DICOMULError.malformedPDU }
+        let length = Int(UInt16(data[data.startIndex]) << 8 | UInt16(data[data.startIndex + 1]))
+        guard data.count == 2 + length else { throw DICOMULError.malformedPDU }
+        return data.subdata(in: (data.startIndex + 2)..<data.endIndex)
     }
 
     private static func readItem(_ data: Data, offset: inout Int) throws -> (type: UInt8, value: Data) {

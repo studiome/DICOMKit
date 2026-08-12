@@ -205,7 +205,7 @@ struct DICOMULTests {
     }
 
     @Test func encodesAssociationUserIdentity() throws {
-        let identity = DICOMUserIdentity.usernameAndPassword(username: "dicom", password: "secret")
+        let identity = DICOMUserIdentityNegotiation(identity: .usernameAndPassword(username: "dicom", password: "secret"))
         let request = DICOMAssociationRequest(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, abstractSyntaxUID: "1.2.840.10008.1.1", transferSyntaxUIDs: ["1.2.840.10008.1.2"])], userIdentity: identity)
         #expect(try DICOMULPDU.decode(DICOMULPDU.associationRequest(request).encoded()) == .associationRequest(request))
     }
@@ -276,6 +276,54 @@ struct DICOMULTests {
         userInformation.append(ulItem(0x54, malformedRole))
         let pdu = rawAssociationRequestPDU(userInformation: userInformation)
         #expect(throws: DICOMULError.malformedPDU) { try DICOMULPDU.decode(pdu) }
+    }
+
+    @Test func encodesAndDecodesAsyncOperationsWindowInRequest() throws {
+        let window = DICOMAsynchronousOperationsWindow(maximumInvoked: 3, maximumPerformed: 5)
+        let request = DICOMAssociationRequest(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, abstractSyntaxUID: "1.2.840.10008.1.1", transferSyntaxUIDs: ["1.2.840.10008.1.2"])], asynchronousOperationsWindow: window)
+        #expect(try DICOMULPDU.decode(DICOMULPDU.associationRequest(request).encoded()) == .associationRequest(request))
+    }
+
+    @Test func encodesAndDecodesAsyncOperationsWindowInAcceptance() throws {
+        let window = DICOMAsynchronousOperationsWindow(maximumInvoked: 0, maximumPerformed: 0)
+        let acceptance = DICOMAssociationAcceptance(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, result: .acceptance, transferSyntaxUID: "1.2.840.10008.1.2")], asynchronousOperationsWindow: window)
+        #expect(try DICOMULPDU.decode(DICOMULPDU.associationAcceptance(acceptance).encoded()) == .associationAcceptance(acceptance))
+    }
+
+    @Test func throwsForMalformedAsyncOperationsWindowBody() throws {
+        var userInformation = Data()
+        userInformation.append(ulItem(0x51, ulUInt32(16_384)))
+        userInformation.append(ulItem(0x53, Data([0, 1, 0])))
+        let pdu = rawAssociationRequestPDU(userInformation: userInformation)
+        #expect(throws: DICOMULError.malformedPDU) { try DICOMULPDU.decode(pdu) }
+    }
+
+    @Test func roundTripsEachUserIdentityType() throws {
+        let identities: [DICOMUserIdentity] = [
+            .username("dicom"),
+            .usernameAndPassword(username: "dicom", password: "secret"),
+            .kerberos(Data([0x01, 0x02, 0x03, 0x04])),
+            .saml("<Assertion/>"),
+            .jwt("eyJhbGciOiJIUzI1NiJ9.e30.abc")
+        ]
+        for identity in identities {
+            let negotiation = DICOMUserIdentityNegotiation(identity: identity)
+            let request = DICOMAssociationRequest(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, abstractSyntaxUID: "1.2.840.10008.1.1", transferSyntaxUIDs: ["1.2.840.10008.1.2"])], userIdentity: negotiation)
+            #expect(try DICOMULPDU.decode(DICOMULPDU.associationRequest(request).encoded()) == .associationRequest(request))
+        }
+    }
+
+    @Test func positiveResponseRequestedSurvivesRoundTrip() throws {
+        let negotiation = DICOMUserIdentityNegotiation(identity: .username("dicom"), positiveResponseRequested: true)
+        let request = DICOMAssociationRequest(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, abstractSyntaxUID: "1.2.840.10008.1.1", transferSyntaxUIDs: ["1.2.840.10008.1.2"])], userIdentity: negotiation)
+        let decoded = try DICOMULPDU.decode(DICOMULPDU.associationRequest(request).encoded())
+        guard case .associationRequest(let decodedRequest) = decoded else { Issue.record("expected associationRequest"); return }
+        #expect(decodedRequest.userIdentity?.positiveResponseRequested == true)
+    }
+
+    @Test func encodesAndDecodesUserIdentityResponseInAcceptance() throws {
+        let acceptance = DICOMAssociationAcceptance(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, result: .acceptance, transferSyntaxUID: "1.2.840.10008.1.2")], userIdentityResponse: Data([0xAA, 0xBB, 0xCC]))
+        #expect(try DICOMULPDU.decode(DICOMULPDU.associationAcceptance(acceptance).encoded()) == .associationAcceptance(acceptance))
     }
 }
 
