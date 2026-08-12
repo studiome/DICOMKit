@@ -62,13 +62,15 @@ extension DICOMAssociationPolicy {
 
     /// Negotiates a single presentation context. The transfer syntax field of a
     /// non-accepted context is meaningless per PS3.8 but must still be present on
-    /// the wire, so a rejected context echoes the proposal's first transfer syntax.
+    /// the wire, so a rejected context echoes the proposal's first transfer syntax —
+    /// or the empty string when the proposal listed none, which is harmless since
+    /// PS3.8 says the field is not tested for a non-accepted context.
     private func negotiate(_ context: DICOMPresentationContext) -> DICOMPresentationContextAcceptance {
         guard supportedAbstractSyntaxes.contains(context.abstractSyntaxUID) else {
-            return DICOMPresentationContextAcceptance(id: context.id, result: .abstractSyntaxNotSupported, transferSyntaxUID: context.transferSyntaxUIDs[0])
+            return DICOMPresentationContextAcceptance(id: context.id, result: .abstractSyntaxNotSupported, transferSyntaxUID: context.transferSyntaxUIDs.first ?? "")
         }
         guard let transferSyntax = supportedTransferSyntaxes.first(where: context.transferSyntaxUIDs.contains) else {
-            return DICOMPresentationContextAcceptance(id: context.id, result: .transferSyntaxesNotSupported, transferSyntaxUID: context.transferSyntaxUIDs[0])
+            return DICOMPresentationContextAcceptance(id: context.id, result: .transferSyntaxesNotSupported, transferSyntaxUID: context.transferSyntaxUIDs.first ?? "")
         }
         return DICOMPresentationContextAcceptance(id: context.id, result: .acceptance, transferSyntaxUID: transferSyntax)
     }

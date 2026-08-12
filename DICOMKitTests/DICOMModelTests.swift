@@ -716,6 +716,18 @@ struct DICOMULTests {
         ])
     }
 
+    @Test func negotiateHandlesContextWithNoTransferSyntaxes() {
+        let policy = DICOMAssociationPolicy(supportedAbstractSyntaxes: [DICOMSOPClass.verification], supportedTransferSyntaxes: ["1.2.840.10008.1.2"])
+
+        let unsupportedAbstract = DICOMAssociationRequest(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, abstractSyntaxUID: "1.9.9", transferSyntaxUIDs: [])])
+        guard case .accept(let rejectedAbstract) = policy.negotiate(unsupportedAbstract) else { Issue.record("expected accept"); return }
+        #expect(rejectedAbstract.presentationContexts == [.init(id: 1, result: .abstractSyntaxNotSupported, transferSyntaxUID: "")])
+
+        let supportedAbstract = DICOMAssociationRequest(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, abstractSyntaxUID: DICOMSOPClass.verification, transferSyntaxUIDs: [])])
+        guard case .accept(let rejectedTransferSyntax) = policy.negotiate(supportedAbstract) else { Issue.record("expected accept"); return }
+        #expect(rejectedTransferSyntax.presentationContexts == [.init(id: 1, result: .transferSyntaxesNotSupported, transferSyntaxUID: "")])
+    }
+
     @Test func policyAcceptsAssociationWhenEveryContextIsRejected() {
         let policy = DICOMAssociationPolicy(supportedAbstractSyntaxes: [], supportedTransferSyntaxes: ["1.2.840.10008.1.2"])
         let request = DICOMAssociationRequest(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, abstractSyntaxUID: "1.9.9", transferSyntaxUIDs: ["1.2.840.10008.1.2"])])
