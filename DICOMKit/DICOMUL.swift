@@ -147,7 +147,9 @@ public struct DICOMAssociationRequest: Sendable, Equatable {
     public let presentationContexts: [DICOMPresentationContext]
     public let maximumPDULength: UInt32
     public let userIdentity: DICOMUserIdentityNegotiation?
-    public let implementation: DICOMImplementationIdentification
+    /// `nil` when a decoded PDU's peer sent no Implementation Class UID sub-item (0x52).
+    /// PDUs DICOMKit originates always carry `.dicomKit` by default.
+    public let implementation: DICOMImplementationIdentification?
     public let roleSelections: [DICOMRoleSelection]
     public let asynchronousOperationsWindow: DICOMAsynchronousOperationsWindow?
 
@@ -158,7 +160,7 @@ public struct DICOMAssociationRequest: Sendable, Equatable {
         presentationContexts: [DICOMPresentationContext],
         maximumPDULength: UInt32 = 16_384,
         userIdentity: DICOMUserIdentityNegotiation? = nil,
-        implementation: DICOMImplementationIdentification = .dicomKit,
+        implementation: DICOMImplementationIdentification? = .dicomKit,
         roleSelections: [DICOMRoleSelection] = [],
         asynchronousOperationsWindow: DICOMAsynchronousOperationsWindow? = nil
     ) {
@@ -190,11 +192,13 @@ public struct DICOMAssociationAcceptance: Sendable, Equatable {
     public let applicationContextUID: String
     public let presentationContexts: [DICOMPresentationContextAcceptance]
     public let maximumPDULength: UInt32
-    public let implementation: DICOMImplementationIdentification
+    /// `nil` when a decoded PDU's peer sent no Implementation Class UID sub-item (0x52).
+    /// PDUs DICOMKit originates always carry `.dicomKit` by default.
+    public let implementation: DICOMImplementationIdentification?
     public let roleSelections: [DICOMRoleSelection]
     public let asynchronousOperationsWindow: DICOMAsynchronousOperationsWindow?
     public let userIdentityResponse: Data?
-    public init(calledAETitle: String, callingAETitle: String, applicationContextUID: String = DICOMAssociationRequest.dicomApplicationContextUID, presentationContexts: [DICOMPresentationContextAcceptance], maximumPDULength: UInt32 = 16_384, implementation: DICOMImplementationIdentification = .dicomKit, roleSelections: [DICOMRoleSelection] = [], asynchronousOperationsWindow: DICOMAsynchronousOperationsWindow? = nil, userIdentityResponse: Data? = nil) {
+    public init(calledAETitle: String, callingAETitle: String, applicationContextUID: String = DICOMAssociationRequest.dicomApplicationContextUID, presentationContexts: [DICOMPresentationContextAcceptance], maximumPDULength: UInt32 = 16_384, implementation: DICOMImplementationIdentification? = .dicomKit, roleSelections: [DICOMRoleSelection] = [], asynchronousOperationsWindow: DICOMAsynchronousOperationsWindow? = nil, userIdentityResponse: Data? = nil) {
         self.calledAETitle = calledAETitle; self.callingAETitle = callingAETitle; self.applicationContextUID = applicationContextUID; self.presentationContexts = presentationContexts; self.maximumPDULength = maximumPDULength; self.implementation = implementation; self.roleSelections = roleSelections; self.asynchronousOperationsWindow = asynchronousOperationsWindow; self.userIdentityResponse = userIdentityResponse
     }
 }
@@ -315,7 +319,7 @@ public enum DICOMULPDU: Sendable, Equatable {
         var maximumLength = Data()
         appendUInt32(request.maximumPDULength, to: &maximumLength)
         try appendItem(type: 0x51, value: maximumLength, to: &userInformation)
-        try appendImplementation(request.implementation, to: &userInformation)
+        if let implementation = request.implementation { try appendImplementation(implementation, to: &userInformation) }
         if let window = request.asynchronousOperationsWindow { try appendAsyncWindow(window, to: &userInformation) }
         for role in request.roleSelections { try appendItem(type: 0x54, value: encodeRoleSelection(role), to: &userInformation) }
         if let negotiation = request.userIdentity {
@@ -364,7 +368,7 @@ public enum DICOMULPDU: Sendable, Equatable {
             }
         }
         guard let applicationContext, !contexts.isEmpty else { throw DICOMULError.malformedPDU }
-        let implementation = try DICOMImplementationIdentification(classUID: implementationClassUID ?? DICOMImplementationIdentification.dicomKit.classUID, versionName: implementationVersionName)
+        let implementation = try implementationClassUID.map { try DICOMImplementationIdentification(classUID: $0, versionName: implementationVersionName) }
         return DICOMAssociationRequest(calledAETitle: called, callingAETitle: calling, applicationContextUID: applicationContext, presentationContexts: contexts, maximumPDULength: maximumLength, userIdentity: userIdentity, implementation: implementation, roleSelections: roleSelections, asynchronousOperationsWindow: asyncWindow)
     }
 
@@ -379,7 +383,7 @@ public enum DICOMULPDU: Sendable, Equatable {
             try appendItem(type: 0x21, value: value, to: &body)
         }
         var user = Data(); var maximum = Data(); appendUInt32(acceptance.maximumPDULength, to: &maximum); try appendItem(type: 0x51, value: maximum, to: &user)
-        try appendImplementation(acceptance.implementation, to: &user)
+        if let implementation = acceptance.implementation { try appendImplementation(implementation, to: &user) }
         if let window = acceptance.asynchronousOperationsWindow { try appendAsyncWindow(window, to: &user) }
         for role in acceptance.roleSelections { try appendItem(type: 0x54, value: encodeRoleSelection(role), to: &user) }
         if let response = acceptance.userIdentityResponse { try appendUserIdentityResponse(response, to: &user) }
@@ -413,7 +417,7 @@ public enum DICOMULPDU: Sendable, Equatable {
             }
         }
         guard let applicationContext, !contexts.isEmpty else { throw DICOMULError.malformedPDU }
-        let implementation = try DICOMImplementationIdentification(classUID: implementationClassUID ?? DICOMImplementationIdentification.dicomKit.classUID, versionName: implementationVersionName)
+        let implementation = try implementationClassUID.map { try DICOMImplementationIdentification(classUID: $0, versionName: implementationVersionName) }
         return DICOMAssociationAcceptance(calledAETitle: called, callingAETitle: calling, applicationContextUID: applicationContext, presentationContexts: contexts, maximumPDULength: maximum, implementation: implementation, roleSelections: roleSelections, asynchronousOperationsWindow: asyncWindow, userIdentityResponse: userIdentityResponse)
     }
 

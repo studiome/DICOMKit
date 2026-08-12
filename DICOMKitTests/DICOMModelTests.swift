@@ -260,14 +260,28 @@ struct DICOMULTests {
         #expect(request.implementation == .dicomKit)
     }
 
-    @Test func defaultsImplementationClassUIDWhenPeerOmitsSubItem() throws {
+    @Test func implementationIsNilWhenPeerOmitsSubItem() throws {
         var userInformation = Data()
         userInformation.append(ulItem(0x51, ulUInt32(16_384)))
         let pdu = rawAssociationRequestPDU(userInformation: userInformation)
         let decoded = try DICOMULPDU.decode(pdu)
         guard case .associationRequest(let request) = decoded else { Issue.record("expected associationRequest"); return }
-        #expect(request.implementation.classUID == DICOMImplementationIdentification.dicomKit.classUID)
-        #expect(request.implementation.versionName == nil)
+        #expect(request.implementation == nil)
+    }
+
+    /// A decoded PDU must attribute implementation identity to whoever actually sent it:
+    /// substituting DICOMKit's own UID for an absent 0x52 would misreport the peer's
+    /// identity to an SCP that logs it, or forward it as the peer's own on re-encode.
+    @Test func reencodingRequestWithoutImplementationEmitsNoSubItemAndRoundTrips() throws {
+        var userInformation = Data()
+        userInformation.append(ulItem(0x51, ulUInt32(16_384)))
+        let pdu = rawAssociationRequestPDU(userInformation: userInformation)
+        guard case .associationRequest(let decoded) = try DICOMULPDU.decode(pdu) else { Issue.record("expected associationRequest"); return }
+        #expect(decoded.implementation == nil)
+
+        let reencoded = try DICOMULPDU.associationRequest(decoded).encoded()
+        #expect(!userInformationSubItemTypes(reencoded).contains(0x52))
+        #expect(try DICOMULPDU.decode(reencoded) == .associationRequest(decoded))
     }
 
     @Test func decodeThrowsInvalidPresentationContextForEvenContextID() throws {
@@ -936,6 +950,30 @@ private func rawAssociationAcceptancePDU(contextID: UInt8 = 1, userInformation: 
     pdu.append(ulUInt32(UInt32(body.count)))
     pdu.append(body)
     return pdu
+}
+
+/// Walks the User Information item (0x50) of a complete, encoded A-ASSOCIATE-RQ/AC PDU and
+/// returns its sub-item type bytes, to check for a specific sub-item's presence independent
+/// of incidental byte values elsewhere in the PDU.
+private func userInformationSubItemTypes(_ pdu: Data) -> [UInt8] {
+    func items(_ data: Data) -> [(type: UInt8, value: Data)] {
+        var offset = data.startIndex
+        var result: [(UInt8, Data)] = []
+        while offset + 4 <= data.endIndex {
+            let type = data[offset]
+            let length = Int(data[offset + 2]) << 8 | Int(data[offset + 3])
+            let valueStart = offset + 4
+            guard valueStart + length <= data.endIndex else { break }
+            result.append((type, data.subdata(in: valueStart..<(valueStart + length))))
+            offset = valueStart + length
+        }
+        return result
+    }
+    // 6-byte UL header + 4 reserved + 16-byte called AE + 16-byte calling AE + 32 reserved.
+    guard pdu.count > 74 else { return [] }
+    let body = pdu.subdata(in: (pdu.startIndex + 74)..<pdu.endIndex)
+    guard let userInformation = items(body).first(where: { $0.type == 0x50 }) else { return [] }
+    return items(userInformation.value).map(\.type)
 }
 
 private actor DICOMULMockTransport: DICOMULTransport {
