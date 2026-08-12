@@ -44,6 +44,7 @@ public actor DICOMAssociation {
     private let transport: any DICOMULTransport
     private let responseTimeout: Duration?
     private var acceptance: DICOMAssociationAcceptance?
+    private var requestedPresentationContexts: [DICOMPresentationContext] = []
 
     /// Creates an association. A non-`nil` timeout applies to every peer PDU
     /// awaited by this actor, including association negotiation and DIMSE responses.
@@ -56,12 +57,24 @@ public actor DICOMAssociation {
     @discardableResult
     public func request(_ request: DICOMAssociationRequest) async throws -> DICOMAssociationAcceptance {
         guard acceptance == nil else { throw DICOMAssociationError.unexpectedPDU }
+        requestedPresentationContexts = request.presentationContexts
         try await transport.send(.associationRequest(request))
         switch try await receivePDU() {
         case .associationAcceptance(let result): acceptance = result; return result
         case .associationRejection(let rejection): throw DICOMAssociationError.rejected(rejection)
         default: throw DICOMAssociationError.unexpectedPDU
         }
+    }
+
+    /// Returns the negotiated presentation-context ID for an abstract syntax
+    /// (normally a SOP Class UID), or `nil` when it was not accepted.
+    public func presentationContextID(for abstractSyntaxUID: String) -> UInt8? {
+        guard let acceptance else { return nil }
+        return requestedPresentationContexts.first { requested in
+            requested.abstractSyntaxUID == abstractSyntaxUID && acceptance.presentationContexts.contains { accepted in
+                accepted.id == requested.id && accepted.result == .acceptance
+            }
+        }?.id
     }
 
     /// Performs a C-ECHO request and returns the DIMSE status code.
@@ -222,6 +235,7 @@ public actor DICOMAssociation {
         try await transport.send(.releaseRequest)
         guard case .releaseResponse = try await receivePDU() else { throw DICOMAssociationError.unexpectedPDU }
         acceptance = nil
+        requestedPresentationContexts = []
         await transport.close()
     }
 

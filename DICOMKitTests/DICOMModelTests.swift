@@ -165,6 +165,22 @@ struct DICOMULTests {
         let request = DICOMAssociationRequest(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, abstractSyntaxUID: "1.2.840.10008.1.1", transferSyntaxUIDs: ["1.2.840.10008.1.2"])])
         await #expect(throws: DICOMAssociationError.timedOut) { try await association.request(request) }
     }
+
+    @Test func associationSelectsAcceptedPresentationContextForSOPClass() async throws {
+        let transport = DICOMULMockTransport(received: [
+            .associationAcceptance(DICOMAssociationAcceptance(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [
+                .init(id: 1, result: .abstractSyntaxNotSupported, transferSyntaxUID: "1.2.840.10008.1.2"),
+                .init(id: 3, result: .acceptance, transferSyntaxUID: "1.2.840.10008.1.2")
+            ]))
+        ])
+        let association = DICOMAssociation(transport: transport)
+        let sopClass = "1.2.840.10008.5.1.4.1.1.2"
+        _ = try await association.request(DICOMAssociationRequest(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [
+            .init(id: 1, abstractSyntaxUID: "1.2.840.10008.1.1", transferSyntaxUIDs: ["1.2.840.10008.1.2"]),
+            .init(id: 3, abstractSyntaxUID: sopClass, transferSyntaxUIDs: ["1.2.840.10008.1.2"])
+        ]))
+        #expect(await association.presentationContextID(for: sopClass) == 3)
+    }
 }
 
 private actor DICOMULMockTransport: DICOMULTransport {
