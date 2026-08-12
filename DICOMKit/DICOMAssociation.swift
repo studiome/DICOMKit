@@ -98,6 +98,36 @@ public actor DICOMAssociation {
         }
     }
 
+    /// Waits for the peer's A-ASSOCIATE-RQ. Pass the result to ``accept(_:policy:)``
+    /// to negotiate and respond. Throws ``DICOMAssociationError/unexpectedPDU`` if
+    /// this association is already established or the peer sends any other PDU.
+    public func receiveAssociationRequest() async throws -> DICOMAssociationRequest {
+        guard acceptance == nil else { throw DICOMAssociationError.unexpectedPDU }
+        guard case .associationRequest(let request) = try await receivePDU() else { throw DICOMAssociationError.unexpectedPDU }
+        return request
+    }
+
+    /// Negotiates `request` against `policy` and sends the resulting A-ASSOCIATE-AC
+    /// or A-ASSOCIATE-RJ. On acceptance, records the association state so that
+    /// ``receiveRequest()``, the `respondTo…` helpers, ``presentationContextID(for:)``,
+    /// and ``negotiatedRoles(for:)`` behave as they do for an SCU. On rejection, closes
+    /// the transport and throws ``DICOMAssociationError/rejected(_:)`` with the
+    /// rejection that was sent.
+    @discardableResult
+    public func accept(_ request: DICOMAssociationRequest, policy: DICOMAssociationPolicy) async throws -> DICOMAssociationAcceptance {
+        switch policy.negotiate(request) {
+        case .accept(let result):
+            requestedPresentationContexts = request.presentationContexts
+            try await transport.send(.associationAcceptance(result))
+            acceptance = result
+            return result
+        case .reject(let rejection):
+            try await transport.send(.associationRejection(rejection))
+            await transport.close()
+            throw DICOMAssociationError.rejected(rejection)
+        }
+    }
+
     /// Returns the negotiated presentation-context ID for an abstract syntax
     /// (normally a SOP Class UID), or `nil` when it was not accepted.
     public func presentationContextID(for abstractSyntaxUID: String) -> UInt8? {

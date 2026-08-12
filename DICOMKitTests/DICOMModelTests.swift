@@ -589,6 +589,92 @@ struct DICOMULTests {
         await #expect(throws: DICOMAssociationError.notAssociated) { try await association.respondToCMove(messageIDBeingRespondedTo: 45, contextID: 1, status: .success, subOperations: nil) }
         await #expect(throws: DICOMAssociationError.notAssociated) { try await association.respondToCGet(messageIDBeingRespondedTo: 45, contextID: 1, status: .success, subOperations: nil) }
     }
+
+    @Test func policyRejectsUnsupportedApplicationContext() {
+        let policy = DICOMAssociationPolicy(supportedAbstractSyntaxes: ["1.2.840.10008.1.1"], supportedTransferSyntaxes: ["1.2.840.10008.1.2"])
+        let request = DICOMAssociationRequest(calledAETitle: "PACS", callingAETitle: "DICOMKIT", applicationContextUID: "1.2.3", presentationContexts: [.init(id: 1, abstractSyntaxUID: "1.2.840.10008.1.1", transferSyntaxUIDs: ["1.2.840.10008.1.2"])])
+        guard case .reject(let rejection) = policy.negotiate(request) else { Issue.record("expected reject"); return }
+        #expect(rejection == DICOMAssociationRejection(result: .permanent, source: .serviceUser, reason: 2))
+    }
+
+    @Test func policyRejectsUnrecognizedCalledAETitle() {
+        let policy = DICOMAssociationPolicy(calledAETitles: ["PACS"], supportedAbstractSyntaxes: ["1.2.840.10008.1.1"], supportedTransferSyntaxes: ["1.2.840.10008.1.2"])
+        let request = DICOMAssociationRequest(calledAETitle: "OTHER", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, abstractSyntaxUID: "1.2.840.10008.1.1", transferSyntaxUIDs: ["1.2.840.10008.1.2"])])
+        guard case .reject(let rejection) = policy.negotiate(request) else { Issue.record("expected reject"); return }
+        #expect(rejection == DICOMAssociationRejection(result: .permanent, source: .serviceUser, reason: 7))
+    }
+
+    @Test func policyNegotiatesPresentationContextsInProposalOrderPreferringOwnOrder() {
+        let policy = DICOMAssociationPolicy(supportedAbstractSyntaxes: ["1.2.840.10008.1.1"], supportedTransferSyntaxes: ["1.2.840.10008.1.2", "1.2.840.10008.1.2.1"])
+        let request = DICOMAssociationRequest(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [
+            .init(id: 1, abstractSyntaxUID: "1.2.840.10008.1.1", transferSyntaxUIDs: ["1.2.840.10008.1.2.1", "1.2.840.10008.1.2"]),
+            .init(id: 3, abstractSyntaxUID: "1.9.9", transferSyntaxUIDs: ["1.2.840.10008.1.2"]),
+            .init(id: 5, abstractSyntaxUID: "1.2.840.10008.1.1", transferSyntaxUIDs: ["1.2.840.10008.1.2.99"])
+        ])
+        guard case .accept(let acceptance) = policy.negotiate(request) else { Issue.record("expected accept"); return }
+        #expect(acceptance.calledAETitle == "PACS")
+        #expect(acceptance.callingAETitle == "DICOMKIT")
+        #expect(acceptance.presentationContexts == [
+            .init(id: 1, result: .acceptance, transferSyntaxUID: "1.2.840.10008.1.2"),
+            .init(id: 3, result: .abstractSyntaxNotSupported, transferSyntaxUID: "1.2.840.10008.1.2"),
+            .init(id: 5, result: .transferSyntaxesNotSupported, transferSyntaxUID: "1.2.840.10008.1.2.99")
+        ])
+    }
+
+    @Test func policyAcceptsAssociationWhenEveryContextIsRejected() {
+        let policy = DICOMAssociationPolicy(supportedAbstractSyntaxes: [], supportedTransferSyntaxes: ["1.2.840.10008.1.2"])
+        let request = DICOMAssociationRequest(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, abstractSyntaxUID: "1.9.9", transferSyntaxUIDs: ["1.2.840.10008.1.2"])])
+        guard case .accept(let acceptance) = policy.negotiate(request) else { Issue.record("expected accept"); return }
+        #expect(acceptance.presentationContexts == [.init(id: 1, result: .abstractSyntaxNotSupported, transferSyntaxUID: "1.2.840.10008.1.2")])
+    }
+
+    @Test func policyEchoesRoleSelectionAndWithholdsUnsupportedSCPRole() {
+        let policy = DICOMAssociationPolicy(supportedAbstractSyntaxes: ["1.2.840.10008.5.1.4.1.1.2", "1.2.840.10008.5.1.4.1.1.4"], supportedTransferSyntaxes: ["1.2.840.10008.1.2"], scpRoleAbstractSyntaxes: ["1.2.840.10008.5.1.4.1.1.2"])
+        let request = DICOMAssociationRequest(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, abstractSyntaxUID: "1.2.840.10008.5.1.4.1.1.2", transferSyntaxUIDs: ["1.2.840.10008.1.2"])], roleSelections: [
+            .init(sopClassUID: "1.2.840.10008.5.1.4.1.1.2", supportsSCURole: true, supportsSCPRole: true),
+            .init(sopClassUID: "1.2.840.10008.5.1.4.1.1.4", supportsSCURole: true, supportsSCPRole: true),
+            .init(sopClassUID: "1.9.9", supportsSCURole: true, supportsSCPRole: true)
+        ])
+        guard case .accept(let acceptance) = policy.negotiate(request) else { Issue.record("expected accept"); return }
+        #expect(acceptance.roleSelections == [
+            .init(sopClassUID: "1.2.840.10008.5.1.4.1.1.2", supportsSCURole: true, supportsSCPRole: true),
+            .init(sopClassUID: "1.2.840.10008.5.1.4.1.1.4", supportsSCURole: true, supportsSCPRole: false)
+        ])
+    }
+
+    @Test func acceptSendsAssociationAcceptanceAndAllowsSubsequentRequest() async throws {
+        let associationRequest = DICOMAssociationRequest(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, abstractSyntaxUID: "1.2.840.10008.1.1", transferSyntaxUIDs: ["1.2.840.10008.1.2"])])
+        let echo = DICOMDIMSECommand.cEchoRequest(messageID: 50)
+        let transport = DICOMULMockTransport(received: [
+            .associationRequest(associationRequest),
+            .pData(try echo.commandPDVs(contextID: 1, maximumPayloadLength: 1024))
+        ])
+        let association = DICOMAssociation(transport: transport)
+        let policy = DICOMAssociationPolicy(supportedAbstractSyntaxes: ["1.2.840.10008.1.1"], supportedTransferSyntaxes: ["1.2.840.10008.1.2"])
+
+        let received = try await association.receiveAssociationRequest()
+        #expect(received == associationRequest)
+        let acceptance = try await association.accept(received, policy: policy)
+        #expect(acceptance.presentationContexts == [.init(id: 1, result: .acceptance, transferSyntaxUID: "1.2.840.10008.1.2")])
+        guard case .associationAcceptance = await transport.sent[0] else { Issue.record("expected acceptance sent"); return }
+
+        let request = try await association.receiveRequest()
+        #expect(request.command == echo)
+        #expect(request.contextID == 1)
+    }
+
+    @Test func acceptSendsRejectionAndThrowsForUnrecognizedCalledAETitle() async throws {
+        let associationRequest = DICOMAssociationRequest(calledAETitle: "OTHER", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, abstractSyntaxUID: "1.2.840.10008.1.1", transferSyntaxUIDs: ["1.2.840.10008.1.2"])])
+        let transport = DICOMULMockTransport(received: [.associationRequest(associationRequest)])
+        let association = DICOMAssociation(transport: transport)
+        let policy = DICOMAssociationPolicy(calledAETitles: ["PACS"], supportedAbstractSyntaxes: ["1.2.840.10008.1.1"], supportedTransferSyntaxes: ["1.2.840.10008.1.2"])
+
+        let received = try await association.receiveAssociationRequest()
+        let expectedRejection = DICOMAssociationRejection(result: .permanent, source: .serviceUser, reason: 7)
+        await #expect(throws: DICOMAssociationError.rejected(expectedRejection)) { try await association.accept(received, policy: policy) }
+        guard case .associationRejection(let rejection) = await transport.sent[0] else { Issue.record("expected rejection sent"); return }
+        #expect(rejection == expectedRejection)
+    }
 }
 
 /// Reads a single element's value from an encoded DIMSE command set by tag, to assert exact
