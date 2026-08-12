@@ -111,6 +111,7 @@ to test requests without a network connection.
 
 - ``DICOMwebClient``
 - ``DICOMQIDOPagination``
+- ``DICOMwebRetryPolicy``
 - ``DICOMwebTransport``
 - ``DICOMwebError``
 - ``DICOMJSONDataset``

@@ -14,6 +14,8 @@ extension URLSession: DICOMwebTransport {}
 public enum DICOMwebError: Error, Sendable, Equatable {
     /// A QIDO-RS page had a non-positive limit or negative offset.
     case invalidQIDOPagination
+    /// A retry policy did not allow at least one attempt.
+    case invalidRetryPolicy
     /// The server returned a status outside the successful HTTP range.
     case unsuccessfulHTTPStatus(Int)
     /// The server response was not HTTP.
@@ -22,6 +24,29 @@ public enum DICOMwebError: Error, Sendable, Equatable {
     case missingMultipartBoundary
     /// A multipart response did not contain a DICOM part.
     case invalidMultipartResponse
+}
+
+/// An opt-in retry policy for transient DICOMweb HTTP responses.
+///
+/// The client retries only HTTP 429 and 5xx responses. It does not delay
+/// between attempts, so applications that require `Retry-After` or exponential
+/// backoff should implement that behavior in their ``DICOMwebTransport``.
+public struct DICOMwebRetryPolicy: Sendable, Equatable {
+    /// Total number of attempts, including the initial request.
+    public let maximumAttempts: Int
+
+    /// Creates a transient-response retry policy.
+    ///
+    /// - Throws: ``DICOMwebError/invalidRetryPolicy`` if `maximumAttempts` is
+    ///   less than one.
+    public init(maximumAttempts: Int) throws {
+        guard maximumAttempts > 0 else { throw DICOMwebError.invalidRetryPolicy }
+        self.maximumAttempts = maximumAttempts
+    }
+
+    fileprivate func shouldRetry(statusCode: Int) -> Bool {
+        statusCode == 429 || (500...599).contains(statusCode)
+    }
 }
 
 /// A QIDO-RS result page described by the standard `limit` and `offset` parameters.
@@ -51,16 +76,18 @@ public struct DICOMQIDOPagination: Sendable, Equatable {
 public struct DICOMwebClient: Sendable {
     public let baseURL: URL
     private let transport: any DICOMwebTransport
+    private let retryPolicy: DICOMwebRetryPolicy?
 
     /// Creates a client using `URLSession.shared`.
     public init(baseURL: URL) {
-        self.init(baseURL: baseURL, transport: URLSession.shared)
+        self.init(baseURL: baseURL, transport: URLSession.shared, retryPolicy: nil)
     }
 
     /// Creates a client using the supplied transport.
-    public init(baseURL: URL, transport: any DICOMwebTransport) {
+    public init(baseURL: URL, transport: any DICOMwebTransport, retryPolicy: DICOMwebRetryPolicy? = nil) {
         self.baseURL = baseURL
         self.transport = transport
+        self.retryPolicy = retryPolicy
     }
 
     /// Performs a QIDO-RS study search and returns the DICOM JSON response.
@@ -212,10 +239,19 @@ public struct DICOMwebClient: Sendable {
     }
 
     private func perform(_ request: URLRequest) async throws -> (data: Data, response: HTTPURLResponse) {
-        let (data, urlResponse) = try await transport.data(for: request)
-        guard let response = urlResponse as? HTTPURLResponse else { throw DICOMwebError.invalidHTTPResponse }
-        guard (200...299).contains(response.statusCode) else { throw DICOMwebError.unsuccessfulHTTPStatus(response.statusCode) }
-        return (data, response)
+        let maximumAttempts = retryPolicy?.maximumAttempts ?? 1
+        for attempt in 1...maximumAttempts {
+            let (data, urlResponse) = try await transport.data(for: request)
+            guard let response = urlResponse as? HTTPURLResponse else { throw DICOMwebError.invalidHTTPResponse }
+            if (200...299).contains(response.statusCode) {
+                return (data, response)
+            }
+            if attempt < maximumAttempts, retryPolicy?.shouldRetry(statusCode: response.statusCode) == true {
+                continue
+            }
+            throw DICOMwebError.unsuccessfulHTTPStatus(response.statusCode)
+        }
+        preconditionFailure("A positive maximum attempt count always returns or throws")
     }
 }
 

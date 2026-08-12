@@ -3,6 +3,19 @@ import Testing
 @testable import DICOMKit
 
 struct DICOMwebClientTests {
+    @Test func retriesTransientDICOMwebResponsesWhenConfigured() async throws {
+        let transport = SequencedDICOMwebTransport(statusCodes: [503, 200])
+        let client = DICOMwebClient(
+            baseURL: URL(string: "https://example.test/dicomweb")!,
+            transport: transport,
+            retryPolicy: try DICOMwebRetryPolicy(maximumAttempts: 2)
+        )
+
+        _ = try await client.searchStudies()
+
+        #expect(transport.requestCount == 2)
+    }
+
     @Test func wadoRetrievesRenderedImageAndThumbnail() async throws {
         let transport = CapturingDICOMwebTransport(response: Data("image".utf8))
         let client = DICOMwebClient(baseURL: URL(string: "https://example.test/dicomweb")!, transport: transport)
@@ -147,6 +160,19 @@ private final class CapturingDICOMwebTransport: DICOMwebTransport, @unchecked Se
     func data(for request: URLRequest) async throws -> (Data, URLResponse) {
         requests.append(request)
         return (response, HTTPURLResponse(url: request.url!, statusCode: statusCode, httpVersion: nil, headerFields: headers)!)
+    }
+}
+
+private final class SequencedDICOMwebTransport: DICOMwebTransport, @unchecked Sendable {
+    private var statusCodes: [Int]
+    private(set) var requestCount = 0
+
+    init(statusCodes: [Int]) { self.statusCodes = statusCodes }
+
+    func data(for request: URLRequest) async throws -> (Data, URLResponse) {
+        requestCount += 1
+        let statusCode = statusCodes.removeFirst()
+        return (Data("[]".utf8), HTTPURLResponse(url: request.url!, statusCode: statusCode, httpVersion: nil, headerFields: [:])!)
     }
 }
 

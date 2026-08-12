@@ -75,7 +75,8 @@ See the [changelog](CHANGELOG.md) for the current implementation status.
   WADO-RS instance/metadata/rendered-image/thumbnail/frame/BulkData retrieval, and STOW-RS multipart
   instance storage; WADO metadata can also be decoded as typed DICOM JSON;
   QIDO-RS `limit` / `offset` pagination and transports are injectable for
-  application authentication and testing
+  application authentication and testing; callers can opt into transient HTTP
+  response retries
 - Uses the BSD-3-Clause CharLS codec through a Git submodule for JPEG-LS
   decoding, including sample, line, and plane interleave modes
 
