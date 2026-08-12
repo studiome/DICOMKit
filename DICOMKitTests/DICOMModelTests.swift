@@ -10,7 +10,7 @@ struct DICOMULTests {
             presentationContexts: [
                 DICOMPresentationContext(
                     id: 1,
-                    abstractSyntaxUID: "1.2.840.10008.1.1",
+                    abstractSyntaxUID: DICOMSOPClass.verification,
                     transferSyntaxUIDs: ["1.2.840.10008.1.2"]
                 )
             ]
@@ -58,7 +58,7 @@ struct DICOMULTests {
             .pData(try DICOMDIMSECommand.cEchoResponse(messageIDBeingRespondedTo: 9, status: .success).commandPDVs(contextID: 1, maximumPayloadLength: 1024))
         ])
         let association = DICOMAssociation(transport: transport)
-        _ = try await association.request(DICOMAssociationRequest(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, abstractSyntaxUID: "1.2.840.10008.1.1", transferSyntaxUIDs: ["1.2.840.10008.1.2"])]))
+        _ = try await association.request(DICOMAssociationRequest(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, abstractSyntaxUID: DICOMSOPClass.verification, transferSyntaxUIDs: ["1.2.840.10008.1.2"])]))
         #expect(try await association.cEcho(messageID: 9, contextID: 1) == .success)
         #expect(await transport.sent.count == 2)
     }
@@ -66,7 +66,7 @@ struct DICOMULTests {
     @Test func encodesAndDecodesCStoreCommand() throws {
         let request = DICOMDIMSECommand.cStoreRequest(
             messageID: 11,
-            affectedSOPClassUID: "1.2.840.10008.5.1.4.1.1.2",
+            affectedSOPClassUID: DICOMSOPClass.ctImageStorage,
             affectedSOPInstanceUID: "1.2.3.4"
         )
         #expect(try DICOMDIMSECommand.decodeCommandSet(request.encodedCommandSet()) == request)
@@ -78,14 +78,14 @@ struct DICOMULTests {
             .pData(try DICOMDIMSECommand.cStoreResponse(messageIDBeingRespondedTo: 12, status: .success).commandPDVs(contextID: 1, maximumPayloadLength: 1024))
         ])
         let association = DICOMAssociation(transport: transport)
-        _ = try await association.request(DICOMAssociationRequest(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, abstractSyntaxUID: "1.2.840.10008.5.1.4.1.1.2", transferSyntaxUIDs: ["1.2.840.10008.1.2"])]))
-        let status = try await association.cStore(messageID: 12, contextID: 1, sopClassUID: "1.2.840.10008.5.1.4.1.1.2", sopInstanceUID: "1.2.3", dataset: Data([1, 2, 3]))
+        _ = try await association.request(DICOMAssociationRequest(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, abstractSyntaxUID: DICOMSOPClass.ctImageStorage, transferSyntaxUIDs: ["1.2.840.10008.1.2"])]))
+        let status = try await association.cStore(messageID: 12, contextID: 1, sopClassUID: DICOMSOPClass.ctImageStorage, sopInstanceUID: "1.2.3", dataset: Data([1, 2, 3]))
         #expect(status == .success)
         #expect(await transport.sent.count == 3)
     }
 
     @Test func encodesAndDecodesCFindRequest() throws {
-        let request = DICOMDIMSECommand.cFindRequest(messageID: 13, affectedSOPClassUID: "1.2.840.10008.5.1.4.1.2.2.1")
+        let request = DICOMDIMSECommand.cFindRequest(messageID: 13, affectedSOPClassUID: DICOMSOPClass.studyRootQueryRetrieveFind)
         #expect(try DICOMDIMSECommand.decodeCommandSet(request.encodedCommandSet()) == request)
     }
 
@@ -97,14 +97,14 @@ struct DICOMULTests {
             .pData(try DICOMDIMSECommand.cFindResponse(messageIDBeingRespondedTo: 14, status: .success, identifierFollows: false, errorComment: nil).commandPDVs(contextID: 1, maximumPayloadLength: 1024))
         ])
         let association = DICOMAssociation(transport: transport)
-        _ = try await association.request(DICOMAssociationRequest(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, abstractSyntaxUID: "1.2.840.10008.5.1.4.1.2.2.1", transferSyntaxUIDs: ["1.2.840.10008.1.2"])]))
-        let result = try await association.cFind(messageID: 14, contextID: 1, sopClassUID: "1.2.840.10008.5.1.4.1.2.2.1", identifier: Data([1]))
+        _ = try await association.request(DICOMAssociationRequest(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, abstractSyntaxUID: DICOMSOPClass.studyRootQueryRetrieveFind, transferSyntaxUIDs: ["1.2.840.10008.1.2"])]))
+        let result = try await association.cFind(messageID: 14, contextID: 1, sopClassUID: DICOMSOPClass.studyRootQueryRetrieveFind, identifier: Data([1]))
         #expect(result.status == .success)
         #expect(result.identifiers == [Data([4, 5])])
     }
 
     @Test func encodesAndDecodesCMoveRequest() throws {
-        let request = DICOMDIMSECommand.cMoveRequest(messageID: 15, affectedSOPClassUID: "1.2.840.10008.5.1.4.1.2.2.2", moveDestination: "STORE-SCP")
+        let request = DICOMDIMSECommand.cMoveRequest(messageID: 15, affectedSOPClassUID: DICOMSOPClass.studyRootQueryRetrieveMove, moveDestination: "STORE-SCP")
         #expect(try DICOMDIMSECommand.decodeCommandSet(request.encodedCommandSet()) == request)
     }
 
@@ -114,12 +114,12 @@ struct DICOMULTests {
             .pData(try DICOMDIMSECommand.cMoveResponse(messageIDBeingRespondedTo: 16, status: .success, identifierFollows: false, subOperations: nil, errorComment: nil).commandPDVs(contextID: 1, maximumPayloadLength: 1024))
         ])
         let association = DICOMAssociation(transport: transport)
-        _ = try await association.request(DICOMAssociationRequest(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, abstractSyntaxUID: "1.2.840.10008.5.1.4.1.2.2.2", transferSyntaxUIDs: ["1.2.840.10008.1.2"])]))
-        #expect(try await association.cMove(messageID: 16, contextID: 1, sopClassUID: "1.2.840.10008.5.1.4.1.2.2.2", destination: "STORE-SCP", identifier: Data()).status == .success)
+        _ = try await association.request(DICOMAssociationRequest(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, abstractSyntaxUID: DICOMSOPClass.studyRootQueryRetrieveMove, transferSyntaxUIDs: ["1.2.840.10008.1.2"])]))
+        #expect(try await association.cMove(messageID: 16, contextID: 1, sopClassUID: DICOMSOPClass.studyRootQueryRetrieveMove, destination: "STORE-SCP", identifier: Data()).status == .success)
     }
 
     @Test func encodesAndDecodesCGetRequest() throws {
-        let request = DICOMDIMSECommand.cGetRequest(messageID: 17, affectedSOPClassUID: "1.2.840.10008.5.1.4.1.2.2.3")
+        let request = DICOMDIMSECommand.cGetRequest(messageID: 17, affectedSOPClassUID: DICOMSOPClass.studyRootQueryRetrieveGet)
         #expect(try DICOMDIMSECommand.decodeCommandSet(request.encodedCommandSet()) == request)
     }
 
@@ -129,19 +129,19 @@ struct DICOMULTests {
             .pData(try DICOMDIMSECommand.cGetResponse(messageIDBeingRespondedTo: 18, status: .success, identifierFollows: false, subOperations: nil, errorComment: nil).commandPDVs(contextID: 1, maximumPayloadLength: 1024))
         ])
         let association = DICOMAssociation(transport: transport)
-        _ = try await association.request(DICOMAssociationRequest(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, abstractSyntaxUID: "1.2.840.10008.5.1.4.1.2.2.3", transferSyntaxUIDs: ["1.2.840.10008.1.2"])]))
-        #expect(try await association.cGet(messageID: 18, contextID: 1, sopClassUID: "1.2.840.10008.5.1.4.1.2.2.3", identifier: Data()).status == .success)
+        _ = try await association.request(DICOMAssociationRequest(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, abstractSyntaxUID: DICOMSOPClass.studyRootQueryRetrieveGet, transferSyntaxUIDs: ["1.2.840.10008.1.2"])]))
+        #expect(try await association.cGet(messageID: 18, contextID: 1, sopClassUID: DICOMSOPClass.studyRootQueryRetrieveGet, identifier: Data()).status == .success)
     }
 
     @Test func associationReceivesCStoreAndReplies() async throws {
-        let store = DICOMDIMSECommand.cStoreRequest(messageID: 19, affectedSOPClassUID: "1.2.840.10008.5.1.4.1.1.2", affectedSOPInstanceUID: "1.2.3")
+        let store = DICOMDIMSECommand.cStoreRequest(messageID: 19, affectedSOPClassUID: DICOMSOPClass.ctImageStorage, affectedSOPInstanceUID: "1.2.3")
         let transport = DICOMULMockTransport(received: [
             .associationAcceptance(DICOMAssociationAcceptance(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, result: .acceptance, transferSyntaxUID: "1.2.840.10008.1.2")])),
             .pData(try store.commandPDVs(contextID: 1, maximumPayloadLength: 1024)),
             .pData([DICOMPDataValue(contextID: 1, isCommand: false, isLastFragment: true, data: Data([7, 8]))])
         ])
         let association = DICOMAssociation(transport: transport)
-        _ = try await association.request(DICOMAssociationRequest(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, abstractSyntaxUID: "1.2.840.10008.5.1.4.1.1.2", transferSyntaxUIDs: ["1.2.840.10008.1.2"])]))
+        _ = try await association.request(DICOMAssociationRequest(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, abstractSyntaxUID: DICOMSOPClass.ctImageStorage, transferSyntaxUIDs: ["1.2.840.10008.1.2"])]))
         let received = try await association.receiveCStore()
         #expect(received.dataset == Data([7, 8]))
         #expect(received.sopInstanceUID == "1.2.3")
@@ -154,7 +154,7 @@ struct DICOMULTests {
         #expect(try DICOMDIMSECommand.decodeCommandSet(cancel.encodedCommandSet()) == cancel)
         let transport = DICOMULMockTransport(received: [.associationAcceptance(DICOMAssociationAcceptance(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, result: .acceptance, transferSyntaxUID: "1.2.840.10008.1.2")]))])
         let association = DICOMAssociation(transport: transport)
-        _ = try await association.request(DICOMAssociationRequest(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, abstractSyntaxUID: "1.2.840.10008.1.1", transferSyntaxUIDs: ["1.2.840.10008.1.2"])]))
+        _ = try await association.request(DICOMAssociationRequest(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, abstractSyntaxUID: DICOMSOPClass.verification, transferSyntaxUIDs: ["1.2.840.10008.1.2"])]))
         try await association.cCancel(messageIDBeingRespondedTo: 20, contextID: 1)
         #expect(await transport.sent.count == 2)
     }
@@ -162,7 +162,7 @@ struct DICOMULTests {
     @Test func associationTimesOutWhileAwaitingResponse() async throws {
         let transport = DICOMULNeverRespondingTransport()
         let association = DICOMAssociation(transport: transport, responseTimeout: .milliseconds(1))
-        let request = DICOMAssociationRequest(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, abstractSyntaxUID: "1.2.840.10008.1.1", transferSyntaxUIDs: ["1.2.840.10008.1.2"])])
+        let request = DICOMAssociationRequest(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, abstractSyntaxUID: DICOMSOPClass.verification, transferSyntaxUIDs: ["1.2.840.10008.1.2"])])
         await #expect(throws: DICOMAssociationError.timedOut) { try await association.request(request) }
     }
 
@@ -174,16 +174,16 @@ struct DICOMULTests {
             ]))
         ])
         let association = DICOMAssociation(transport: transport)
-        let sopClass = "1.2.840.10008.5.1.4.1.1.2"
+        let sopClass = DICOMSOPClass.ctImageStorage
         _ = try await association.request(DICOMAssociationRequest(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [
-            .init(id: 1, abstractSyntaxUID: "1.2.840.10008.1.1", transferSyntaxUIDs: ["1.2.840.10008.1.2"]),
+            .init(id: 1, abstractSyntaxUID: DICOMSOPClass.verification, transferSyntaxUIDs: ["1.2.840.10008.1.2"]),
             .init(id: 3, abstractSyntaxUID: sopClass, transferSyntaxUIDs: ["1.2.840.10008.1.2"])
         ]))
         #expect(await association.presentationContextID(for: sopClass) == 3)
     }
 
     @Test func associationSelectsPresentationContextForCStore() async throws {
-        let sopClass = "1.2.840.10008.5.1.4.1.1.2"
+        let sopClass = DICOMSOPClass.ctImageStorage
         let transport = DICOMULMockTransport(received: [
             .associationAcceptance(DICOMAssociationAcceptance(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 3, result: .acceptance, transferSyntaxUID: "1.2.840.10008.1.2")])),
             .pData(try DICOMDIMSECommand.cStoreResponse(messageIDBeingRespondedTo: 21, status: .success).commandPDVs(contextID: 3, maximumPayloadLength: 1024))
@@ -194,7 +194,7 @@ struct DICOMULTests {
     }
 
     @Test func associationSelectsPresentationContextForCFind() async throws {
-        let sopClass = "1.2.840.10008.5.1.4.1.2.2.1"
+        let sopClass = DICOMSOPClass.studyRootQueryRetrieveFind
         let transport = DICOMULMockTransport(received: [
             .associationAcceptance(DICOMAssociationAcceptance(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 5, result: .acceptance, transferSyntaxUID: "1.2.840.10008.1.2")])),
             .pData(try DICOMDIMSECommand.cFindResponse(messageIDBeingRespondedTo: 22, status: .success, identifierFollows: false, errorComment: nil).commandPDVs(contextID: 5, maximumPayloadLength: 1024))
@@ -206,13 +206,13 @@ struct DICOMULTests {
 
     @Test func encodesAssociationUserIdentity() throws {
         let identity = DICOMUserIdentityNegotiation(identity: .usernameAndPassword(username: "dicom", password: "secret"))
-        let request = DICOMAssociationRequest(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, abstractSyntaxUID: "1.2.840.10008.1.1", transferSyntaxUIDs: ["1.2.840.10008.1.2"])], userIdentity: identity)
+        let request = DICOMAssociationRequest(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, abstractSyntaxUID: DICOMSOPClass.verification, transferSyntaxUIDs: ["1.2.840.10008.1.2"])], userIdentity: identity)
         #expect(try DICOMULPDU.decode(DICOMULPDU.associationRequest(request).encoded()) == .associationRequest(request))
     }
 
     @Test func encodesAndDecodesImplementationIdentificationInRequest() throws {
         let implementation = try DICOMImplementationIdentification(classUID: "1.2.3.4.5", versionName: "MY_APP_1_0")
-        let request = DICOMAssociationRequest(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, abstractSyntaxUID: "1.2.840.10008.1.1", transferSyntaxUIDs: ["1.2.840.10008.1.2"])], implementation: implementation)
+        let request = DICOMAssociationRequest(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, abstractSyntaxUID: DICOMSOPClass.verification, transferSyntaxUIDs: ["1.2.840.10008.1.2"])], implementation: implementation)
         #expect(try DICOMULPDU.decode(DICOMULPDU.associationRequest(request).encoded()) == .associationRequest(request))
     }
 
@@ -223,7 +223,7 @@ struct DICOMULTests {
     }
 
     @Test func defaultsToDicomKitImplementationIdentification() throws {
-        let request = DICOMAssociationRequest(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, abstractSyntaxUID: "1.2.840.10008.1.1", transferSyntaxUIDs: ["1.2.840.10008.1.2"])])
+        let request = DICOMAssociationRequest(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, abstractSyntaxUID: DICOMSOPClass.verification, transferSyntaxUIDs: ["1.2.840.10008.1.2"])])
         #expect(request.implementation == .dicomKit)
     }
 
@@ -244,19 +244,19 @@ struct DICOMULTests {
     }
 
     @Test func encodesAndDecodesRoleSelectionInRequest() throws {
-        let role = DICOMRoleSelection(sopClassUID: "1.2.840.10008.5.1.4.1.1.2", supportsSCURole: true, supportsSCPRole: true)
-        let request = DICOMAssociationRequest(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, abstractSyntaxUID: "1.2.840.10008.1.1", transferSyntaxUIDs: ["1.2.840.10008.1.2"])], roleSelections: [role])
+        let role = DICOMRoleSelection(sopClassUID: DICOMSOPClass.ctImageStorage, supportsSCURole: true, supportsSCPRole: true)
+        let request = DICOMAssociationRequest(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, abstractSyntaxUID: DICOMSOPClass.verification, transferSyntaxUIDs: ["1.2.840.10008.1.2"])], roleSelections: [role])
         #expect(try DICOMULPDU.decode(DICOMULPDU.associationRequest(request).encoded()) == .associationRequest(request))
     }
 
     @Test func encodesAndDecodesRoleSelectionInAcceptance() throws {
-        let role = DICOMRoleSelection(sopClassUID: "1.2.840.10008.5.1.4.1.1.2", supportsSCURole: false, supportsSCPRole: true)
+        let role = DICOMRoleSelection(sopClassUID: DICOMSOPClass.ctImageStorage, supportsSCURole: false, supportsSCPRole: true)
         let acceptance = DICOMAssociationAcceptance(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, result: .acceptance, transferSyntaxUID: "1.2.840.10008.1.2")], roleSelections: [role])
         #expect(try DICOMULPDU.decode(DICOMULPDU.associationAcceptance(acceptance).encoded()) == .associationAcceptance(acceptance))
     }
 
     @Test func associationReturnsNegotiatedRoleForSOPClass() async throws {
-        let sopClass = "1.2.840.10008.5.1.4.1.1.2"
+        let sopClass = DICOMSOPClass.ctImageStorage
         let acceptedRole = DICOMRoleSelection(sopClassUID: sopClass, supportsSCURole: false, supportsSCPRole: true)
         let transport = DICOMULMockTransport(received: [
             .associationAcceptance(DICOMAssociationAcceptance(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, result: .acceptance, transferSyntaxUID: "1.2.840.10008.1.2")], roleSelections: [acceptedRole]))
@@ -280,7 +280,7 @@ struct DICOMULTests {
 
     @Test func encodesAndDecodesAsyncOperationsWindowInRequest() throws {
         let window = DICOMAsynchronousOperationsWindow(maximumInvoked: 3, maximumPerformed: 5)
-        let request = DICOMAssociationRequest(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, abstractSyntaxUID: "1.2.840.10008.1.1", transferSyntaxUIDs: ["1.2.840.10008.1.2"])], asynchronousOperationsWindow: window)
+        let request = DICOMAssociationRequest(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, abstractSyntaxUID: DICOMSOPClass.verification, transferSyntaxUIDs: ["1.2.840.10008.1.2"])], asynchronousOperationsWindow: window)
         #expect(try DICOMULPDU.decode(DICOMULPDU.associationRequest(request).encoded()) == .associationRequest(request))
     }
 
@@ -308,14 +308,14 @@ struct DICOMULTests {
         ]
         for identity in identities {
             let negotiation = DICOMUserIdentityNegotiation(identity: identity)
-            let request = DICOMAssociationRequest(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, abstractSyntaxUID: "1.2.840.10008.1.1", transferSyntaxUIDs: ["1.2.840.10008.1.2"])], userIdentity: negotiation)
+            let request = DICOMAssociationRequest(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, abstractSyntaxUID: DICOMSOPClass.verification, transferSyntaxUIDs: ["1.2.840.10008.1.2"])], userIdentity: negotiation)
             #expect(try DICOMULPDU.decode(DICOMULPDU.associationRequest(request).encoded()) == .associationRequest(request))
         }
     }
 
     @Test func positiveResponseRequestedSurvivesRoundTrip() throws {
         let negotiation = DICOMUserIdentityNegotiation(identity: .username("dicom"), positiveResponseRequested: true)
-        let request = DICOMAssociationRequest(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, abstractSyntaxUID: "1.2.840.10008.1.1", transferSyntaxUIDs: ["1.2.840.10008.1.2"])], userIdentity: negotiation)
+        let request = DICOMAssociationRequest(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, abstractSyntaxUID: DICOMSOPClass.verification, transferSyntaxUIDs: ["1.2.840.10008.1.2"])], userIdentity: negotiation)
         let decoded = try DICOMULPDU.decode(DICOMULPDU.associationRequest(request).encoded())
         guard case .associationRequest(let decodedRequest) = decoded else { Issue.record("expected associationRequest"); return }
         #expect(decodedRequest.userIdentity?.positiveResponseRequested == true)
@@ -332,7 +332,7 @@ struct DICOMULTests {
             .abort(source: 2, reason: 1)
         ])
         let association = DICOMAssociation(transport: transport)
-        _ = try await association.request(DICOMAssociationRequest(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, abstractSyntaxUID: "1.2.840.10008.1.1", transferSyntaxUIDs: ["1.2.840.10008.1.2"])]))
+        _ = try await association.request(DICOMAssociationRequest(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, abstractSyntaxUID: DICOMSOPClass.verification, transferSyntaxUIDs: ["1.2.840.10008.1.2"])]))
         await #expect(throws: DICOMAssociationError.aborted(source: 2, reason: 1)) { try await association.cEcho(messageID: 9, contextID: 1) }
     }
 
@@ -342,7 +342,7 @@ struct DICOMULTests {
             .releaseRequest
         ])
         let association = DICOMAssociation(transport: transport)
-        _ = try await association.request(DICOMAssociationRequest(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, abstractSyntaxUID: "1.2.840.10008.1.1", transferSyntaxUIDs: ["1.2.840.10008.1.2"])]))
+        _ = try await association.request(DICOMAssociationRequest(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, abstractSyntaxUID: DICOMSOPClass.verification, transferSyntaxUIDs: ["1.2.840.10008.1.2"])]))
         await #expect(throws: DICOMAssociationError.releasedByPeer) { try await association.cEcho(messageID: 9, contextID: 1) }
         #expect(await transport.sent.last == .releaseResponse)
     }
@@ -352,7 +352,7 @@ struct DICOMULTests {
             .associationAcceptance(DICOMAssociationAcceptance(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, result: .acceptance, transferSyntaxUID: "1.2.840.10008.1.2")]))
         ])
         let association = DICOMAssociation(transport: transport)
-        _ = try await association.request(DICOMAssociationRequest(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, abstractSyntaxUID: "1.2.840.10008.1.1", transferSyntaxUIDs: ["1.2.840.10008.1.2"])]))
+        _ = try await association.request(DICOMAssociationRequest(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, abstractSyntaxUID: DICOMSOPClass.verification, transferSyntaxUIDs: ["1.2.840.10008.1.2"])]))
         try await association.abort(source: 0, reason: 0)
         #expect(await transport.sent.last == .abort(source: 0, reason: 0))
         await #expect(throws: DICOMAssociationError.notAssociated) { try await association.cEcho(messageID: 9, contextID: 1) }
@@ -363,7 +363,7 @@ struct DICOMULTests {
             .associationAcceptance(DICOMAssociationAcceptance(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, result: .acceptance, transferSyntaxUID: "1.2.840.10008.1.2")]))
         ])
         let association = DICOMAssociation(transport: transport)
-        _ = try await association.request(DICOMAssociationRequest(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, abstractSyntaxUID: "1.2.840.10008.1.1", transferSyntaxUIDs: ["1.2.840.10008.1.2"])]))
+        _ = try await association.request(DICOMAssociationRequest(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, abstractSyntaxUID: DICOMSOPClass.verification, transferSyntaxUIDs: ["1.2.840.10008.1.2"])]))
         try await association.abort()
         try await association.release()
     }
@@ -448,8 +448,8 @@ struct DICOMULTests {
             .pData(try DICOMDIMSECommand.cMoveResponse(messageIDBeingRespondedTo: 26, status: .success, identifierFollows: false, subOperations: DICOMSubOperationCounts(remaining: 0, completed: 2, failed: 0, warning: 0), errorComment: nil).commandPDVs(contextID: 1, maximumPayloadLength: 1024))
         ])
         let association = DICOMAssociation(transport: transport)
-        _ = try await association.request(DICOMAssociationRequest(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, abstractSyntaxUID: "1.2.840.10008.5.1.4.1.2.2.2", transferSyntaxUIDs: ["1.2.840.10008.1.2"])]))
-        let result = try await association.cMove(messageID: 26, contextID: 1, sopClassUID: "1.2.840.10008.5.1.4.1.2.2.2", destination: "STORE-SCP", identifier: Data())
+        _ = try await association.request(DICOMAssociationRequest(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, abstractSyntaxUID: DICOMSOPClass.studyRootQueryRetrieveMove, transferSyntaxUIDs: ["1.2.840.10008.1.2"])]))
+        let result = try await association.cMove(messageID: 26, contextID: 1, sopClassUID: DICOMSOPClass.studyRootQueryRetrieveMove, destination: "STORE-SCP", identifier: Data())
         #expect(result.status == .success)
         #expect(result.subOperations == DICOMSubOperationCounts(remaining: 0, completed: 2, failed: 0, warning: 0))
     }
@@ -505,7 +505,7 @@ struct DICOMULTests {
             .pData(try echo.commandPDVs(contextID: 1, maximumPayloadLength: 1024))
         ])
         let association = DICOMAssociation(transport: transport)
-        _ = try await association.request(DICOMAssociationRequest(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, abstractSyntaxUID: "1.2.840.10008.1.1", transferSyntaxUIDs: ["1.2.840.10008.1.2"])]))
+        _ = try await association.request(DICOMAssociationRequest(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, abstractSyntaxUID: DICOMSOPClass.verification, transferSyntaxUIDs: ["1.2.840.10008.1.2"])]))
         let request = try await association.receiveRequest()
         #expect(request.command == echo)
         #expect(request.contextID == 1)
@@ -513,7 +513,7 @@ struct DICOMULTests {
     }
 
     @Test func receiveRequestReassemblesCFindIdentifierFromFragments() async throws {
-        let find = DICOMDIMSECommand.cFindRequest(messageID: 41, affectedSOPClassUID: "1.2.840.10008.5.1.4.1.2.2.1")
+        let find = DICOMDIMSECommand.cFindRequest(messageID: 41, affectedSOPClassUID: DICOMSOPClass.studyRootQueryRetrieveFind)
         let transport = DICOMULMockTransport(received: [
             .associationAcceptance(DICOMAssociationAcceptance(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, result: .acceptance, transferSyntaxUID: "1.2.840.10008.1.2")])),
             .pData(try find.commandPDVs(contextID: 1, maximumPayloadLength: 1024)),
@@ -521,7 +521,7 @@ struct DICOMULTests {
             .pData([DICOMPDataValue(contextID: 1, isCommand: false, isLastFragment: true, data: Data([3, 4]))])
         ])
         let association = DICOMAssociation(transport: transport)
-        _ = try await association.request(DICOMAssociationRequest(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, abstractSyntaxUID: "1.2.840.10008.5.1.4.1.2.2.1", transferSyntaxUIDs: ["1.2.840.10008.1.2"])]))
+        _ = try await association.request(DICOMAssociationRequest(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, abstractSyntaxUID: DICOMSOPClass.studyRootQueryRetrieveFind, transferSyntaxUIDs: ["1.2.840.10008.1.2"])]))
         let request = try await association.receiveRequest()
         #expect(request.command == find)
         #expect(request.contextID == 1)
@@ -535,7 +535,7 @@ struct DICOMULTests {
             .pData(try echo.commandPDVs(contextID: 1, maximumPayloadLength: 1024))
         ])
         let association = DICOMAssociation(transport: transport)
-        _ = try await association.request(DICOMAssociationRequest(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, abstractSyntaxUID: "1.2.840.10008.1.1", transferSyntaxUIDs: ["1.2.840.10008.1.2"])]))
+        _ = try await association.request(DICOMAssociationRequest(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, abstractSyntaxUID: DICOMSOPClass.verification, transferSyntaxUIDs: ["1.2.840.10008.1.2"])]))
         await #expect(throws: DICOMAssociationError.unexpectedDIMSECommand) { try await association.receiveCStore() }
     }
 
@@ -544,7 +544,7 @@ struct DICOMULTests {
             .associationAcceptance(DICOMAssociationAcceptance(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, result: .acceptance, transferSyntaxUID: "1.2.840.10008.1.2")]))
         ])
         let association = DICOMAssociation(transport: transport)
-        _ = try await association.request(DICOMAssociationRequest(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, abstractSyntaxUID: "1.2.840.10008.5.1.4.1.2.2.1", transferSyntaxUIDs: ["1.2.840.10008.1.2"])]))
+        _ = try await association.request(DICOMAssociationRequest(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, abstractSyntaxUID: DICOMSOPClass.studyRootQueryRetrieveFind, transferSyntaxUIDs: ["1.2.840.10008.1.2"])]))
 
         try await association.respondToCFind(messageIDBeingRespondedTo: 43, contextID: 1, status: .pending, identifier: Data([9, 9]))
         var sent = await transport.sent
@@ -566,7 +566,7 @@ struct DICOMULTests {
             .associationAcceptance(DICOMAssociationAcceptance(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, result: .acceptance, transferSyntaxUID: "1.2.840.10008.1.2")]))
         ])
         let association = DICOMAssociation(transport: transport)
-        _ = try await association.request(DICOMAssociationRequest(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, abstractSyntaxUID: "1.2.840.10008.5.1.4.1.2.2.2", transferSyntaxUIDs: ["1.2.840.10008.1.2"])]))
+        _ = try await association.request(DICOMAssociationRequest(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, abstractSyntaxUID: DICOMSOPClass.studyRootQueryRetrieveMove, transferSyntaxUIDs: ["1.2.840.10008.1.2"])]))
         let counts = DICOMSubOperationCounts(remaining: 1, completed: 2, failed: 0, warning: 0)
         try await association.respondToCMove(messageIDBeingRespondedTo: 44, contextID: 1, status: .pending, subOperations: counts)
         let sent = await transport.sent
@@ -583,7 +583,7 @@ struct DICOMULTests {
             .associationAcceptance(DICOMAssociationAcceptance(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, result: .abstractSyntaxNotSupported, transferSyntaxUID: "1.2.840.10008.1.2")]))
         ])
         let association = DICOMAssociation(transport: transport)
-        _ = try await association.request(DICOMAssociationRequest(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, abstractSyntaxUID: "1.2.840.10008.1.1", transferSyntaxUIDs: ["1.2.840.10008.1.2"])]))
+        _ = try await association.request(DICOMAssociationRequest(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, abstractSyntaxUID: DICOMSOPClass.verification, transferSyntaxUIDs: ["1.2.840.10008.1.2"])]))
         await #expect(throws: DICOMAssociationError.notAssociated) { try await association.respondToCEcho(messageIDBeingRespondedTo: 45, contextID: 1, status: .success) }
         await #expect(throws: DICOMAssociationError.notAssociated) { try await association.respondToCFind(messageIDBeingRespondedTo: 45, contextID: 1, status: .success, identifier: nil) }
         await #expect(throws: DICOMAssociationError.notAssociated) { try await association.respondToCMove(messageIDBeingRespondedTo: 45, contextID: 1, status: .success, subOperations: nil) }
@@ -591,25 +591,25 @@ struct DICOMULTests {
     }
 
     @Test func policyRejectsUnsupportedApplicationContext() {
-        let policy = DICOMAssociationPolicy(supportedAbstractSyntaxes: ["1.2.840.10008.1.1"], supportedTransferSyntaxes: ["1.2.840.10008.1.2"])
-        let request = DICOMAssociationRequest(calledAETitle: "PACS", callingAETitle: "DICOMKIT", applicationContextUID: "1.2.3", presentationContexts: [.init(id: 1, abstractSyntaxUID: "1.2.840.10008.1.1", transferSyntaxUIDs: ["1.2.840.10008.1.2"])])
+        let policy = DICOMAssociationPolicy(supportedAbstractSyntaxes: [DICOMSOPClass.verification], supportedTransferSyntaxes: ["1.2.840.10008.1.2"])
+        let request = DICOMAssociationRequest(calledAETitle: "PACS", callingAETitle: "DICOMKIT", applicationContextUID: "1.2.3", presentationContexts: [.init(id: 1, abstractSyntaxUID: DICOMSOPClass.verification, transferSyntaxUIDs: ["1.2.840.10008.1.2"])])
         guard case .reject(let rejection) = policy.negotiate(request) else { Issue.record("expected reject"); return }
         #expect(rejection == DICOMAssociationRejection(result: .permanent, source: .serviceUser, reason: 2))
     }
 
     @Test func policyRejectsUnrecognizedCalledAETitle() {
-        let policy = DICOMAssociationPolicy(calledAETitles: ["PACS"], supportedAbstractSyntaxes: ["1.2.840.10008.1.1"], supportedTransferSyntaxes: ["1.2.840.10008.1.2"])
-        let request = DICOMAssociationRequest(calledAETitle: "OTHER", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, abstractSyntaxUID: "1.2.840.10008.1.1", transferSyntaxUIDs: ["1.2.840.10008.1.2"])])
+        let policy = DICOMAssociationPolicy(calledAETitles: ["PACS"], supportedAbstractSyntaxes: [DICOMSOPClass.verification], supportedTransferSyntaxes: ["1.2.840.10008.1.2"])
+        let request = DICOMAssociationRequest(calledAETitle: "OTHER", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, abstractSyntaxUID: DICOMSOPClass.verification, transferSyntaxUIDs: ["1.2.840.10008.1.2"])])
         guard case .reject(let rejection) = policy.negotiate(request) else { Issue.record("expected reject"); return }
         #expect(rejection == DICOMAssociationRejection(result: .permanent, source: .serviceUser, reason: 7))
     }
 
     @Test func policyNegotiatesPresentationContextsInProposalOrderPreferringOwnOrder() {
-        let policy = DICOMAssociationPolicy(supportedAbstractSyntaxes: ["1.2.840.10008.1.1"], supportedTransferSyntaxes: ["1.2.840.10008.1.2", "1.2.840.10008.1.2.1"])
+        let policy = DICOMAssociationPolicy(supportedAbstractSyntaxes: [DICOMSOPClass.verification], supportedTransferSyntaxes: ["1.2.840.10008.1.2", "1.2.840.10008.1.2.1"])
         let request = DICOMAssociationRequest(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [
-            .init(id: 1, abstractSyntaxUID: "1.2.840.10008.1.1", transferSyntaxUIDs: ["1.2.840.10008.1.2.1", "1.2.840.10008.1.2"]),
+            .init(id: 1, abstractSyntaxUID: DICOMSOPClass.verification, transferSyntaxUIDs: ["1.2.840.10008.1.2.1", "1.2.840.10008.1.2"]),
             .init(id: 3, abstractSyntaxUID: "1.9.9", transferSyntaxUIDs: ["1.2.840.10008.1.2"]),
-            .init(id: 5, abstractSyntaxUID: "1.2.840.10008.1.1", transferSyntaxUIDs: ["1.2.840.10008.1.2.99"])
+            .init(id: 5, abstractSyntaxUID: DICOMSOPClass.verification, transferSyntaxUIDs: ["1.2.840.10008.1.2.99"])
         ])
         guard case .accept(let acceptance) = policy.negotiate(request) else { Issue.record("expected accept"); return }
         #expect(acceptance.calledAETitle == "PACS")
@@ -629,28 +629,28 @@ struct DICOMULTests {
     }
 
     @Test func policyEchoesRoleSelectionAndWithholdsUnsupportedSCPRole() {
-        let policy = DICOMAssociationPolicy(supportedAbstractSyntaxes: ["1.2.840.10008.5.1.4.1.1.2", "1.2.840.10008.5.1.4.1.1.4"], supportedTransferSyntaxes: ["1.2.840.10008.1.2"], scpRoleAbstractSyntaxes: ["1.2.840.10008.5.1.4.1.1.2"])
-        let request = DICOMAssociationRequest(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, abstractSyntaxUID: "1.2.840.10008.5.1.4.1.1.2", transferSyntaxUIDs: ["1.2.840.10008.1.2"])], roleSelections: [
-            .init(sopClassUID: "1.2.840.10008.5.1.4.1.1.2", supportsSCURole: true, supportsSCPRole: true),
-            .init(sopClassUID: "1.2.840.10008.5.1.4.1.1.4", supportsSCURole: true, supportsSCPRole: true),
+        let policy = DICOMAssociationPolicy(supportedAbstractSyntaxes: [DICOMSOPClass.ctImageStorage, DICOMSOPClass.mrImageStorage], supportedTransferSyntaxes: ["1.2.840.10008.1.2"], scpRoleAbstractSyntaxes: [DICOMSOPClass.ctImageStorage])
+        let request = DICOMAssociationRequest(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, abstractSyntaxUID: DICOMSOPClass.ctImageStorage, transferSyntaxUIDs: ["1.2.840.10008.1.2"])], roleSelections: [
+            .init(sopClassUID: DICOMSOPClass.ctImageStorage, supportsSCURole: true, supportsSCPRole: true),
+            .init(sopClassUID: DICOMSOPClass.mrImageStorage, supportsSCURole: true, supportsSCPRole: true),
             .init(sopClassUID: "1.9.9", supportsSCURole: true, supportsSCPRole: true)
         ])
         guard case .accept(let acceptance) = policy.negotiate(request) else { Issue.record("expected accept"); return }
         #expect(acceptance.roleSelections == [
-            .init(sopClassUID: "1.2.840.10008.5.1.4.1.1.2", supportsSCURole: true, supportsSCPRole: true),
-            .init(sopClassUID: "1.2.840.10008.5.1.4.1.1.4", supportsSCURole: true, supportsSCPRole: false)
+            .init(sopClassUID: DICOMSOPClass.ctImageStorage, supportsSCURole: true, supportsSCPRole: true),
+            .init(sopClassUID: DICOMSOPClass.mrImageStorage, supportsSCURole: true, supportsSCPRole: false)
         ])
     }
 
     @Test func acceptSendsAssociationAcceptanceAndAllowsSubsequentRequest() async throws {
-        let associationRequest = DICOMAssociationRequest(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, abstractSyntaxUID: "1.2.840.10008.1.1", transferSyntaxUIDs: ["1.2.840.10008.1.2"])])
+        let associationRequest = DICOMAssociationRequest(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, abstractSyntaxUID: DICOMSOPClass.verification, transferSyntaxUIDs: ["1.2.840.10008.1.2"])])
         let echo = DICOMDIMSECommand.cEchoRequest(messageID: 50)
         let transport = DICOMULMockTransport(received: [
             .associationRequest(associationRequest),
             .pData(try echo.commandPDVs(contextID: 1, maximumPayloadLength: 1024))
         ])
         let association = DICOMAssociation(transport: transport)
-        let policy = DICOMAssociationPolicy(supportedAbstractSyntaxes: ["1.2.840.10008.1.1"], supportedTransferSyntaxes: ["1.2.840.10008.1.2"])
+        let policy = DICOMAssociationPolicy(supportedAbstractSyntaxes: [DICOMSOPClass.verification], supportedTransferSyntaxes: ["1.2.840.10008.1.2"])
 
         let received = try await association.receiveAssociationRequest()
         #expect(received == associationRequest)
@@ -664,10 +664,10 @@ struct DICOMULTests {
     }
 
     @Test func acceptSendsRejectionAndThrowsForUnrecognizedCalledAETitle() async throws {
-        let associationRequest = DICOMAssociationRequest(calledAETitle: "OTHER", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, abstractSyntaxUID: "1.2.840.10008.1.1", transferSyntaxUIDs: ["1.2.840.10008.1.2"])])
+        let associationRequest = DICOMAssociationRequest(calledAETitle: "OTHER", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, abstractSyntaxUID: DICOMSOPClass.verification, transferSyntaxUIDs: ["1.2.840.10008.1.2"])])
         let transport = DICOMULMockTransport(received: [.associationRequest(associationRequest)])
         let association = DICOMAssociation(transport: transport)
-        let policy = DICOMAssociationPolicy(calledAETitles: ["PACS"], supportedAbstractSyntaxes: ["1.2.840.10008.1.1"], supportedTransferSyntaxes: ["1.2.840.10008.1.2"])
+        let policy = DICOMAssociationPolicy(calledAETitles: ["PACS"], supportedAbstractSyntaxes: [DICOMSOPClass.verification], supportedTransferSyntaxes: ["1.2.840.10008.1.2"])
 
         let received = try await association.receiveAssociationRequest()
         let expectedRejection = DICOMAssociationRejection(result: .permanent, source: .serviceUser, reason: 7)
