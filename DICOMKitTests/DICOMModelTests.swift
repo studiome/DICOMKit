@@ -2,6 +2,42 @@ import Foundation
 import Testing
 @testable import DICOMKit
 
+struct DICOMULTests {
+    @Test func encodesAndDecodesAssociationRequest() throws {
+        let request = DICOMAssociationRequest(
+            calledAETitle: "PACS",
+            callingAETitle: "DICOMKIT",
+            presentationContexts: [
+                DICOMPresentationContext(
+                    id: 1,
+                    abstractSyntaxUID: "1.2.840.10008.1.1",
+                    transferSyntaxUIDs: ["1.2.840.10008.1.2"]
+                )
+            ]
+        )
+
+        let encoded = try DICOMULPDU.associationRequest(request).encoded()
+        #expect(encoded.first == 0x01)
+        #expect(try DICOMULPDU.decode(encoded) == .associationRequest(request))
+    }
+
+    @Test func encodesAndDecodesPDataValues() throws {
+        let pdu = DICOMULPDU.pData([DICOMPDataValue(contextID: 3, isCommand: true, isLastFragment: true, data: Data([1, 2, 3]))])
+        #expect(try DICOMULPDU.decode(pdu.encoded()) == pdu)
+    }
+
+    @Test func encodesCEchoCommandAndSplitsItIntoCommandPDVs() throws {
+        let request = DICOMDIMSECommand.cEchoRequest(messageID: 7)
+        let encoded = try request.encodedCommandSet()
+        #expect(try DICOMDIMSECommand.decodeCommandSet(encoded) == request)
+
+        let values = try request.commandPDVs(contextID: 1, maximumPayloadLength: 10)
+        #expect(values.allSatisfy { $0.isCommand })
+        #expect(values.last?.isLastFragment == true)
+        #expect(Data(values.flatMap { Array($0.data) }) == encoded)
+    }
+}
+
 struct DICOMTagTests {
     @Test func tagHasCanonicalNotation() {
         #expect(DICOMTag.patientName.description == "(0010,0010)")
