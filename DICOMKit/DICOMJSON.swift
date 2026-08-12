@@ -9,16 +9,22 @@ public struct DICOMJSONDataset: Codable, Sendable, Equatable {
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: DICOMJSONTagCodingKey.self)
         elements = try Dictionary(uniqueKeysWithValues: container.allKeys.map { key in
-            (key.stringValue, try container.decode(DICOMJSONElement.self, forKey: key))
+            guard Self.isTagKey(key.stringValue) else { throw DICOMError.invalidDICOMJSON }
+            return (key.stringValue, try container.decode(DICOMJSONElement.self, forKey: key))
         })
     }
 
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: DICOMJSONTagCodingKey.self)
         for (tag, element) in elements {
-            guard let key = DICOMJSONTagCodingKey(stringValue: tag) else { throw DICOMError.invalidDICOMJSON }
+            guard Self.isTagKey(tag), let key = DICOMJSONTagCodingKey(stringValue: tag) else { throw DICOMError.invalidDICOMJSON }
             try container.encode(element, forKey: key)
         }
+    }
+
+    private static func isTagKey(_ key: String) -> Bool {
+        let hexadecimalScalars = "0123456789ABCDEFabcdef".unicodeScalars
+        return key.count == 8 && key.unicodeScalars.allSatisfy(hexadecimalScalars.contains)
     }
 
     public init(dataset: DICOMDataset) {

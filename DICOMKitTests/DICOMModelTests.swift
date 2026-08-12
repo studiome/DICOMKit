@@ -93,6 +93,14 @@ struct DICOMElementValueTests {
 }
 
 struct DICOMDatasetTests {
+    @Test func rejectsDICOMJSONWithNonTagTopLevelKey() {
+        let json = Data("{\"not-a-tag\":{\"vr\":\"PN\"}}".utf8)
+
+        #expect(throws: DICOMError.invalidDICOMJSON) {
+            try JSONDecoder().decode(DICOMJSONDataset.self, from: json)
+        }
+    }
+
     @Test func validatesTypeOneAndTypeTwoModuleRequirements() {
         let validator = DICOMModuleValidator(requirements: [
             DICOMModuleRequirement(tag: .patientName, vr: .PN, requirement: .type1),
