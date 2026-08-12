@@ -148,6 +148,16 @@ struct DICOMULTests {
         try await association.respond(to: received, status: 0)
         #expect(await transport.sent.count == 2)
     }
+
+    @Test func encodesAndSendsCCancel() async throws {
+        let cancel = DICOMDIMSECommand.cCancelRequest(messageIDBeingRespondedTo: 20)
+        #expect(try DICOMDIMSECommand.decodeCommandSet(cancel.encodedCommandSet()) == cancel)
+        let transport = DICOMULMockTransport(received: [.associationAcceptance(DICOMAssociationAcceptance(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, result: .acceptance, transferSyntaxUID: "1.2.840.10008.1.2")]))])
+        let association = DICOMAssociation(transport: transport)
+        _ = try await association.request(DICOMAssociationRequest(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, abstractSyntaxUID: "1.2.840.10008.1.1", transferSyntaxUIDs: ["1.2.840.10008.1.2"])]))
+        try await association.cCancel(messageIDBeingRespondedTo: 20, contextID: 1)
+        #expect(await transport.sent.count == 2)
+    }
 }
 
 private actor DICOMULMockTransport: DICOMULTransport {

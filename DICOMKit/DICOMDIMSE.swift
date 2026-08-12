@@ -22,6 +22,7 @@ public enum DICOMDIMSECommand: Sendable, Equatable {
     case cMoveResponse(messageIDBeingRespondedTo: UInt16, status: UInt16)
     case cGetRequest(messageID: UInt16, affectedSOPClassUID: String)
     case cGetResponse(messageIDBeingRespondedTo: UInt16, status: UInt16)
+    case cCancelRequest(messageIDBeingRespondedTo: UInt16)
 
     /// Serializes this command set using the mandatory Implicit VR Little Endian syntax.
     public func encodedCommandSet() throws -> Data {
@@ -83,6 +84,10 @@ public enum DICOMDIMSECommand: Sendable, Equatable {
             Self.appendElement(tag: 0x01200000, value: Self.uint16(messageID), to: &content)
             Self.appendElement(tag: 0x08000000, value: Self.uint16(0x0101), to: &content)
             Self.appendElement(tag: 0x09000000, value: Self.uint16(status), to: &content)
+        case .cCancelRequest(let messageID):
+            Self.appendElement(tag: 0x01000000, value: Self.uint16(0x0FFF), to: &content)
+            Self.appendElement(tag: 0x01200000, value: Self.uint16(messageID), to: &content)
+            Self.appendElement(tag: 0x08000000, value: Self.uint16(0x0101), to: &content)
         }
         var result = Data()
         Self.appendElement(tag: 0x00000000, value: Self.uint32(UInt32(content.count)), to: &result)
@@ -137,6 +142,9 @@ public enum DICOMDIMSECommand: Sendable, Equatable {
         case 0x8010:
             guard values[0x08000000].flatMap(readUInt16) == 0x0101, let messageID = values[0x01200000].flatMap(readUInt16), let status = values[0x09000000].flatMap(readUInt16) else { throw DICOMDIMSEError.malformedCommandSet }
             return .cGetResponse(messageIDBeingRespondedTo: messageID, status: status)
+        case 0x0FFF:
+            guard values[0x08000000].flatMap(readUInt16) == 0x0101, let messageID = values[0x01200000].flatMap(readUInt16) else { throw DICOMDIMSEError.malformedCommandSet }
+            return .cCancelRequest(messageIDBeingRespondedTo: messageID)
         default: throw DICOMDIMSEError.unsupportedCommand(field)
         }
     }

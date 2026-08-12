@@ -193,6 +193,14 @@ public actor DICOMAssociation {
         }
     }
 
+    /// Sends C-CANCEL-RQ for an outstanding C-FIND, C-MOVE, or C-GET operation.
+    public func cCancel(messageIDBeingRespondedTo: UInt16, contextID: UInt8) async throws {
+        guard let acceptance, acceptance.presentationContexts.contains(where: { $0.id == contextID && $0.result == .acceptance }) else { throw DICOMAssociationError.notAssociated }
+        let maximumPayload = max(1, Int(acceptance.maximumPDULength) - 12)
+        let command = DICOMDIMSECommand.cCancelRequest(messageIDBeingRespondedTo: messageIDBeingRespondedTo)
+        try await transport.send(.pData(try command.commandPDVs(contextID: contextID, maximumPayloadLength: maximumPayload)))
+    }
+
     /// Sends C-STORE-RSP for a request received through ``receiveCStore()``.
     public func respond(to request: DICOMCStoreRequest, status: UInt16) async throws {
         guard let acceptance else { throw DICOMAssociationError.notAssociated }
