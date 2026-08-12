@@ -7,6 +7,7 @@ public enum DICOMNetworkError: Error, Sendable, Equatable {
     case connectionFailed(String)
     case connectionClosed
     case incompletePDU
+    case listenerFailed(String)
 }
 
 /// A TCP or TLS implementation of ``DICOMULTransport`` backed by Network.framework.
@@ -23,17 +24,30 @@ public actor NetworkDICOMULTransport: DICOMULTransport {
         connection = NWConnection(host: NWEndpoint.Host(host), port: endpointPort, using: parameters)
     }
 
+    /// Wraps an already-established inbound connection, as delivered by
+    /// ``NetworkDICOMULListener``. Still requires `start` and `.ready` before use,
+    /// which the lazy `connect()` performed by `send`/`receive` provides.
+    init(connection: NWConnection) {
+        self.connection = connection
+    }
+
     /// Starts the underlying connection. `send` and `receive` start it automatically.
     public func connect() async throws {
         guard !isConnected else { return }
+        let connection = self.connection
         let _: Void = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             connection.stateUpdateHandler = { state in
+                // Detach after settling once: a later `.cancelled` from `close()` would
+                // otherwise resume this same continuation a second time and crash.
                 switch state {
                 case .ready:
+                    connection.stateUpdateHandler = nil
                     continuation.resume()
                 case .failed(let error):
+                    connection.stateUpdateHandler = nil
                     continuation.resume(throwing: DICOMNetworkError.connectionFailed(error.debugDescription))
                 case .cancelled:
+                    connection.stateUpdateHandler = nil
                     continuation.resume(throwing: DICOMNetworkError.connectionClosed)
                 default: break
                 }
