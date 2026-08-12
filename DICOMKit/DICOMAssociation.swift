@@ -24,9 +24,29 @@ public enum DICOMAssociationError: Error, Sendable, Equatable {
 
 /// The final status and identifier datasets returned by a C-FIND operation.
 public struct DICOMCFindResult: Sendable, Equatable {
-    public let status: UInt16
+    public let status: DICOMDIMSEStatus
     public let identifiers: [Data]
-    public init(status: UInt16, identifiers: [Data]) { self.status = status; self.identifiers = identifiers }
+    public init(status: DICOMDIMSEStatus, identifiers: [Data]) { self.status = status; self.identifiers = identifiers }
+}
+
+/// The final status, sub-operation progress, and error comment returned by a C-MOVE operation.
+public struct DICOMCMoveResult: Sendable, Equatable {
+    public let status: DICOMDIMSEStatus
+    public let subOperations: DICOMSubOperationCounts?
+    public let errorComment: String?
+    public init(status: DICOMDIMSEStatus, subOperations: DICOMSubOperationCounts?, errorComment: String?) {
+        self.status = status; self.subOperations = subOperations; self.errorComment = errorComment
+    }
+}
+
+/// The final status, sub-operation progress, and error comment returned by a C-GET operation.
+public struct DICOMCGetResult: Sendable, Equatable {
+    public let status: DICOMDIMSEStatus
+    public let subOperations: DICOMSubOperationCounts?
+    public let errorComment: String?
+    public init(status: DICOMDIMSEStatus, subOperations: DICOMSubOperationCounts?, errorComment: String?) {
+        self.status = status; self.subOperations = subOperations; self.errorComment = errorComment
+    }
 }
 
 /// An incoming C-STORE request awaiting an SCP response.
@@ -80,7 +100,7 @@ public actor DICOMAssociation {
     }
 
     /// Performs a C-ECHO request and returns the DIMSE status code.
-    public func cEcho(messageID: UInt16, contextID: UInt8) async throws -> UInt16 {
+    public func cEcho(messageID: UInt16, contextID: UInt8) async throws -> DICOMDIMSEStatus {
         guard let acceptance, acceptance.presentationContexts.contains(where: { $0.id == contextID && $0.result == .acceptance }) else { throw DICOMAssociationError.notAssociated }
         let maximumPayload = max(1, Int(acceptance.maximumPDULength) - 12)
         let values = try DICOMDIMSECommand.cEchoRequest(messageID: messageID).commandPDVs(contextID: contextID, maximumPayloadLength: maximumPayload)
@@ -101,7 +121,7 @@ public actor DICOMAssociation {
     /// Sends a C-STORE request and its dataset using the negotiated presentation context.
     /// The dataset must already use that context's negotiated transfer syntax and excludes
     /// the Part 10 File Meta Information.
-    public func cStore(messageID: UInt16, contextID: UInt8, sopClassUID: String, sopInstanceUID: String, dataset: Data) async throws -> UInt16 {
+    public func cStore(messageID: UInt16, contextID: UInt8, sopClassUID: String, sopInstanceUID: String, dataset: Data) async throws -> DICOMDIMSEStatus {
         guard let acceptance, acceptance.presentationContexts.contains(where: { $0.id == contextID && $0.result == .acceptance }) else { throw DICOMAssociationError.notAssociated }
         let maximumPayload = max(1, Int(acceptance.maximumPDULength) - 12)
         let command = DICOMDIMSECommand.cStoreRequest(messageID: messageID, affectedSOPClassUID: sopClassUID, affectedSOPInstanceUID: sopInstanceUID)
@@ -122,7 +142,7 @@ public actor DICOMAssociation {
     }
 
     /// Sends C-STORE using the accepted presentation context for `sopClassUID`.
-    public func cStore(messageID: UInt16, sopClassUID: String, sopInstanceUID: String, dataset: Data) async throws -> UInt16 {
+    public func cStore(messageID: UInt16, sopClassUID: String, sopInstanceUID: String, dataset: Data) async throws -> DICOMDIMSEStatus {
         guard let contextID = presentationContextID(for: sopClassUID) else { throw DICOMAssociationError.notAssociated }
         return try await cStore(messageID: messageID, contextID: contextID, sopClassUID: sopClassUID, sopInstanceUID: sopInstanceUID, dataset: dataset)
     }
@@ -141,9 +161,9 @@ public actor DICOMAssociation {
                 if value.isCommand {
                     responseCommand.append(value.data)
                     guard value.isLastFragment else { continue }
-                    guard case .cFindResponse(let responseID, let status) = try DICOMDIMSECommand.decodeCommandSet(responseCommand), responseID == messageID else { throw DICOMAssociationError.unexpectedDIMSECommand }
+                    guard case .cFindResponse(let responseID, let status, _) = try DICOMDIMSECommand.decodeCommandSet(responseCommand), responseID == messageID else { throw DICOMAssociationError.unexpectedDIMSECommand }
                     responseCommand.removeAll(keepingCapacity: true)
-                    if !isPending(status) { return DICOMCFindResult(status: status, identifiers: identifiers) }
+                    if !status.isPending { return DICOMCFindResult(status: status, identifiers: identifiers) }
                 } else {
                     // Each pending response includes one identifier dataset. A production
                     // SCP sends the command PDU before this dataset PDU.
@@ -161,7 +181,7 @@ public actor DICOMAssociation {
 
     /// Performs C-MOVE and returns its final DIMSE status. Pending progress
     /// responses are consumed until the peer emits a final response.
-    public func cMove(messageID: UInt16, contextID: UInt8, sopClassUID: String, destination: String, identifier: Data) async throws -> UInt16 {
+    public func cMove(messageID: UInt16, contextID: UInt8, sopClassUID: String, destination: String, identifier: Data) async throws -> DICOMCMoveResult {
         guard let acceptance, acceptance.presentationContexts.contains(where: { $0.id == contextID && $0.result == .acceptance }) else { throw DICOMAssociationError.notAssociated }
         let maximumPayload = max(1, Int(acceptance.maximumPDULength) - 12)
         let command = DICOMDIMSECommand.cMoveRequest(messageID: messageID, affectedSOPClassUID: sopClassUID, moveDestination: destination)
@@ -173,15 +193,15 @@ public actor DICOMAssociation {
             for value in values where value.contextID == contextID && value.isCommand {
                 response.append(value.data)
                 guard value.isLastFragment else { continue }
-                guard case .cMoveResponse(let responseID, let status) = try DICOMDIMSECommand.decodeCommandSet(response), responseID == messageID else { throw DICOMAssociationError.unexpectedDIMSECommand }
+                guard case .cMoveResponse(let responseID, let status, let subOperations, let errorComment) = try DICOMDIMSECommand.decodeCommandSet(response), responseID == messageID else { throw DICOMAssociationError.unexpectedDIMSECommand }
                 response.removeAll(keepingCapacity: true)
-                if !isPending(status) { return status }
+                if !status.isPending { return DICOMCMoveResult(status: status, subOperations: subOperations, errorComment: errorComment) }
             }
         }
     }
 
     /// Performs C-MOVE using the accepted presentation context for `sopClassUID`.
-    public func cMove(messageID: UInt16, sopClassUID: String, destination: String, identifier: Data) async throws -> UInt16 {
+    public func cMove(messageID: UInt16, sopClassUID: String, destination: String, identifier: Data) async throws -> DICOMCMoveResult {
         guard let contextID = presentationContextID(for: sopClassUID) else { throw DICOMAssociationError.notAssociated }
         return try await cMove(messageID: messageID, contextID: contextID, sopClassUID: sopClassUID, destination: destination, identifier: identifier)
     }
@@ -198,7 +218,7 @@ public actor DICOMAssociation {
     /// PS3.7 Annex D.3.3.4, a C-GET SCU must propose an SCP role in SCP/SCU
     /// role selection negotiation for each storage SOP Class it expects to
     /// receive during the exchange.
-    public func cGet(messageID: UInt16, contextID: UInt8, sopClassUID: String, identifier: Data) async throws -> UInt16 {
+    public func cGet(messageID: UInt16, contextID: UInt8, sopClassUID: String, identifier: Data) async throws -> DICOMCGetResult {
         guard let acceptance, acceptance.presentationContexts.contains(where: { $0.id == contextID && $0.result == .acceptance }) else { throw DICOMAssociationError.notAssociated }
         let maximumPayload = max(1, Int(acceptance.maximumPDULength) - 12)
         try await transport.send(.pData(try DICOMDIMSECommand.cGetRequest(messageID: messageID, affectedSOPClassUID: sopClassUID).commandPDVs(contextID: contextID, maximumPayloadLength: maximumPayload)))
@@ -209,15 +229,15 @@ public actor DICOMAssociation {
             for value in values where value.contextID == contextID && value.isCommand {
                 response.append(value.data)
                 guard value.isLastFragment else { continue }
-                guard case .cGetResponse(let responseID, let status) = try DICOMDIMSECommand.decodeCommandSet(response), responseID == messageID else { throw DICOMAssociationError.unexpectedDIMSECommand }
+                guard case .cGetResponse(let responseID, let status, let subOperations, let errorComment) = try DICOMDIMSECommand.decodeCommandSet(response), responseID == messageID else { throw DICOMAssociationError.unexpectedDIMSECommand }
                 response.removeAll(keepingCapacity: true)
-                if !isPending(status) { return status }
+                if !status.isPending { return DICOMCGetResult(status: status, subOperations: subOperations, errorComment: errorComment) }
             }
         }
     }
 
     /// Performs C-GET using the accepted presentation context for `sopClassUID`.
-    public func cGet(messageID: UInt16, sopClassUID: String, identifier: Data) async throws -> UInt16 {
+    public func cGet(messageID: UInt16, sopClassUID: String, identifier: Data) async throws -> DICOMCGetResult {
         guard let contextID = presentationContextID(for: sopClassUID) else { throw DICOMAssociationError.notAssociated }
         return try await cGet(messageID: messageID, contextID: contextID, sopClassUID: sopClassUID, identifier: identifier)
     }
@@ -257,7 +277,7 @@ public actor DICOMAssociation {
     }
 
     /// Sends C-STORE-RSP for a request received through ``receiveCStore()``.
-    public func respond(to request: DICOMCStoreRequest, status: UInt16) async throws {
+    public func respond(to request: DICOMCStoreRequest, status: DICOMDIMSEStatus) async throws {
         guard let acceptance else { throw DICOMAssociationError.notAssociated }
         let maximumPayload = max(1, Int(acceptance.maximumPDULength) - 12)
         let response = DICOMDIMSECommand.cStoreResponse(messageIDBeingRespondedTo: request.messageID, status: status)
@@ -295,8 +315,6 @@ public actor DICOMAssociation {
         let chunks = stride(from: 0, to: data.count, by: maximumPayloadLength).map { data.subdata(in: $0..<min($0 + maximumPayloadLength, data.count)) }
         return chunks.enumerated().map { DICOMPDataValue(contextID: contextID, isCommand: false, isLastFragment: $0.offset == chunks.count - 1, data: $0.element) }
     }
-
-    private func isPending(_ status: UInt16) -> Bool { status == 0xFF00 || status == 0xFF01 }
 
     /// Receives the next PDU, transparently handling a peer A-ABORT or
     /// A-RELEASE-RQ by tearing down the association and throwing.
