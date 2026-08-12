@@ -193,6 +193,7 @@ public struct DICOMFile: Sendable {
         let paletteColorLUT = sourcePhotometric == .paletteColor ? makePaletteColorLUT() : nil
         let windowPresets = makeWindowPresets()
         let voiLUTs = makeVOILUTs()
+        let modalityLUT = makeModalityLUT()
         let frameAttributes = renderingAttributes(frameCount: frameCount)
         guard sourcePhotometric != .paletteColor || paletteColorLUT != nil else { return nil }
         let frames: [DecodedPixelDataFrame]
@@ -448,6 +449,7 @@ public struct DICOMFile: Sendable {
             voiLUTs: voiLUTs,
             paletteColorLUT: paletteColorLUT
             , pixelPaddingRange: pixelPaddingRange()
+            , modalityLUT: modalityLUT
             )
         }
     }
@@ -535,6 +537,44 @@ public struct DICOMFile: Sendable {
                 explanation: item[.lutExplanation]?.stringValue
             )
         }
+    }
+
+    /// Builds the Modality LUT declared by the single item of Modality LUT
+    /// Sequence `(0028,3000)`, if present.
+    ///
+    /// Per PS3.3 C.11.1 the Modality LUT Sequence and Rescale Slope/
+    /// Intercept are mutually exclusive; a dataset carrying both is
+    /// non-conformant, and this prefers the sequence, matching how
+    /// ``pixelDataFrames`` wires it into ``DICOMPixelData``.
+    private func makeModalityLUT() -> DICOMModalityLUT? {
+        guard let item = dataset[DICOMTag(group: 0x0028, element: 0x3000)]?.sequenceItems?.first,
+              let descriptor = item[.lutDescriptor]?.uint16Values,
+              descriptor.count == 3,
+              let dataElement = item[.lutData] else { return nil }
+        let count = descriptor[0] == 0 ? 65_536 : Int(descriptor[0])
+        let bitsPerEntry = Int(descriptor[2])
+        // Descriptor[1] (first stored value mapped) is US or SS depending on
+        // Pixel Representation; with signed samples it must be reinterpreted
+        // as Int16, not read as an unsigned value.
+        let firstMappedValue = dataset[.pixelRepresentation]?.uint16Value == 1
+            ? Int(Int16(bitPattern: descriptor[1]))
+            : Int(descriptor[1])
+        let data: [UInt16]?
+        if bitsPerEntry <= 8, dataElement.vr == .OB, dataElement.value.count >= count {
+            data = dataElement.value.prefix(count).map(UInt16.init)
+        } else if let words = dataElement.uint16Values, words.count >= count {
+            data = Array(words.prefix(count))
+        } else {
+            data = nil
+        }
+        guard let data else { return nil }
+        return try? DICOMModalityLUT(
+            firstMappedValue: firstMappedValue,
+            bitsPerEntry: bitsPerEntry,
+            entries: data,
+            type: item[DICOMTag(group: 0x0028, element: 0x3004)]?.stringValue,
+            explanation: item[.lutExplanation]?.stringValue
+        )
     }
 
     /// Builds the palette lookup tables carried by a `PALETTE COLOR` dataset.

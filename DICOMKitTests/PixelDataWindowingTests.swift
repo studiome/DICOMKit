@@ -241,6 +241,97 @@ struct PixelDataWindowingTests {
     }
 }
 
+// MARK: - Modality LUT
+
+/// The Modality LUT Sequence `(0028,3000)`, which per PS3.3 C.11.1 replaces
+/// Rescale Slope/Intercept as the stored-value-to-modality-unit transform
+/// that feeds windowing.
+struct PixelDataModalityLUTTests {
+    @Test func mapsBelowInAndAboveRangeStoredValuesWithClamping() throws {
+        let lut = try DICOMModalityLUT(firstMappedValue: 0, bitsPerEntry: 8, entries: [10, 20, 30])
+
+        #expect(lut.mappedValue(for: -5) == 10)
+        #expect(lut.mappedValue(for: 1) == 20)
+        #expect(lut.mappedValue(for: 10) == 30)
+    }
+
+    @Test func throwsForBitsPerEntryOutsideValidRange() {
+        #expect(throws: DICOMImageError.invalidImageAttributes) {
+            _ = try DICOMModalityLUT(firstMappedValue: 0, bitsPerEntry: 4, entries: [1, 2])
+        }
+    }
+
+    @Test func throwsForEmptyEntries() {
+        #expect(throws: DICOMImageError.invalidImageAttributes) {
+            _ = try DICOMModalityLUT(firstMappedValue: 0, bitsPerEntry: 8, entries: [])
+        }
+    }
+
+    @Test func decodesNegativeFirstMappedValueWithSignedPixelRepresentation() throws {
+        // Descriptor[1] is US or SS depending on Pixel Representation; with
+        // Pixel Representation 1 the bit pattern 0xFC18 must be reinterpreted
+        // as the signed value -1000, not the unsigned value 64536.
+        let descriptor = uint16(3) + uint16(0xFC18) + uint16(16)
+        let item = DICOMDataset(elements: [
+            DICOMElement(tag: .lutDescriptor, vr: .SS, value: descriptor),
+            DICOMElement(tag: .lutData, vr: .OW, value: uint16(100) + uint16(200) + uint16(300))
+        ])
+        let dataset = DICOMDataset(elements: [
+            DICOMElement(tag: .samplesPerPixel, vr: .US, value: uint16(1)),
+            DICOMElement(tag: .photometricInterpretation, vr: .CS, value: Data("MONOCHROME2".utf8)),
+            DICOMElement(tag: .rows, vr: .US, value: uint16(1)),
+            DICOMElement(tag: .columns, vr: .US, value: uint16(1)),
+            DICOMElement(tag: .bitsAllocated, vr: .US, value: uint16(16)),
+            DICOMElement(tag: .pixelRepresentation, vr: .US, value: uint16(1)),
+            DICOMElement(tag: DICOMTag(group: 0x0028, element: 0x3000), vr: .SQ, value: Data(), sequenceItems: [item]),
+            // -999 as signed 16-bit two's complement is 0xFC19.
+            DICOMElement(tag: .pixelData, vr: .OW, value: Data([0x19, 0xFC]))
+        ])
+        let pixelData = try #require(DICOMFile(data: DICOMWriter.write(dataset: dataset)).pixelData)
+
+        #expect(pixelData.modalityLUT?.firstMappedValue == -1000)
+        // Correct offset (-999) - (-1000) = 1 selects entries[1] = 200; the
+        // bug this guards against (treating -1000 as unsigned 64536) would
+        // clamp the offset to 0 and select entries[0] = 100 instead.
+        #expect(pixelData.modalityLUT?.mappedValue(for: -999) == 200)
+    }
+
+    @Test func rendersThroughModalityLUTInsteadOfRescale() throws {
+        let descriptor = uint16(2) + uint16(0) + uint16(16)
+        let item = DICOMDataset(elements: [
+            DICOMElement(tag: .lutDescriptor, vr: .US, value: descriptor),
+            DICOMElement(tag: DICOMTag(group: 0x0028, element: 0x3004), vr: .LO, value: Data("HU".utf8)),
+            DICOMElement(tag: .lutData, vr: .OW, value: uint16(100) + uint16(2_000))
+        ])
+        let dataset = DICOMDataset(elements: [
+            DICOMElement(tag: .samplesPerPixel, vr: .US, value: uint16(1)),
+            DICOMElement(tag: .photometricInterpretation, vr: .CS, value: Data("MONOCHROME2".utf8)),
+            DICOMElement(tag: .rows, vr: .US, value: uint16(1)),
+            DICOMElement(tag: .columns, vr: .US, value: uint16(2)),
+            DICOMElement(tag: .bitsAllocated, vr: .US, value: uint16(16)),
+            // Both present is non-conformant per PS3.3 C.11.1; the sequence
+            // must win. If rescale were (wrongly) applied instead, the two
+            // stored samples would rescale to 999 and 1004, not 100/2000.
+            DICOMElement(tag: .rescaleSlope, vr: .DS, value: Data("5".utf8)),
+            DICOMElement(tag: .rescaleIntercept, vr: .DS, value: Data("999".utf8)),
+            DICOMElement(tag: DICOMTag(group: 0x0028, element: 0x3000), vr: .SQ, value: Data(), sequenceItems: [item]),
+            DICOMElement(tag: .pixelData, vr: .OW, value: uint16(0) + uint16(1))
+        ])
+        let pixelData = try #require(DICOMFile(data: DICOMWriter.write(dataset: dataset)).pixelData)
+
+        #expect(pixelData.modalityLUT?.type == "HU")
+        #expect(pixelData.modalityLUT?.mappedValue(for: 0) == 100)
+        #expect(pixelData.modalityLUT?.mappedValue(for: 1) == 2_000)
+
+        // Window tight around the rescale-based values (999...1004): if
+        // rescale were wrongly applied, both samples would land inside this
+        // window and render as intermediate grays, not pure black/white.
+        let image = try pixelData.cgImage(windowCenter: 1_002, windowWidth: 10)
+
+        #expect(try imageBytes(image) == Data([0, 255]))
+    }
+}
+
 // MARK: - Window selection
 
 struct PixelDataDefaultWindowTests {

@@ -55,6 +55,13 @@ public struct DICOMPixelData: Sendable {
     public let paletteColorLUT: DICOMPaletteColorLUT?
     /// Stored sample values excluded from automatic window calculation.
     public let pixelPaddingRange: ClosedRange<Double>?
+    /// The Modality LUT declared by `(0028,3000)`, when present.
+    ///
+    /// Per PS3.3 C.11.1 this is mutually exclusive with ``rescaleSlope``/
+    /// ``rescaleIntercept``; when non-`nil` it replaces the rescale
+    /// transform entirely. Only consulted by the 16-bit monochrome
+    /// rendering path.
+    public let modalityLUT: DICOMModalityLUT?
 
     /// Creates uncompressed pixel data and its rendering attributes.
     ///
@@ -81,7 +88,8 @@ public struct DICOMPixelData: Sendable {
         windowPresets: [DICOMWindowPreset] = [],
         voiLUTs: [DICOMVOILUT] = [],
         paletteColorLUT: DICOMPaletteColorLUT? = nil,
-        pixelPaddingRange: ClosedRange<Double>? = nil
+        pixelPaddingRange: ClosedRange<Double>? = nil,
+        modalityLUT: DICOMModalityLUT? = nil
     ) {
         self.value = value
         self.rows = rows
@@ -100,6 +108,7 @@ public struct DICOMPixelData: Sendable {
         self.voiLUTs = voiLUTs
         self.paletteColorLUT = paletteColorLUT
         self.pixelPaddingRange = pixelPaddingRange
+        self.modalityLUT = modalityLUT
     }
 
     /// Creates a Core Graphics image for 8-bit monochrome, interleaved RGB,
@@ -116,7 +125,10 @@ public struct DICOMPixelData: Sendable {
     /// and then rescaled as `storedValue * rescaleSlope + rescaleIntercept`
     /// (for example, to Hounsfield Units for CT) before windowing. `center`
     /// and `width` are therefore expressed in the *rescaled* unit, not in
-    /// raw stored values.
+    /// raw stored values. When ``modalityLUT`` is present it takes
+    /// precedence: per PS3.3 C.11.1 a Modality LUT Sequence and Rescale
+    /// Slope/Intercept are mutually exclusive, so each masked/sign-extended
+    /// stored value is mapped through the LUT instead of being rescaled.
     ///
     /// The window used for 16-bit monochrome data is resolved independently
     /// for center and width, in this priority order:
@@ -299,6 +311,9 @@ public struct DICOMPixelData: Sendable {
                 storedValue = Int64(masked) - Int64(signedRange)
             } else {
                 storedValue = Int64(masked)
+            }
+            if let modalityLUT {
+                return modalityLUT.mappedValue(for: storedValue)
             }
             return Double(storedValue) * rescaleSlope + rescaleIntercept
         }
