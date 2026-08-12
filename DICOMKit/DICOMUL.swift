@@ -48,6 +48,27 @@ public struct DICOMAssociationRequest: Sendable, Equatable {
     }
 }
 
+/// A negotiated presentation context returned in an A-ASSOCIATE-AC PDU.
+public struct DICOMPresentationContextAcceptance: Sendable, Equatable {
+    public enum Result: UInt8, Sendable, Equatable { case acceptance = 0, abstractSyntaxNotSupported = 3, transferSyntaxesNotSupported = 4 }
+    public let id: UInt8
+    public let result: Result
+    public let transferSyntaxUID: String
+    public init(id: UInt8, result: Result, transferSyntaxUID: String) { self.id = id; self.result = result; self.transferSyntaxUID = transferSyntaxUID }
+}
+
+/// The information carried by an A-ASSOCIATE-AC PDU.
+public struct DICOMAssociationAcceptance: Sendable, Equatable {
+    public let calledAETitle: String
+    public let callingAETitle: String
+    public let applicationContextUID: String
+    public let presentationContexts: [DICOMPresentationContextAcceptance]
+    public let maximumPDULength: UInt32
+    public init(calledAETitle: String, callingAETitle: String, applicationContextUID: String = DICOMAssociationRequest.dicomApplicationContextUID, presentationContexts: [DICOMPresentationContextAcceptance], maximumPDULength: UInt32 = 16_384) {
+        self.calledAETitle = calledAETitle; self.callingAETitle = callingAETitle; self.applicationContextUID = applicationContextUID; self.presentationContexts = presentationContexts; self.maximumPDULength = maximumPDULength
+    }
+}
+
 /// One PDV in a P-DATA-TF PDU.
 public struct DICOMPDataValue: Sendable, Equatable {
     public let contextID: UInt8
@@ -70,6 +91,7 @@ public struct DICOMPDataValue: Sendable, Equatable {
 /// deterministic byte sequences.
 public enum DICOMULPDU: Sendable, Equatable {
     case associationRequest(DICOMAssociationRequest)
+    case associationAcceptance(DICOMAssociationAcceptance)
     case pData([DICOMPDataValue])
     case releaseRequest
     case releaseResponse
@@ -83,6 +105,9 @@ public enum DICOMULPDU: Sendable, Equatable {
         case .associationRequest(let request):
             type = 0x01
             body = try Self.encodeAssociationRequest(request)
+        case .associationAcceptance(let acceptance):
+            type = 0x02
+            body = try Self.encodeAssociationAcceptance(acceptance)
         case .pData(let values):
             type = 0x04
             body = try Self.encodePData(values)
@@ -108,6 +133,7 @@ public enum DICOMULPDU: Sendable, Equatable {
         let body = data.dropFirst(6)
         switch data[0] {
         case 0x01: return .associationRequest(try decodeAssociationRequest(Data(body)))
+        case 0x02: return .associationAcceptance(try decodeAssociationAcceptance(Data(body)))
         case 0x04: return .pData(try decodePData(Data(body)))
         case 0x05:
             guard body.count == 4 else { throw DICOMULError.malformedPDU }; return .releaseRequest
@@ -170,6 +196,41 @@ public enum DICOMULPDU: Sendable, Equatable {
         }
         guard let applicationContext, !contexts.isEmpty else { throw DICOMULError.malformedPDU }
         return DICOMAssociationRequest(calledAETitle: called, callingAETitle: calling, applicationContextUID: applicationContext, presentationContexts: contexts, maximumPDULength: maximumLength)
+    }
+
+    private static func encodeAssociationAcceptance(_ acceptance: DICOMAssociationAcceptance) throws -> Data {
+        var body = Data([0, 1, 0, 0])
+        body.append(try aeTitle(acceptance.calledAETitle)); body.append(try aeTitle(acceptance.callingAETitle)); body.append(Data(repeating: 0, count: 32))
+        appendItem(type: 0x10, value: Data(acceptance.applicationContextUID.utf8), to: &body)
+        for context in acceptance.presentationContexts {
+            guard context.id != 0, context.id % 2 == 1 else { throw DICOMULError.invalidPresentationContext }
+            var value = Data([context.id, 0, context.result.rawValue, 0])
+            appendItem(type: 0x40, value: Data(context.transferSyntaxUID.utf8), to: &value)
+            appendItem(type: 0x21, value: value, to: &body)
+        }
+        var user = Data(); var maximum = Data(); appendUInt32(acceptance.maximumPDULength, to: &maximum); appendItem(type: 0x51, value: maximum, to: &user); appendItem(type: 0x50, value: user, to: &body)
+        return body
+    }
+
+    private static func decodeAssociationAcceptance(_ data: Data) throws -> DICOMAssociationAcceptance {
+        guard data.count >= 68, data[0] == 0, data[1] == 1 else { throw DICOMULError.malformedPDU }
+        let called = try decodeAETitle(data.subdata(in: 4..<20)); let calling = try decodeAETitle(data.subdata(in: 20..<36))
+        var offset = 68; var applicationContext: String?; var contexts: [DICOMPresentationContextAcceptance] = []; var maximum: UInt32 = 16_384
+        while offset < data.count {
+            let item = try readItem(data, offset: &offset)
+            if item.type == 0x10 { applicationContext = String(data: item.value, encoding: .ascii) }
+            if item.type == 0x21 { contexts.append(try decodeAcceptedPresentationContext(item.value)) }
+            if item.type == 0x50 { var userOffset = 0; while userOffset < item.value.count { let subitem = try readItem(item.value, offset: &userOffset); if subitem.type == 0x51, subitem.value.count == 4 { maximum = readUInt32(subitem.value, at: 0) } } }
+        }
+        guard let applicationContext, !contexts.isEmpty else { throw DICOMULError.malformedPDU }
+        return DICOMAssociationAcceptance(calledAETitle: called, callingAETitle: calling, applicationContextUID: applicationContext, presentationContexts: contexts, maximumPDULength: maximum)
+    }
+
+    private static func decodeAcceptedPresentationContext(_ data: Data) throws -> DICOMPresentationContextAcceptance {
+        guard data.count >= 4, let result = DICOMPresentationContextAcceptance.Result(rawValue: data[2]) else { throw DICOMULError.invalidPresentationContext }
+        var offset = 4; let item = try readItem(data, offset: &offset)
+        guard offset == data.count, item.type == 0x40, let syntax = String(data: item.value, encoding: .ascii) else { throw DICOMULError.invalidPresentationContext }
+        return DICOMPresentationContextAcceptance(id: data[0], result: result, transferSyntaxUID: syntax)
     }
 
     private static func decodePresentationContext(_ data: Data) throws -> DICOMPresentationContext {

@@ -36,6 +36,16 @@ struct DICOMULTests {
         #expect(values.last?.isLastFragment == true)
         #expect(Data(values.flatMap { Array($0.data) }) == encoded)
     }
+
+    @Test func encodesAndDecodesAssociationAcceptance() throws {
+        let acceptance = DICOMAssociationAcceptance(
+            calledAETitle: "PACS",
+            callingAETitle: "DICOMKIT",
+            presentationContexts: [DICOMPresentationContextAcceptance(id: 1, result: .acceptance, transferSyntaxUID: "1.2.840.10008.1.2")]
+        )
+        let pdu = DICOMULPDU.associationAcceptance(acceptance)
+        #expect(try DICOMULPDU.decode(pdu.encoded()) == pdu)
+    }
 }
 
 struct DICOMTagTests {
