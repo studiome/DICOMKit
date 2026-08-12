@@ -6,6 +6,21 @@ public struct DICOMJSONDataset: Codable, Sendable, Equatable {
 
     public init(elements: [String: DICOMJSONElement] = [:]) { self.elements = elements }
 
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: DICOMJSONTagCodingKey.self)
+        elements = try Dictionary(uniqueKeysWithValues: container.allKeys.map { key in
+            (key.stringValue, try container.decode(DICOMJSONElement.self, forKey: key))
+        })
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: DICOMJSONTagCodingKey.self)
+        for (tag, element) in elements {
+            guard let key = DICOMJSONTagCodingKey(stringValue: tag) else { throw DICOMError.invalidDICOMJSON }
+            try container.encode(element, forKey: key)
+        }
+    }
+
     public init(dataset: DICOMDataset) {
         self.elements = Dictionary(uniqueKeysWithValues: dataset.compactMap { element in
             // Group Length is explicitly excluded by PS3.18 F.2.2.
@@ -30,6 +45,18 @@ public struct DICOMJSONDataset: Codable, Sendable, Equatable {
             return try value.dicomElement(tag: DICOMTag(group: group, element: element))
         })
     }
+}
+
+private struct DICOMJSONTagCodingKey: CodingKey {
+    let stringValue: String
+    let intValue: Int?
+
+    init?(stringValue: String) {
+        self.stringValue = stringValue
+        intValue = nil
+    }
+
+    init?(intValue: Int) { nil }
 }
 
 /// A typed DICOM JSON element.

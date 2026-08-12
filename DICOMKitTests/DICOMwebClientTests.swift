@@ -3,6 +3,17 @@ import Testing
 @testable import DICOMKit
 
 struct DICOMwebClientTests {
+    @Test func wadoDecodesTypedMetadata() async throws {
+        let response = Data("[{\"00100010\":{\"vr\":\"PN\",\"Value\":[{\"Alphabetic\":\"Doe^Jane\"}]}}]".utf8)
+        let transport = CapturingDICOMwebTransport(response: response)
+        let client = DICOMwebClient(baseURL: URL(string: "https://example.test/dicomweb")!, transport: transport)
+
+        let datasets = try await client.retrieveTypedMetadata(studyInstanceUID: "1.2.3", seriesInstanceUID: "4.5.6", sopInstanceUID: "7.8.9")
+
+        #expect(datasets.count == 1)
+        #expect(try #require(datasets[0].elements["00100010"]?.value) == [.personName(DICOMJSONPersonName(alphabetic: "Doe^Jane"))])
+    }
+
     @Test func wadoRetrievesMetadataFramesAndBulkData() async throws {
         let transport = CapturingDICOMwebTransport(response: Data("payload".utf8))
         let client = DICOMwebClient(baseURL: URL(string: "https://example.test/dicomweb")!, transport: transport)

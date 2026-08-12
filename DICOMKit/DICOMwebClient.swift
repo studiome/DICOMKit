@@ -97,6 +97,19 @@ public struct DICOMwebClient: Sendable {
         try await retrieveData(path: ["studies", studyInstanceUID, "series", seriesInstanceUID, "instances", sopInstanceUID, "metadata"], accept: "application/dicom+json")
     }
 
+    /// Retrieves and decodes DICOM JSON metadata for one instance through WADO-RS.
+    ///
+    /// WADO-RS metadata is an array of PS3.18 Annex F datasets. `BulkDataURI`
+    /// values remain references and are not fetched implicitly.
+    public func retrieveTypedMetadata(studyInstanceUID: String, seriesInstanceUID: String, sopInstanceUID: String) async throws -> [DICOMJSONDataset] {
+        let data = try await retrieveMetadata(
+            studyInstanceUID: studyInstanceUID,
+            seriesInstanceUID: seriesInstanceUID,
+            sopInstanceUID: sopInstanceUID
+        )
+        return try JSONDecoder().decode([DICOMJSONDataset].self, from: data)
+    }
+
     /// Retrieves one or more WADO-RS frames. Frame numbers are one-based.
     public func retrieveFrames(studyInstanceUID: String, seriesInstanceUID: String, sopInstanceUID: String, frameNumbers: [Int]) async throws -> Data {
         guard !frameNumbers.isEmpty, frameNumbers.allSatisfy({ $0 > 0 }) else { throw DICOMwebError.invalidMultipartResponse }
