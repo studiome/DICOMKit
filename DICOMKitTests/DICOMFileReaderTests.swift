@@ -27,6 +27,7 @@ struct DICOMFileReaderTests {
 
         #expect(metadata.dataset[.pixelData] == nil)
         #expect(try metadata.nativePixelDataReference?.load() == Data([0x12, 0x34]))
+        #expect(try metadata.nativePixelDataFrames()?.first?.value == Data([0x12, 0x34]))
         #expect(!lazy.isLoaded)
         #expect(lazy.loadFirstFrame()?.value == Data([0x12, 0x34]))
     }

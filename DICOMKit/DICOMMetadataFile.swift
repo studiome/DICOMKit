@@ -92,4 +92,36 @@ public struct DICOMMetadataFile: Sendable {
         guard transferSyntax.usesEncapsulatedPixelData || nativePixelDataReference != nil else { return nil }
         return DICOMLazyPixelData { try? DICOMFile(url: sourceURL).pixelDataFrames }
     }
+
+    /// Loads native frames directly from ``nativePixelDataReference`` without
+    /// reparsing the Part 10 file. Returns `nil` when required image metadata
+    /// is absent or the Pixel Data value does not match its declared geometry.
+    public func nativePixelDataFrames() throws -> [DICOMPixelData]? {
+        guard let reference = nativePixelDataReference,
+              let rows = dataset[.rows]?.uint16Value,
+              let columns = dataset[.columns]?.uint16Value,
+              let samples = dataset[.samplesPerPixel]?.uint16Value,
+              let bits = dataset[.bitsAllocated]?.uint16Value,
+              let photometricName = dataset[.photometricInterpretation]?.stringValue,
+              bits.isMultiple(of: 8),
+              let frames = Int(dataset[.numberOfFrames]?.stringValue ?? "1"), frames > 0 else { return nil }
+        let bytesPerFrame = Int(rows) * Int(columns) * Int(samples) * (Int(bits) / 8)
+        guard bytesPerFrame > 0 else { return nil }
+        let value = try reference.load()
+        guard value.count >= bytesPerFrame * frames else { return nil }
+        return (0..<frames).map { index in
+            DICOMPixelData(
+                value: value.subdata(in: index * bytesPerFrame..<(index + 1) * bytesPerFrame),
+                rows: Int(rows), columns: Int(columns), samplesPerPixel: Int(samples), bitsAllocated: Int(bits),
+                photometricInterpretation: PhotometricInterpretation(name: photometricName),
+                planarConfiguration: Int(dataset[.planarConfiguration]?.uint16Value ?? 0),
+                bitsStored: dataset[.bitsStored]?.uint16Value.map(Int.init),
+                pixelRepresentation: Int(dataset[.pixelRepresentation]?.uint16Value ?? 0),
+                rescaleSlope: dataset[.rescaleSlope]?.doubleValue ?? 1,
+                rescaleIntercept: dataset[.rescaleIntercept]?.doubleValue ?? 0,
+                defaultWindowCenter: dataset[.windowCenter]?.doubleValue,
+                defaultWindowWidth: dataset[.windowWidth]?.doubleValue
+            )
+        }
+    }
 }
