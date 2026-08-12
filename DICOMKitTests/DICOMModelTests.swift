@@ -166,6 +166,22 @@ struct DICOMULTests {
         await #expect(throws: DICOMAssociationError.timedOut) { try await association.request(request) }
     }
 
+    /// Reproduces a real `NWConnection.receive` under cancellation: the awaited `receive()`
+    /// ignores `Task` cancellation entirely and only unblocks when `close()` resumes it.
+    @Test func responseTimeoutClosesTransportBlockedInNonCancellableReceive() async throws {
+        let acceptance = DICOMAssociationAcceptance(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, result: .acceptance, transferSyntaxUID: "1.2.840.10008.1.2")])
+        let transport = DICOMULHangingTransport(firstResponse: .associationAcceptance(acceptance))
+        let association = DICOMAssociation(transport: transport, responseTimeout: .milliseconds(100))
+        _ = try await association.request(DICOMAssociationRequest(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, abstractSyntaxUID: DICOMSOPClass.verification, transferSyntaxUIDs: ["1.2.840.10008.1.2"])]))
+
+        try await withTestTimeout(seconds: 5) {
+            await #expect(throws: DICOMAssociationError.timedOut) {
+                _ = try await association.cEcho(messageID: 1, contextID: 1)
+            }
+        }
+        #expect(await transport.wasClosed)
+    }
+
     @Test func associationSelectsAcceptedPresentationContextForSOPClass() async throws {
         let transport = DICOMULMockTransport(received: [
             .associationAcceptance(DICOMAssociationAcceptance(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [
@@ -833,6 +849,49 @@ private actor DICOMULNeverRespondingTransport: DICOMULTransport {
     func send(_ pdu: DICOMULPDU) async throws {}
     func receive() async throws -> DICOMULPDU { try await Task.sleep(for: .seconds(60)); throw DICOMNetworkError.connectionClosed }
     func close() async {}
+}
+
+/// Mimics `NWConnection.receive`, which ignores `Task` cancellation: `receive()` parks a
+/// continuation that only settles when `close()` explicitly resumes it.
+private actor DICOMULHangingTransport: DICOMULTransport {
+    private let firstResponse: DICOMULPDU
+    private var callCount = 0
+    private var pendingContinuation: CheckedContinuation<DICOMULPDU, Error>?
+    private(set) var wasClosed = false
+
+    init(firstResponse: DICOMULPDU) { self.firstResponse = firstResponse }
+
+    func send(_ pdu: DICOMULPDU) async throws {}
+
+    func receive() async throws -> DICOMULPDU {
+        callCount += 1
+        if callCount == 1 { return firstResponse }
+        return try await withCheckedThrowingContinuation { continuation in
+            pendingContinuation = continuation
+        }
+    }
+
+    func close() async {
+        wasClosed = true
+        pendingContinuation?.resume(throwing: DICOMNetworkError.connectionClosed)
+        pendingContinuation = nil
+    }
+}
+
+private struct TestTimeoutError: Error {}
+
+/// Races `operation` against a deadline so a regression cannot hang the suite.
+private func withTestTimeout<T: Sendable>(seconds: Double, operation: @Sendable @escaping () async throws -> T) async throws -> T {
+    try await withThrowingTaskGroup(of: T.self) { group in
+        group.addTask { try await operation() }
+        group.addTask {
+            try await Task.sleep(for: .seconds(seconds))
+            throw TestTimeoutError()
+        }
+        guard let result = try await group.next() else { throw TestTimeoutError() }
+        group.cancelAll()
+        return result
+    }
 }
 
 struct DICOMTagTests {

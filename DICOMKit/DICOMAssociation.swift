@@ -8,6 +8,12 @@ import Foundation
 public protocol DICOMULTransport: Sendable {
     func send(_ pdu: DICOMULPDU) async throws
     func receive() async throws -> DICOMULPDU
+    /// Must unblock any `receive()` currently in flight, for example by causing it to
+    /// throw. This is required even when the underlying primitive does not itself react
+    /// to `Task` cancellation, since ``DICOMAssociation`` relies on `close()` — not
+    /// cancellation — to free a `receive()` blocked past ``DICOMAssociation``'s
+    /// response timeout. `NetworkDICOMULTransport.close()` satisfies this via
+    /// `NWConnection.cancel()`.
     func close() async
 }
 
@@ -450,15 +456,32 @@ public actor DICOMAssociation {
     private func receiveRawPDU() async throws -> DICOMULPDU {
         guard let responseTimeout else { return try await transport.receive() }
         let transport = self.transport
-        return try await withThrowingTaskGroup(of: DICOMULPDU.self) { group in
-            group.addTask { try await transport.receive() }
-            group.addTask {
-                try await Task.sleep(for: responseTimeout)
-                throw DICOMAssociationError.timedOut
+        do {
+            return try await withThrowingTaskGroup(of: DICOMULPDU.self) { group in
+                group.addTask { try await transport.receive() }
+                group.addTask {
+                    try await Task.sleep(for: responseTimeout)
+                    throw DICOMAssociationError.timedOut
+                }
+                do {
+                    guard let first = try await group.next() else { throw DICOMAssociationError.timedOut }
+                    group.cancelAll()
+                    return first
+                } catch {
+                    // `group.cancelAll()` alone cannot free the losing `receive()`: Network
+                    // primitives like `NWConnection.receive` ignore Task cancellation, and
+                    // `withThrowingTaskGroup` awaits every child before this closure may
+                    // return. Close the transport here, before rethrowing, so that await
+                    // happens after — not before — the transport unblocks its receiver.
+                    group.cancelAll()
+                    await transport.close()
+                    throw error
+                }
             }
-            guard let first = try await group.next() else { throw DICOMAssociationError.timedOut }
-            group.cancelAll()
-            return first
+        } catch {
+            // A timed-out (or otherwise failed) association is dead.
+            tearDown()
+            throw error
         }
     }
 }
