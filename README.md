@@ -58,6 +58,18 @@ See the [changelog](CHANGELOG.md) for the current implementation status.
   `DICOMFile.floatingPixelDataFrames`, preserving IEEE 754 values
 - Exposes Overlay Plane bitmaps, ICC Profile data, Presentation LUT Shape, and
   resolved Enhanced Multi-frame rescale/window attributes for display layers
+- Applies the Modality LUT Sequence `(0028,3000)` in the 16-bit rendering
+  path, taking precedence over Rescale Slope/Intercept per PS3.3 C.11.1, and
+  exposes Cine module attributes (`DICOMFile.cineAttributes`) and the Display
+  Shutter module (`DICOMFile.displayShutter`), including rectangular,
+  circular, and polygonal shutter shapes applied during rendering
+- Parses Grayscale Softcopy Presentation States (`DICOMPresentationState`,
+  SOP Class `1.2.840.10008.5.1.4.1.1.11.1`) — referenced images, spatial
+  transformation, Presentation LUT Shape, Display Shutter, Softcopy VOI,
+  Displayed Area, Graphic Layers, and Graphic Annotations — and applies a
+  presentation state's shutter, VOI, and Presentation LUT Shape to a
+  referenced file's rendered pixel data through
+  `DICOMFile.pixelData(applying:)` / `pixelDataFrames(applying:)`
 - Decodes JPEG Lossless, Non-Hierarchical (Process 14) Pixel Data for `.57`
   and `.70`: single-component `MONOCHROME1` / `MONOCHROME2` and interleaved
   1:1:1 `RGB`, with 2–16-bit precision, Selection Values 1–7, Point Transform,

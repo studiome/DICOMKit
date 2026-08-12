@@ -83,6 +83,19 @@ All notable changes to DICOMKit are documented here.
   DICOMDIR Directory Record Sequence reading.
 - Raised the minimum deployment target to iPadOS 16.0 because the
   association response timeout uses `Duration`.
+- Added `DICOMFile.pixelDataFrames` support for the Modality LUT Sequence
+  `(0028,3000)`, `DICOMFile.cineAttributes` for the Cine module (PS3.3
+  C.7.6.5), and `DICOMFile.displayShutter` for the Display Shutter module
+  (PS3.3 C.7.6.11), applied during 16-bit and 8-bit rendering.
+- Added `DICOMPresentationState` to parse Grayscale Softcopy Presentation
+  States (SOP Class `1.2.840.10008.5.1.4.1.1.11.1`): referenced images,
+  spatial transformation, Presentation LUT Shape, Display Shutter, Softcopy
+  VOI, Displayed Area, Graphic Layers, and Graphic Annotations. Added
+  `DICOMFile.pixelData(applying:)` / `pixelDataFrames(applying:)` to
+  substitute a presentation state's shutter, VOI, and Presentation LUT Shape
+  into a referenced file's rendered pixel data, and
+  `DICOMPixelData.presentationLUTShape`, which composes with `MONOCHROME1`
+  polarity as an exclusive-or rather than replacing it.
 
 ## v0.4 — Complete
 

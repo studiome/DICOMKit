@@ -44,6 +44,11 @@ if let pixelData = file.pixelData {
 - ``DICOMFrameAttributes`` — Inspect Enhanced Multi-frame display attributes.
 - ``DICOMOverlay`` — Access embedded Overlay Plane bitmaps.
 - ``DICOMPresentationLUTShape`` — Inspect presentation polarity.
+- ``DICOMModalityLUT`` — Apply the Modality LUT Sequence ahead of windowing.
+- ``DICOMCineAttributes`` — Inspect Cine module playback attributes.
+- ``DICOMDisplayShutter`` — Inspect and apply the Display Shutter module.
+- ``DICOMPresentationState`` — Parse and apply a Grayscale Softcopy
+  Presentation State.
 - ``DICOMLazyPixelData`` — Defer Pixel Data frame decoding until it is needed.
 - ``DICOMMetadataFile`` — Retain metadata and reopen local Pixel Data on demand.
 - ``DICOMAssociation`` — Perform DIMSE association and service operations.
