@@ -27,6 +27,16 @@ func uint64(_ value: UInt64) -> Data {
     Data((0..<8).map { UInt8((value >> UInt64($0 * 8)) & 0xFF) })
 }
 
+/// Little-endian encoding of a signed 32-bit value, for the `SL` VR.
+func int32(_ value: Int32) -> Data {
+    uint32(UInt32(bitPattern: value))
+}
+
+/// Little-endian encoding of an IEEE 754 single-precision value, for the `FL` VR.
+func float32(_ value: Float) -> Data {
+    uint32(value.bitPattern)
+}
+
 private func tagBytes(_ tag: DICOMTag) -> Data {
     uint16(tag.group) + uint16(tag.element)
 }

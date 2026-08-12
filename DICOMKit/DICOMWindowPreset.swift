@@ -19,3 +19,20 @@ public struct DICOMWindowPreset: Sendable, Equatable {
         self.explanation = explanation
     }
 }
+
+extension DICOMDataset {
+    /// The Window Center/Width pairs declared directly by this dataset.
+    ///
+    /// Shared by ``DICOMFile/pixelDataFrames`` and ``DICOMPresentationState``,
+    /// since a Softcopy VOI LUT Sequence item carries the same Window Center
+    /// `(0028,1050)` / Window Width `(0028,1051)` attributes as an image.
+    func makeWindowPresets() -> [DICOMWindowPreset] {
+        guard let centers = self[.windowCenter]?.doubleValues,
+              let widths = self[.windowWidth]?.doubleValues,
+              centers.count == widths.count else { return [] }
+        let explanations = self[.windowCenterWidthExplanation]?.stringValues ?? []
+        return zip(centers.indices, zip(centers, widths)).map { index, values in
+            DICOMWindowPreset(center: values.0, width: values.1, explanation: explanations.indices.contains(index) ? explanations[index] : nil)
+        }
+    }
+}
