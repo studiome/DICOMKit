@@ -99,6 +99,26 @@ struct DICOMElementValueTests {
 }
 
 struct DICOMDatasetTests {
+    @Test func appliesBasicConfidentialityProfileWithStableUIDRemapping() {
+        let dataset = DICOMDataset(elements: [
+            DICOMElement(tag: .patientName, vr: .PN, value: Data("Doe^Jane".utf8)),
+            DICOMElement(tag: DICOMTag(group: 0x0010, element: 0x0020), vr: .LO, value: Data("PAT-42".utf8)),
+            DICOMElement(tag: .studyInstanceUID, vr: .UI, value: Data("1.2.3.4".utf8)),
+            DICOMElement(tag: .seriesInstanceUID, vr: .UI, value: Data("1.2.3.4".utf8)),
+            DICOMElement(tag: DICOMTag(group: 0x0008, element: 0x0050), vr: .SH, value: Data("ACC-9".utf8)),
+            DICOMElement(tag: DICOMTag(group: 0x0010, element: 0x0030), vr: .DA, value: Data("19700101".utf8))
+        ])
+
+        let result = DICOMDeidentificationProfile.basicApplicationLevelConfidentiality().anonymize(dataset)
+
+        #expect(result[.patientName]?.stringValue == "Anonymous")
+        #expect(result[DICOMTag(group: 0x0010, element: 0x0020)]?.stringValue == "Anonymous")
+        #expect(result[.studyInstanceUID]?.stringValue == result[.seriesInstanceUID]?.stringValue)
+        #expect(result[.studyInstanceUID]?.stringValue?.hasPrefix("2.25.") == true)
+        #expect(result[DICOMTag(group: 0x0008, element: 0x0050)] == nil)
+        #expect(result[DICOMTag(group: 0x0010, element: 0x0030)] == nil)
+    }
+
     @Test func validatesCommonCTImageIODRequirements() {
         let validator = DICOMIODValidator.ctImageStorage
         let dataset = DICOMDataset(elements: [

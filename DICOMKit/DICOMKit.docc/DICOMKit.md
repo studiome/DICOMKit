@@ -37,6 +37,7 @@ if let pixelData = file.pixelData {
 - ``DICOMDataset`` — Look up and iterate over data elements.
 - ``DICOMStudy`` — Group and order instances by study and series.
 - ``DICOMAnonymizer`` — Apply caller-defined recursive de-identification rules.
+- ``DICOMDeidentificationProfile`` — Use conservative PS3.15-inspired presets.
 - ``DICOMJSONDataset`` — Convert supported values to and from typed DICOM JSON.
 - ``DICOMPixelData`` — Render supported uncompressed Pixel Data.
 - ``DICOMFloatingPixelData`` — Access native Float and Double Float Pixel Data.

@@ -37,6 +37,8 @@ extension DICOMTag {
     public static let referencedStudySequence = DICOMTag(group: 0x0008, element: 0x1110)
     /// Referenced SOP Class UID `(0008,1150)`.
     public static let referencedSOPClassUID = DICOMTag(group: 0x0008, element: 0x1150)
+    /// Referenced SOP Instance UID `(0008,1155)`.
+    public static let referencedSOPInstanceUID = DICOMTag(group: 0x0008, element: 0x1155)
     /// Patient's Name `(0010,0010)`.
     public static let patientName = DICOMTag(group: 0x0010, element: 0x0010)
     /// Samples per Pixel `(0028,0002)`.

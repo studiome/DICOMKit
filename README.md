@@ -29,7 +29,9 @@ See the [changelog](CHANGELOG.md) for the current implementation status.
   is not yet implemented)
 - Provides a caller-configured recursive `DICOMAnonymizer` for removing or
   replacing attributes, including private tags; it is not a PS3.15 profile
-  conformance claim
+  conformance claim. `DICOMDeidentificationProfile` also provides a
+  conservative Basic Application Level Confidentiality preset with stable UID
+  remapping for common direct identifiers
 - Validates caller-supplied DICOM module Type 1 and Type 2 requirements,
   including missing attributes, empty Type 1 values, and unexpected VRs; this
   is a reusable building block rather than complete IOD conformance validation;
