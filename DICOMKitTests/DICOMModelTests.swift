@@ -51,6 +51,26 @@ struct DICOMULTests {
         let pdu = DICOMULPDU.associationRejection(DICOMAssociationRejection(result: .permanent, source: .serviceUser, reason: 7))
         #expect(try DICOMULPDU.decode(pdu.encoded()) == pdu)
     }
+
+    @Test func associationNegotiatesAndPerformsCEcho() async throws {
+        let transport = DICOMULMockTransport(received: [
+            .associationAcceptance(DICOMAssociationAcceptance(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, result: .acceptance, transferSyntaxUID: "1.2.840.10008.1.2")])),
+            .pData(try DICOMDIMSECommand.cEchoResponse(messageIDBeingRespondedTo: 9, status: 0).commandPDVs(contextID: 1, maximumPayloadLength: 1024))
+        ])
+        let association = DICOMAssociation(transport: transport)
+        _ = try await association.request(DICOMAssociationRequest(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, abstractSyntaxUID: "1.2.840.10008.1.1", transferSyntaxUIDs: ["1.2.840.10008.1.2"])]))
+        #expect(try await association.cEcho(messageID: 9, contextID: 1) == 0)
+        #expect(await transport.sent.count == 2)
+    }
+}
+
+private actor DICOMULMockTransport: DICOMULTransport {
+    var received: [DICOMULPDU]
+    var sent: [DICOMULPDU] = []
+    init(received: [DICOMULPDU]) { self.received = received }
+    func send(_ pdu: DICOMULPDU) async throws { sent.append(pdu) }
+    func receive() async throws -> DICOMULPDU { received.removeFirst() }
+    func close() async {}
 }
 
 struct DICOMTagTests {
