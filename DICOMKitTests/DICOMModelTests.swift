@@ -209,6 +209,91 @@ struct DICOMULTests {
         let request = DICOMAssociationRequest(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, abstractSyntaxUID: "1.2.840.10008.1.1", transferSyntaxUIDs: ["1.2.840.10008.1.2"])], userIdentity: identity)
         #expect(try DICOMULPDU.decode(DICOMULPDU.associationRequest(request).encoded()) == .associationRequest(request))
     }
+
+    @Test func encodesAndDecodesImplementationIdentificationInRequest() throws {
+        let implementation = try DICOMImplementationIdentification(classUID: "1.2.3.4.5", versionName: "MY_APP_1_0")
+        let request = DICOMAssociationRequest(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, abstractSyntaxUID: "1.2.840.10008.1.1", transferSyntaxUIDs: ["1.2.840.10008.1.2"])], implementation: implementation)
+        #expect(try DICOMULPDU.decode(DICOMULPDU.associationRequest(request).encoded()) == .associationRequest(request))
+    }
+
+    @Test func encodesAndDecodesImplementationIdentificationInAcceptance() throws {
+        let implementation = try DICOMImplementationIdentification(classUID: "1.2.3.4.5", versionName: "MY_APP_1_0")
+        let acceptance = DICOMAssociationAcceptance(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, result: .acceptance, transferSyntaxUID: "1.2.840.10008.1.2")], implementation: implementation)
+        #expect(try DICOMULPDU.decode(DICOMULPDU.associationAcceptance(acceptance).encoded()) == .associationAcceptance(acceptance))
+    }
+
+    @Test func defaultsToDicomKitImplementationIdentification() throws {
+        let request = DICOMAssociationRequest(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, abstractSyntaxUID: "1.2.840.10008.1.1", transferSyntaxUIDs: ["1.2.840.10008.1.2"])])
+        #expect(request.implementation == .dicomKit)
+    }
+
+    @Test func defaultsImplementationClassUIDWhenPeerOmitsSubItem() throws {
+        var userInformation = Data()
+        userInformation.append(ulItem(0x51, ulUInt32(16_384)))
+        let pdu = rawAssociationRequestPDU(userInformation: userInformation)
+        let decoded = try DICOMULPDU.decode(pdu)
+        guard case .associationRequest(let request) = decoded else { Issue.record("expected associationRequest"); return }
+        #expect(request.implementation.classUID == DICOMImplementationIdentification.dicomKit.classUID)
+        #expect(request.implementation.versionName == nil)
+    }
+
+    @Test func throwsForOversizedImplementationVersionName() {
+        #expect(throws: DICOMULError.malformedPDU) {
+            try DICOMImplementationIdentification(classUID: "1.2.3", versionName: "01234567890123456")
+        }
+    }
+}
+
+/// Builds a raw Upper Layer sub-item / item (4-byte header: type, reserved, 2-byte BE length).
+private func ulItem(_ type: UInt8, _ value: Data) -> Data {
+    var data = Data([type, 0, UInt8(value.count >> 8), UInt8(value.count & 0xFF)])
+    data.append(value)
+    return data
+}
+
+private func ulUInt32(_ value: UInt32) -> Data {
+    Data([UInt8(value >> 24), UInt8((value >> 16) & 0xFF), UInt8((value >> 8) & 0xFF), UInt8(value & 0xFF)])
+}
+
+private func ulAETitle(_ value: String) -> Data {
+    Data(value.utf8) + Data(repeating: 0x20, count: 16 - value.utf8.count)
+}
+
+/// Builds a complete, well-formed A-ASSOCIATE-RQ PDU with a caller-supplied User Information
+/// item body, to simulate peers whose extended negotiation sub-items differ from DICOMKit's own.
+private func rawAssociationRequestPDU(userInformation: Data) -> Data {
+    var body = Data([0, 1, 0, 0])
+    body.append(ulAETitle("PACS"))
+    body.append(ulAETitle("DICOMKIT"))
+    body.append(Data(repeating: 0, count: 32))
+    body.append(ulItem(0x10, Data(DICOMAssociationRequest.dicomApplicationContextUID.utf8)))
+    var context = Data([1, 0, 0, 0])
+    context.append(ulItem(0x30, Data("1.2.840.10008.1.1".utf8)))
+    context.append(ulItem(0x40, Data("1.2.840.10008.1.2".utf8)))
+    body.append(ulItem(0x20, context))
+    body.append(ulItem(0x50, userInformation))
+    var pdu = Data([0x01, 0])
+    pdu.append(ulUInt32(UInt32(body.count)))
+    pdu.append(body)
+    return pdu
+}
+
+/// Builds a complete, well-formed A-ASSOCIATE-AC PDU with a caller-supplied User Information
+/// item body, to simulate peers whose extended negotiation sub-items differ from DICOMKit's own.
+private func rawAssociationAcceptancePDU(userInformation: Data) -> Data {
+    var body = Data([0, 1, 0, 0])
+    body.append(ulAETitle("PACS"))
+    body.append(ulAETitle("DICOMKIT"))
+    body.append(Data(repeating: 0, count: 32))
+    body.append(ulItem(0x10, Data(DICOMAssociationRequest.dicomApplicationContextUID.utf8)))
+    var context = Data([1, 0, 0, 0])
+    context.append(ulItem(0x40, Data("1.2.840.10008.1.2".utf8)))
+    body.append(ulItem(0x21, context))
+    body.append(ulItem(0x50, userInformation))
+    var pdu = Data([0x02, 0])
+    pdu.append(ulUInt32(UInt32(body.count)))
+    pdu.append(body)
+    return pdu
 }
 
 private actor DICOMULMockTransport: DICOMULTransport {

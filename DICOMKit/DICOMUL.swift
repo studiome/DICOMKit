@@ -58,6 +58,25 @@ public enum DICOMUserIdentity: Sendable, Equatable {
     }
 }
 
+/// Implementation Class UID and Version Name carried in User Information (PS3.7 D.3.3.2).
+public struct DICOMImplementationIdentification: Sendable, Equatable {
+    public let classUID: String
+    public let versionName: String?
+
+    public init(classUID: String, versionName: String? = nil) throws {
+        if let versionName, versionName.utf8.count > 16 { throw DICOMULError.malformedPDU }
+        self.classUID = classUID
+        self.versionName = versionName
+    }
+
+    /// DICOMKit's Implementation Class UID and Version Name.
+    ///
+    /// This UID is derived from a UUID under the ISO/IEC 9834-8 UUID arc (2.25), so it squats
+    /// on no registered OID arc. Applications shipping their own product SHOULD supply their
+    /// own registered Implementation Class UID.
+    public static let dicomKit = try! DICOMImplementationIdentification(classUID: "2.25.336190857897896940232253506776282144275", versionName: "DICOMKIT_0_5")
+}
+
 /// The information carried by an A-ASSOCIATE-RQ PDU.
 public struct DICOMAssociationRequest: Sendable, Equatable {
     public static let dicomApplicationContextUID = "1.2.840.10008.3.1.1.1"
@@ -68,6 +87,7 @@ public struct DICOMAssociationRequest: Sendable, Equatable {
     public let presentationContexts: [DICOMPresentationContext]
     public let maximumPDULength: UInt32
     public let userIdentity: DICOMUserIdentity?
+    public let implementation: DICOMImplementationIdentification
 
     public init(
         calledAETitle: String,
@@ -75,7 +95,8 @@ public struct DICOMAssociationRequest: Sendable, Equatable {
         applicationContextUID: String = DICOMAssociationRequest.dicomApplicationContextUID,
         presentationContexts: [DICOMPresentationContext],
         maximumPDULength: UInt32 = 16_384,
-        userIdentity: DICOMUserIdentity? = nil
+        userIdentity: DICOMUserIdentity? = nil,
+        implementation: DICOMImplementationIdentification = .dicomKit
     ) {
         self.calledAETitle = calledAETitle
         self.callingAETitle = callingAETitle
@@ -83,6 +104,7 @@ public struct DICOMAssociationRequest: Sendable, Equatable {
         self.presentationContexts = presentationContexts
         self.maximumPDULength = maximumPDULength
         self.userIdentity = userIdentity
+        self.implementation = implementation
     }
 }
 
@@ -102,8 +124,9 @@ public struct DICOMAssociationAcceptance: Sendable, Equatable {
     public let applicationContextUID: String
     public let presentationContexts: [DICOMPresentationContextAcceptance]
     public let maximumPDULength: UInt32
-    public init(calledAETitle: String, callingAETitle: String, applicationContextUID: String = DICOMAssociationRequest.dicomApplicationContextUID, presentationContexts: [DICOMPresentationContextAcceptance], maximumPDULength: UInt32 = 16_384) {
-        self.calledAETitle = calledAETitle; self.callingAETitle = callingAETitle; self.applicationContextUID = applicationContextUID; self.presentationContexts = presentationContexts; self.maximumPDULength = maximumPDULength
+    public let implementation: DICOMImplementationIdentification
+    public init(calledAETitle: String, callingAETitle: String, applicationContextUID: String = DICOMAssociationRequest.dicomApplicationContextUID, presentationContexts: [DICOMPresentationContextAcceptance], maximumPDULength: UInt32 = 16_384, implementation: DICOMImplementationIdentification = .dicomKit) {
+        self.calledAETitle = calledAETitle; self.callingAETitle = callingAETitle; self.applicationContextUID = applicationContextUID; self.presentationContexts = presentationContexts; self.maximumPDULength = maximumPDULength; self.implementation = implementation
     }
 }
 
@@ -223,6 +246,7 @@ public enum DICOMULPDU: Sendable, Equatable {
         var maximumLength = Data()
         appendUInt32(request.maximumPDULength, to: &maximumLength)
         appendItem(type: 0x51, value: maximumLength, to: &userInformation)
+        appendImplementation(request.implementation, to: &userInformation)
         if let identity = request.userIdentity?.encoded { appendItem(type: 0x58, value: identity, to: &userInformation) }
         appendItem(type: 0x50, value: userInformation, to: &body)
         return body
@@ -237,6 +261,8 @@ public enum DICOMULPDU: Sendable, Equatable {
         var contexts: [DICOMPresentationContext] = []
         var maximumLength: UInt32 = 16_384
         var userIdentity: DICOMUserIdentity?
+        var implementationClassUID: String?
+        var implementationVersionName: String?
         while offset < data.count {
             let item = try readItem(data, offset: &offset)
             switch item.type {
@@ -249,13 +275,16 @@ public enum DICOMULPDU: Sendable, Equatable {
                 while userOffset < item.value.count {
                     let subitem = try readItem(item.value, offset: &userOffset)
                     if subitem.type == 0x51, subitem.value.count == 4 { maximumLength = readUInt32(subitem.value, at: 0) }
+                    if subitem.type == 0x52 { implementationClassUID = try decodeTrimmed(subitem.value, padding: 0x00) }
+                    if subitem.type == 0x55 { implementationVersionName = try decodeTrimmed(subitem.value, padding: 0x20) }
                     if subitem.type == 0x58 { userIdentity = try DICOMUserIdentity.decode(subitem.value) }
                 }
             default: continue
             }
         }
         guard let applicationContext, !contexts.isEmpty else { throw DICOMULError.malformedPDU }
-        return DICOMAssociationRequest(calledAETitle: called, callingAETitle: calling, applicationContextUID: applicationContext, presentationContexts: contexts, maximumPDULength: maximumLength, userIdentity: userIdentity)
+        let implementation = try DICOMImplementationIdentification(classUID: implementationClassUID ?? DICOMImplementationIdentification.dicomKit.classUID, versionName: implementationVersionName)
+        return DICOMAssociationRequest(calledAETitle: called, callingAETitle: calling, applicationContextUID: applicationContext, presentationContexts: contexts, maximumPDULength: maximumLength, userIdentity: userIdentity, implementation: implementation)
     }
 
     private static func encodeAssociationAcceptance(_ acceptance: DICOMAssociationAcceptance) throws -> Data {
@@ -268,7 +297,9 @@ public enum DICOMULPDU: Sendable, Equatable {
             appendItem(type: 0x40, value: Data(context.transferSyntaxUID.utf8), to: &value)
             appendItem(type: 0x21, value: value, to: &body)
         }
-        var user = Data(); var maximum = Data(); appendUInt32(acceptance.maximumPDULength, to: &maximum); appendItem(type: 0x51, value: maximum, to: &user); appendItem(type: 0x50, value: user, to: &body)
+        var user = Data(); var maximum = Data(); appendUInt32(acceptance.maximumPDULength, to: &maximum); appendItem(type: 0x51, value: maximum, to: &user)
+        appendImplementation(acceptance.implementation, to: &user)
+        appendItem(type: 0x50, value: user, to: &body)
         return body
     }
 
@@ -276,14 +307,24 @@ public enum DICOMULPDU: Sendable, Equatable {
         guard data.count >= 68, data[0] == 0, data[1] == 1 else { throw DICOMULError.malformedPDU }
         let called = try decodeAETitle(data.subdata(in: 4..<20)); let calling = try decodeAETitle(data.subdata(in: 20..<36))
         var offset = 68; var applicationContext: String?; var contexts: [DICOMPresentationContextAcceptance] = []; var maximum: UInt32 = 16_384
+        var implementationClassUID: String?; var implementationVersionName: String?
         while offset < data.count {
             let item = try readItem(data, offset: &offset)
             if item.type == 0x10 { applicationContext = String(data: item.value, encoding: .ascii) }
             if item.type == 0x21 { contexts.append(try decodeAcceptedPresentationContext(item.value)) }
-            if item.type == 0x50 { var userOffset = 0; while userOffset < item.value.count { let subitem = try readItem(item.value, offset: &userOffset); if subitem.type == 0x51, subitem.value.count == 4 { maximum = readUInt32(subitem.value, at: 0) } } }
+            if item.type == 0x50 {
+                var userOffset = 0
+                while userOffset < item.value.count {
+                    let subitem = try readItem(item.value, offset: &userOffset)
+                    if subitem.type == 0x51, subitem.value.count == 4 { maximum = readUInt32(subitem.value, at: 0) }
+                    if subitem.type == 0x52 { implementationClassUID = try decodeTrimmed(subitem.value, padding: 0x00) }
+                    if subitem.type == 0x55 { implementationVersionName = try decodeTrimmed(subitem.value, padding: 0x20) }
+                }
+            }
         }
         guard let applicationContext, !contexts.isEmpty else { throw DICOMULError.malformedPDU }
-        return DICOMAssociationAcceptance(calledAETitle: called, callingAETitle: calling, applicationContextUID: applicationContext, presentationContexts: contexts, maximumPDULength: maximum)
+        let implementation = try DICOMImplementationIdentification(classUID: implementationClassUID ?? DICOMImplementationIdentification.dicomKit.classUID, versionName: implementationVersionName)
+        return DICOMAssociationAcceptance(calledAETitle: called, callingAETitle: calling, applicationContextUID: applicationContext, presentationContexts: contexts, maximumPDULength: maximum, implementation: implementation)
     }
 
     private static func decodeAcceptedPresentationContext(_ data: Data) throws -> DICOMPresentationContextAcceptance {
@@ -348,6 +389,22 @@ public enum DICOMULPDU: Sendable, Equatable {
 
     private static func appendItem(type: UInt8, value: Data, to data: inout Data) {
         data.append(type); data.append(0); appendUInt16(UInt16(value.count), to: &data); data.append(value)
+    }
+
+    private static func appendImplementation(_ implementation: DICOMImplementationIdentification, to userInformation: inout Data) {
+        var classUID = Data(implementation.classUID.utf8)
+        if classUID.count % 2 != 0 { classUID.append(0x00) }
+        appendItem(type: 0x52, value: classUID, to: &userInformation)
+        if let versionName = implementation.versionName {
+            var name = Data(versionName.utf8)
+            if name.count % 2 != 0 { name.append(0x20) }
+            appendItem(type: 0x55, value: name, to: &userInformation)
+        }
+    }
+
+    private static func decodeTrimmed(_ data: Data, padding: UInt8) throws -> String {
+        guard let value = String(data: data, encoding: .utf8) else { throw DICOMULError.malformedPDU }
+        return value.trimmingCharacters(in: CharacterSet(charactersIn: String(UnicodeScalar(padding))))
     }
 
     private static func readItem(_ data: Data, offset: inout Int) throws -> (type: UInt8, value: Data) {
