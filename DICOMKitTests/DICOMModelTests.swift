@@ -497,6 +497,98 @@ struct DICOMULTests {
         #expect(!DICOMDIMSECommand.cGetResponse(messageIDBeingRespondedTo: 1, status: .success, identifierFollows: false, subOperations: nil, errorComment: nil).hasDataset)
         #expect(!DICOMDIMSECommand.cCancelRequest(messageIDBeingRespondedTo: 1).hasDataset)
     }
+
+    @Test func receiveRequestReturnsCEchoWithNilDataset() async throws {
+        let echo = DICOMDIMSECommand.cEchoRequest(messageID: 40)
+        let transport = DICOMULMockTransport(received: [
+            .associationAcceptance(DICOMAssociationAcceptance(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, result: .acceptance, transferSyntaxUID: "1.2.840.10008.1.2")])),
+            .pData(try echo.commandPDVs(contextID: 1, maximumPayloadLength: 1024))
+        ])
+        let association = DICOMAssociation(transport: transport)
+        _ = try await association.request(DICOMAssociationRequest(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, abstractSyntaxUID: "1.2.840.10008.1.1", transferSyntaxUIDs: ["1.2.840.10008.1.2"])]))
+        let request = try await association.receiveRequest()
+        #expect(request.command == echo)
+        #expect(request.contextID == 1)
+        #expect(request.dataset == nil)
+    }
+
+    @Test func receiveRequestReassemblesCFindIdentifierFromFragments() async throws {
+        let find = DICOMDIMSECommand.cFindRequest(messageID: 41, affectedSOPClassUID: "1.2.840.10008.5.1.4.1.2.2.1")
+        let transport = DICOMULMockTransport(received: [
+            .associationAcceptance(DICOMAssociationAcceptance(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, result: .acceptance, transferSyntaxUID: "1.2.840.10008.1.2")])),
+            .pData(try find.commandPDVs(contextID: 1, maximumPayloadLength: 1024)),
+            .pData([DICOMPDataValue(contextID: 1, isCommand: false, isLastFragment: false, data: Data([1, 2]))]),
+            .pData([DICOMPDataValue(contextID: 1, isCommand: false, isLastFragment: true, data: Data([3, 4]))])
+        ])
+        let association = DICOMAssociation(transport: transport)
+        _ = try await association.request(DICOMAssociationRequest(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, abstractSyntaxUID: "1.2.840.10008.5.1.4.1.2.2.1", transferSyntaxUIDs: ["1.2.840.10008.1.2"])]))
+        let request = try await association.receiveRequest()
+        #expect(request.command == find)
+        #expect(request.contextID == 1)
+        #expect(request.dataset == Data([1, 2, 3, 4]))
+    }
+
+    @Test func receiveCStoreRejectsNonCStoreRequest() async throws {
+        let echo = DICOMDIMSECommand.cEchoRequest(messageID: 42)
+        let transport = DICOMULMockTransport(received: [
+            .associationAcceptance(DICOMAssociationAcceptance(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, result: .acceptance, transferSyntaxUID: "1.2.840.10008.1.2")])),
+            .pData(try echo.commandPDVs(contextID: 1, maximumPayloadLength: 1024))
+        ])
+        let association = DICOMAssociation(transport: transport)
+        _ = try await association.request(DICOMAssociationRequest(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, abstractSyntaxUID: "1.2.840.10008.1.1", transferSyntaxUIDs: ["1.2.840.10008.1.2"])]))
+        await #expect(throws: DICOMAssociationError.unexpectedDIMSECommand) { try await association.receiveCStore() }
+    }
+
+    @Test func respondToCFindSendsIdentifierOnlyWhenPending() async throws {
+        let transport = DICOMULMockTransport(received: [
+            .associationAcceptance(DICOMAssociationAcceptance(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, result: .acceptance, transferSyntaxUID: "1.2.840.10008.1.2")]))
+        ])
+        let association = DICOMAssociation(transport: transport)
+        _ = try await association.request(DICOMAssociationRequest(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, abstractSyntaxUID: "1.2.840.10008.5.1.4.1.2.2.1", transferSyntaxUIDs: ["1.2.840.10008.1.2"])]))
+
+        try await association.respondToCFind(messageIDBeingRespondedTo: 43, contextID: 1, status: .pending, identifier: Data([9, 9]))
+        var sent = await transport.sent
+        #expect(sent.count == 3) // association request, command PDV, identifier PDV
+        guard case .pData(let commandValues) = sent[1] else { Issue.record("expected command pData"); return }
+        #expect(commandValues.allSatisfy { $0.isCommand })
+        guard case .pData(let identifierValues) = sent[2] else { Issue.record("expected identifier pData"); return }
+        #expect(identifierValues.allSatisfy { !$0.isCommand })
+
+        try await association.respondToCFind(messageIDBeingRespondedTo: 43, contextID: 1, status: .success, identifier: nil)
+        sent = await transport.sent
+        #expect(sent.count == 4) // + final command PDV only
+        guard case .pData(let finalCommandValues) = sent[3] else { Issue.record("expected final command pData"); return }
+        #expect(finalCommandValues.allSatisfy { $0.isCommand })
+    }
+
+    @Test func respondToCMoveEncodesSubOperationCounts() async throws {
+        let transport = DICOMULMockTransport(received: [
+            .associationAcceptance(DICOMAssociationAcceptance(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, result: .acceptance, transferSyntaxUID: "1.2.840.10008.1.2")]))
+        ])
+        let association = DICOMAssociation(transport: transport)
+        _ = try await association.request(DICOMAssociationRequest(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, abstractSyntaxUID: "1.2.840.10008.5.1.4.1.2.2.2", transferSyntaxUIDs: ["1.2.840.10008.1.2"])]))
+        let counts = DICOMSubOperationCounts(remaining: 1, completed: 2, failed: 0, warning: 0)
+        try await association.respondToCMove(messageIDBeingRespondedTo: 44, contextID: 1, status: .pending, subOperations: counts)
+        let sent = await transport.sent
+        guard case .pData(let values) = sent.last else { Issue.record("expected pData"); return }
+        let commandData = Data(values.flatMap { Array($0.data) })
+        guard case .cMoveResponse(_, _, _, let decodedCounts, _) = try DICOMDIMSECommand.decodeCommandSet(commandData) else {
+            Issue.record("expected cMoveResponse"); return
+        }
+        #expect(decodedCounts == counts)
+    }
+
+    @Test func responderThrowsNotAssociatedForUnacceptedContext() async throws {
+        let transport = DICOMULMockTransport(received: [
+            .associationAcceptance(DICOMAssociationAcceptance(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, result: .abstractSyntaxNotSupported, transferSyntaxUID: "1.2.840.10008.1.2")]))
+        ])
+        let association = DICOMAssociation(transport: transport)
+        _ = try await association.request(DICOMAssociationRequest(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, abstractSyntaxUID: "1.2.840.10008.1.1", transferSyntaxUIDs: ["1.2.840.10008.1.2"])]))
+        await #expect(throws: DICOMAssociationError.notAssociated) { try await association.respondToCEcho(messageIDBeingRespondedTo: 45, contextID: 1, status: .success) }
+        await #expect(throws: DICOMAssociationError.notAssociated) { try await association.respondToCFind(messageIDBeingRespondedTo: 45, contextID: 1, status: .success, identifier: nil) }
+        await #expect(throws: DICOMAssociationError.notAssociated) { try await association.respondToCMove(messageIDBeingRespondedTo: 45, contextID: 1, status: .success, subOperations: nil) }
+        await #expect(throws: DICOMAssociationError.notAssociated) { try await association.respondToCGet(messageIDBeingRespondedTo: 45, contextID: 1, status: .success, subOperations: nil) }
+    }
 }
 
 /// Reads a single element's value from an encoded DIMSE command set by tag, to assert exact

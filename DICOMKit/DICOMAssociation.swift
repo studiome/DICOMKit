@@ -49,6 +49,16 @@ public struct DICOMCGetResult: Sendable, Equatable {
     }
 }
 
+/// A DIMSE request received by an SCP through ``DICOMAssociation/receiveRequest()``.
+public struct DICOMDIMSERequest: Sendable, Equatable {
+    public let command: DICOMDIMSECommand
+    public let contextID: UInt8
+    public let dataset: Data?
+    public init(command: DICOMDIMSECommand, contextID: UInt8, dataset: Data?) {
+        self.command = command; self.contextID = contextID; self.dataset = dataset
+    }
+}
+
 /// An incoming C-STORE request awaiting an SCP response.
 public struct DICOMCStoreRequest: Sendable, Equatable {
     public let messageID: UInt16
@@ -242,9 +252,12 @@ public actor DICOMAssociation {
         return try await cGet(messageID: messageID, contextID: contextID, sopClassUID: sopClassUID, identifier: identifier)
     }
 
-    /// Receives the next C-STORE request and its complete dataset. This is the
-    /// SCP-side primitive used directly by C-STORE servers and C-GET clients.
-    public func receiveCStore() async throws -> DICOMCStoreRequest {
+    /// Receives the next DIMSE request: reassembles the command set from command PDVs
+    /// on a single presentation context, then — when the decoded command's
+    /// ``DICOMDIMSECommand/hasDataset`` is `true` — reassembles the data set that
+    /// follows from PDVs on that same context. Requires an established association;
+    /// an SCP obtains one through association acceptance.
+    public func receiveRequest() async throws -> DICOMDIMSERequest {
         guard acceptance != nil else { throw DICOMAssociationError.notAssociated }
         var command = Data()
         var contextID: UInt8?
@@ -255,17 +268,27 @@ public actor DICOMAssociation {
                 guard contextID == value.contextID else { throw DICOMAssociationError.unexpectedDIMSECommand }
                 command.append(value.data)
                 guard value.isLastFragment else { continue }
-                guard case .cStoreRequest(let messageID, let sopClassUID, let sopInstanceUID) = try DICOMDIMSECommand.decodeCommandSet(command), let contextID else { throw DICOMAssociationError.unexpectedDIMSECommand }
+                let decoded = try DICOMDIMSECommand.decodeCommandSet(command)
+                guard let contextID else { throw DICOMAssociationError.unexpectedDIMSECommand }
+                guard decoded.hasDataset else { return DICOMDIMSERequest(command: decoded, contextID: contextID, dataset: nil) }
                 var dataset = Data()
                 while true {
                     guard case .pData(let datasetValues) = try await receivePDU() else { throw DICOMAssociationError.unexpectedPDU }
                     for fragment in datasetValues where fragment.contextID == contextID && !fragment.isCommand {
                         dataset.append(fragment.data)
-                        if fragment.isLastFragment { return DICOMCStoreRequest(messageID: messageID, contextID: contextID, sopClassUID: sopClassUID, sopInstanceUID: sopInstanceUID, dataset: dataset) }
+                        if fragment.isLastFragment { return DICOMDIMSERequest(command: decoded, contextID: contextID, dataset: dataset) }
                     }
                 }
             }
         }
+    }
+
+    /// Receives the next C-STORE request and its complete dataset. This is the
+    /// SCP-side primitive used directly by C-STORE servers and C-GET clients.
+    public func receiveCStore() async throws -> DICOMCStoreRequest {
+        let request = try await receiveRequest()
+        guard case .cStoreRequest(let messageID, let sopClassUID, let sopInstanceUID) = request.command, let dataset = request.dataset else { throw DICOMAssociationError.unexpectedDIMSECommand }
+        return DICOMCStoreRequest(messageID: messageID, contextID: request.contextID, sopClassUID: sopClassUID, sopInstanceUID: sopInstanceUID, dataset: dataset)
     }
 
     /// Sends C-CANCEL-RQ for an outstanding C-FIND, C-MOVE, or C-GET operation.
@@ -282,6 +305,44 @@ public actor DICOMAssociation {
         let maximumPayload = max(1, Int(acceptance.maximumPDULength) - 12)
         let response = DICOMDIMSECommand.cStoreResponse(messageIDBeingRespondedTo: request.messageID, status: status)
         try await transport.send(.pData(try response.commandPDVs(contextID: request.contextID, maximumPayloadLength: maximumPayload)))
+    }
+
+    /// Sends C-ECHO-RSP for a request received through ``receiveRequest()``.
+    public func respondToCEcho(messageIDBeingRespondedTo: UInt16, contextID: UInt8, status: DICOMDIMSEStatus) async throws {
+        guard let acceptance, acceptance.presentationContexts.contains(where: { $0.id == contextID && $0.result == .acceptance }) else { throw DICOMAssociationError.notAssociated }
+        let maximumPayload = max(1, Int(acceptance.maximumPDULength) - 12)
+        let response = DICOMDIMSECommand.cEchoResponse(messageIDBeingRespondedTo: messageIDBeingRespondedTo, status: status)
+        try await transport.send(.pData(try response.commandPDVs(contextID: contextID, maximumPayloadLength: maximumPayload)))
+    }
+
+    /// Sends C-FIND-RSP for a request received through ``receiveRequest()``. Pass a
+    /// non-`nil` `identifier` for a pending response; `nil` for the final response.
+    public func respondToCFind(messageIDBeingRespondedTo: UInt16, contextID: UInt8, status: DICOMDIMSEStatus, identifier: Data?, errorComment: String? = nil) async throws {
+        guard let acceptance, acceptance.presentationContexts.contains(where: { $0.id == contextID && $0.result == .acceptance }) else { throw DICOMAssociationError.notAssociated }
+        let maximumPayload = max(1, Int(acceptance.maximumPDULength) - 12)
+        let response = DICOMDIMSECommand.cFindResponse(messageIDBeingRespondedTo: messageIDBeingRespondedTo, status: status, identifierFollows: identifier != nil, errorComment: errorComment)
+        try await transport.send(.pData(try response.commandPDVs(contextID: contextID, maximumPayloadLength: maximumPayload)))
+        if let identifier { try await transport.send(.pData(pdvs(data: identifier, contextID: contextID, maximumPayloadLength: maximumPayload))) }
+    }
+
+    /// Sends C-MOVE-RSP for a request received through ``receiveRequest()``. Pass a
+    /// non-`nil` `identifier` to include a failed-SOP-instance-UID-list dataset.
+    public func respondToCMove(messageIDBeingRespondedTo: UInt16, contextID: UInt8, status: DICOMDIMSEStatus, subOperations: DICOMSubOperationCounts?, identifier: Data? = nil, errorComment: String? = nil) async throws {
+        guard let acceptance, acceptance.presentationContexts.contains(where: { $0.id == contextID && $0.result == .acceptance }) else { throw DICOMAssociationError.notAssociated }
+        let maximumPayload = max(1, Int(acceptance.maximumPDULength) - 12)
+        let response = DICOMDIMSECommand.cMoveResponse(messageIDBeingRespondedTo: messageIDBeingRespondedTo, status: status, identifierFollows: identifier != nil, subOperations: subOperations, errorComment: errorComment)
+        try await transport.send(.pData(try response.commandPDVs(contextID: contextID, maximumPayloadLength: maximumPayload)))
+        if let identifier { try await transport.send(.pData(pdvs(data: identifier, contextID: contextID, maximumPayloadLength: maximumPayload))) }
+    }
+
+    /// Sends C-GET-RSP for a request received through ``receiveRequest()``. Pass a
+    /// non-`nil` `identifier` to include a failed-SOP-instance-UID-list dataset.
+    public func respondToCGet(messageIDBeingRespondedTo: UInt16, contextID: UInt8, status: DICOMDIMSEStatus, subOperations: DICOMSubOperationCounts?, identifier: Data? = nil, errorComment: String? = nil) async throws {
+        guard let acceptance, acceptance.presentationContexts.contains(where: { $0.id == contextID && $0.result == .acceptance }) else { throw DICOMAssociationError.notAssociated }
+        let maximumPayload = max(1, Int(acceptance.maximumPDULength) - 12)
+        let response = DICOMDIMSECommand.cGetResponse(messageIDBeingRespondedTo: messageIDBeingRespondedTo, status: status, identifierFollows: identifier != nil, subOperations: subOperations, errorComment: errorComment)
+        try await transport.send(.pData(try response.commandPDVs(contextID: contextID, maximumPayloadLength: maximumPayload)))
+        if let identifier { try await transport.send(.pData(pdvs(data: identifier, contextID: contextID, maximumPayloadLength: maximumPayload))) }
     }
 
     /// Releases an established association. This method is idempotent, including
