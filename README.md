@@ -60,9 +60,10 @@ See the [changelog](CHANGELOG.md) for the current implementation status.
   including defined- or undefined-length Sequences and native Pixel Data;
   writes caller-supplied compressed fragments with generated Basic Offset
   Tables for supported encapsulated transfer syntaxes
-- Provides async DICOMweb clients for QIDO-RS study searches, WADO-RS
-  instance retrieval, and STOW-RS multipart instance storage; transports are
-  injectable for application authentication and testing
+- Provides async DICOMweb clients for QIDO-RS study/series/instance searches,
+  WADO-RS instance/metadata/frame/BulkData retrieval, and STOW-RS multipart
+  instance storage; transports are injectable for application authentication
+  and testing
 - Uses the BSD-3-Clause CharLS codec through a Git submodule for JPEG-LS
   decoding, including sample, line, and plane interleave modes
 

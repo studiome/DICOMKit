@@ -92,6 +92,25 @@ public struct DICOMwebClient: Sendable {
         return try DICOMFile(data: data)
     }
 
+    /// Retrieves DICOM JSON metadata for one instance through WADO-RS.
+    public func retrieveMetadata(studyInstanceUID: String, seriesInstanceUID: String, sopInstanceUID: String) async throws -> Data {
+        try await retrieveData(path: ["studies", studyInstanceUID, "series", seriesInstanceUID, "instances", sopInstanceUID, "metadata"], accept: "application/dicom+json")
+    }
+
+    /// Retrieves one or more WADO-RS frames. Frame numbers are one-based.
+    public func retrieveFrames(studyInstanceUID: String, seriesInstanceUID: String, sopInstanceUID: String, frameNumbers: [Int]) async throws -> Data {
+        guard !frameNumbers.isEmpty, frameNumbers.allSatisfy({ $0 > 0 }) else { throw DICOMwebError.invalidMultipartResponse }
+        return try await retrieveData(path: ["studies", studyInstanceUID, "series", seriesInstanceUID, "instances", sopInstanceUID, "frames", frameNumbers.map(String.init).joined(separator: ",")], accept: "multipart/related")
+    }
+
+    /// Retrieves a BulkData URI returned by DICOM JSON metadata.
+    public func retrieveBulkData(uri: URL) async throws -> Data {
+        var request = URLRequest(url: uri)
+        request.httpMethod = "GET"
+        request.setValue("multipart/related", forHTTPHeaderField: "Accept")
+        return try await perform(request).data
+    }
+
     /// Stores DICOM Part 10 instances through STOW-RS and returns the server's DICOM JSON response.
     public func store(instances: [Data]) async throws -> Data {
         try await store(instances: instances, studyInstanceUID: nil)
@@ -117,6 +136,13 @@ public struct DICOMwebClient: Sendable {
         var request = URLRequest(url: components.url!)
         request.httpMethod = "GET"
         request.setValue("application/dicom+json", forHTTPHeaderField: "Accept")
+        return try await perform(request).data
+    }
+
+    private func retrieveData(path: [String], accept: String) async throws -> Data {
+        var request = URLRequest(url: endpoint(path))
+        request.httpMethod = "GET"
+        request.setValue(accept, forHTTPHeaderField: "Accept")
         return try await perform(request).data
     }
 

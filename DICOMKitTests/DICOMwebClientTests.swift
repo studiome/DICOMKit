@@ -3,6 +3,22 @@ import Testing
 @testable import DICOMKit
 
 struct DICOMwebClientTests {
+    @Test func wadoRetrievesMetadataFramesAndBulkData() async throws {
+        let transport = CapturingDICOMwebTransport(response: Data("payload".utf8))
+        let client = DICOMwebClient(baseURL: URL(string: "https://example.test/dicomweb")!, transport: transport)
+
+        _ = try await client.retrieveMetadata(studyInstanceUID: "1.2.3", seriesInstanceUID: "4.5.6", sopInstanceUID: "7.8.9")
+        _ = try await client.retrieveFrames(studyInstanceUID: "1.2.3", seriesInstanceUID: "4.5.6", sopInstanceUID: "7.8.9", frameNumbers: [1, 3])
+        _ = try await client.retrieveBulkData(uri: URL(string: "https://example.test/bulk/abc")!)
+
+        #expect(transport.requests.map { $0.url?.path } == [
+            "/dicomweb/studies/1.2.3/series/4.5.6/instances/7.8.9/metadata",
+            "/dicomweb/studies/1.2.3/series/4.5.6/instances/7.8.9/frames/1,3",
+            "/bulk/abc"
+        ])
+        #expect(transport.requests[0].value(forHTTPHeaderField: "Accept") == "application/dicom+json")
+        #expect(transport.requests[1].value(forHTTPHeaderField: "Accept") == "multipart/related")
+    }
     @Test func qidoSearchesSeriesAndInstances() async throws {
         let transport = CapturingDICOMwebTransport(response: Data("[]".utf8))
         let client = DICOMwebClient(baseURL: URL(string: "https://example.test/dicomweb")!, transport: transport)
