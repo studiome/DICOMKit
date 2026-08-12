@@ -62,6 +62,15 @@ struct DICOMULTests {
         #expect(try await association.cEcho(messageID: 9, contextID: 1) == 0)
         #expect(await transport.sent.count == 2)
     }
+
+    @Test func encodesAndDecodesCStoreCommand() throws {
+        let request = DICOMDIMSECommand.cStoreRequest(
+            messageID: 11,
+            affectedSOPClassUID: "1.2.840.10008.5.1.4.1.1.2",
+            affectedSOPInstanceUID: "1.2.3.4"
+        )
+        #expect(try DICOMDIMSECommand.decodeCommandSet(request.encodedCommandSet()) == request)
+    }
 }
 
 private actor DICOMULMockTransport: DICOMULTransport {

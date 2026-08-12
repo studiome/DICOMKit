@@ -14,20 +14,28 @@ public enum DICOMDIMSEError: Error, Sendable, Equatable {
 public enum DICOMDIMSECommand: Sendable, Equatable {
     case cEchoRequest(messageID: UInt16)
     case cEchoResponse(messageIDBeingRespondedTo: UInt16, status: UInt16)
+    case cStoreRequest(messageID: UInt16, affectedSOPClassUID: String, affectedSOPInstanceUID: String)
 
     /// Serializes this command set using the mandatory Implicit VR Little Endian syntax.
     public func encodedCommandSet() throws -> Data {
         var content = Data()
         switch self {
         case .cEchoRequest(let messageID):
-            Self.appendElement(tag: 0x00000100, value: Self.uint16(0x0030), to: &content)
-            Self.appendElement(tag: 0x00000110, value: Self.uint16(messageID), to: &content)
-            Self.appendElement(tag: 0x00000800, value: Self.uint16(0x0101), to: &content)
+            Self.appendElement(tag: 0x01000000, value: Self.uint16(0x0030), to: &content)
+            Self.appendElement(tag: 0x01100000, value: Self.uint16(messageID), to: &content)
+            Self.appendElement(tag: 0x08000000, value: Self.uint16(0x0101), to: &content)
         case .cEchoResponse(let messageID, let status):
-            Self.appendElement(tag: 0x00000100, value: Self.uint16(0x8030), to: &content)
-            Self.appendElement(tag: 0x00000120, value: Self.uint16(messageID), to: &content)
-            Self.appendElement(tag: 0x00000800, value: Self.uint16(0x0101), to: &content)
-            Self.appendElement(tag: 0x00000900, value: Self.uint16(status), to: &content)
+            Self.appendElement(tag: 0x01000000, value: Self.uint16(0x8030), to: &content)
+            Self.appendElement(tag: 0x01200000, value: Self.uint16(messageID), to: &content)
+            Self.appendElement(tag: 0x08000000, value: Self.uint16(0x0101), to: &content)
+            Self.appendElement(tag: 0x09000000, value: Self.uint16(status), to: &content)
+        case .cStoreRequest(let messageID, let sopClassUID, let sopInstanceUID):
+            Self.appendElement(tag: 0x00020000, value: Self.ui(sopClassUID), to: &content)
+            Self.appendElement(tag: 0x01000000, value: Self.uint16(0x0001), to: &content)
+            Self.appendElement(tag: 0x01100000, value: Self.uint16(messageID), to: &content)
+            Self.appendElement(tag: 0x07000000, value: Self.uint16(0), to: &content)
+            Self.appendElement(tag: 0x08000000, value: Self.uint16(0), to: &content)
+            Self.appendElement(tag: 0x10000000, value: Self.ui(sopInstanceUID), to: &content)
         }
         var result = Data()
         Self.appendElement(tag: 0x00000000, value: Self.uint32(UInt32(content.count)), to: &result)
@@ -47,15 +55,20 @@ public enum DICOMDIMSECommand: Sendable, Equatable {
             guard length <= data.count - offset else { throw DICOMDIMSEError.malformedCommandSet }
             values[tag] = data.subdata(in: offset..<(offset + length)); offset += length
         }
-        guard values[0x00000800].flatMap(readUInt16) == 0x0101,
-              let field = values[0x00000100].flatMap(readUInt16) else { throw DICOMDIMSEError.malformedCommandSet }
+        guard let field = values[0x01000000].flatMap(readUInt16) else { throw DICOMDIMSEError.malformedCommandSet }
         switch field {
         case 0x0030:
-            guard let messageID = values[0x00000110].flatMap(readUInt16) else { throw DICOMDIMSEError.malformedCommandSet }
+            guard values[0x08000000].flatMap(readUInt16) == 0x0101, let messageID = values[0x01100000].flatMap(readUInt16) else { throw DICOMDIMSEError.malformedCommandSet }
             return .cEchoRequest(messageID: messageID)
         case 0x8030:
-            guard let messageID = values[0x00000120].flatMap(readUInt16), let status = values[0x00000900].flatMap(readUInt16) else { throw DICOMDIMSEError.malformedCommandSet }
+            guard values[0x08000000].flatMap(readUInt16) == 0x0101, let messageID = values[0x01200000].flatMap(readUInt16), let status = values[0x09000000].flatMap(readUInt16) else { throw DICOMDIMSEError.malformedCommandSet }
             return .cEchoResponse(messageIDBeingRespondedTo: messageID, status: status)
+        case 0x0001:
+            guard let messageID = values[0x01100000].flatMap(readUInt16),
+                  values[0x08000000].flatMap(readUInt16) == 0,
+                  let sopClassUID = values[0x00020000].flatMap(readUI),
+                  let sopInstanceUID = values[0x10000000].flatMap(readUI) else { throw DICOMDIMSEError.malformedCommandSet }
+            return .cStoreRequest(messageID: messageID, affectedSOPClassUID: sopClassUID, affectedSOPInstanceUID: sopInstanceUID)
         default: throw DICOMDIMSEError.unsupportedCommand(field)
         }
     }
@@ -80,4 +93,6 @@ public enum DICOMDIMSECommand: Sendable, Equatable {
     private static func uint16(_ value: UInt16) -> Data { Data([UInt8(value & 0xFF), UInt8(value >> 8)]) }
     private static func uint32(_ value: UInt32) -> Data { Data([UInt8(value & 0xFF), UInt8((value >> 8) & 0xFF), UInt8((value >> 16) & 0xFF), UInt8(value >> 24)]) }
     private static func readUInt16(_ value: Data) -> UInt16? { guard value.count == 2 else { return nil }; return UInt16(value[0]) | UInt16(value[1]) << 8 }
+    private static func ui(_ value: String) -> Data { var bytes = Data(value.utf8); if bytes.count % 2 != 0 { bytes.append(0) }; return bytes }
+    private static func readUI(_ value: Data) -> String? { String(data: value, encoding: .ascii)?.trimmingCharacters(in: CharacterSet(charactersIn: "\u{0} ")) }
 }
