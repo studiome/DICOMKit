@@ -23,6 +23,41 @@ public struct DICOMPresentationContext: Sendable, Equatable {
     }
 }
 
+/// User identity credentials included in DICOM User Identity Negotiation.
+public enum DICOMUserIdentity: Sendable, Equatable {
+    case username(String)
+    case usernameAndPassword(username: String, password: String)
+
+    fileprivate var encoded: Data? {
+        switch self {
+        case .username(let username): return encode(type: 1, primary: Data(username.utf8), secondary: Data())
+        case .usernameAndPassword(let username, let password): return encode(type: 2, primary: Data(username.utf8), secondary: Data(password.utf8))
+        }
+    }
+
+    private func encode(type: UInt8, primary: Data, secondary: Data) -> Data? {
+        guard primary.count <= Int(UInt16.max), secondary.count <= Int(UInt16.max) else { return nil }
+        var data = Data([type, 0, UInt8(primary.count >> 8), UInt8(primary.count & 0xFF)])
+        data.append(primary); data.append(UInt8(secondary.count >> 8)); data.append(UInt8(secondary.count & 0xFF)); data.append(secondary)
+        return data
+    }
+
+    fileprivate static func decode(_ data: Data) throws -> DICOMUserIdentity {
+        guard data.count >= 6 else { throw DICOMULError.malformedPDU }
+        let primaryLength = Int(UInt16(data[2]) << 8 | UInt16(data[3]))
+        guard data.count >= 6 + primaryLength else { throw DICOMULError.malformedPDU }
+        let primary = Data(data[4..<(4 + primaryLength)])
+        let secondaryStart = 4 + primaryLength
+        let secondaryLength = Int(UInt16(data[secondaryStart]) << 8 | UInt16(data[secondaryStart + 1]))
+        guard data.count == secondaryStart + 2 + secondaryLength, let username = String(data: primary, encoding: .utf8) else { throw DICOMULError.malformedPDU }
+        switch data[0] {
+        case 1: guard secondaryLength == 0 else { throw DICOMULError.malformedPDU }; return .username(username)
+        case 2: guard let password = String(data: data[(secondaryStart + 2)..<data.count], encoding: .utf8) else { throw DICOMULError.malformedPDU }; return .usernameAndPassword(username: username, password: password)
+        default: throw DICOMULError.malformedPDU
+        }
+    }
+}
+
 /// The information carried by an A-ASSOCIATE-RQ PDU.
 public struct DICOMAssociationRequest: Sendable, Equatable {
     public static let dicomApplicationContextUID = "1.2.840.10008.3.1.1.1"
@@ -32,19 +67,22 @@ public struct DICOMAssociationRequest: Sendable, Equatable {
     public let applicationContextUID: String
     public let presentationContexts: [DICOMPresentationContext]
     public let maximumPDULength: UInt32
+    public let userIdentity: DICOMUserIdentity?
 
     public init(
         calledAETitle: String,
         callingAETitle: String,
         applicationContextUID: String = DICOMAssociationRequest.dicomApplicationContextUID,
         presentationContexts: [DICOMPresentationContext],
-        maximumPDULength: UInt32 = 16_384
+        maximumPDULength: UInt32 = 16_384,
+        userIdentity: DICOMUserIdentity? = nil
     ) {
         self.calledAETitle = calledAETitle
         self.callingAETitle = callingAETitle
         self.applicationContextUID = applicationContextUID
         self.presentationContexts = presentationContexts
         self.maximumPDULength = maximumPDULength
+        self.userIdentity = userIdentity
     }
 }
 
@@ -185,6 +223,7 @@ public enum DICOMULPDU: Sendable, Equatable {
         var maximumLength = Data()
         appendUInt32(request.maximumPDULength, to: &maximumLength)
         appendItem(type: 0x51, value: maximumLength, to: &userInformation)
+        if let identity = request.userIdentity?.encoded { appendItem(type: 0x58, value: identity, to: &userInformation) }
         appendItem(type: 0x50, value: userInformation, to: &body)
         return body
     }
@@ -197,6 +236,7 @@ public enum DICOMULPDU: Sendable, Equatable {
         var applicationContext: String?
         var contexts: [DICOMPresentationContext] = []
         var maximumLength: UInt32 = 16_384
+        var userIdentity: DICOMUserIdentity?
         while offset < data.count {
             let item = try readItem(data, offset: &offset)
             switch item.type {
@@ -209,12 +249,13 @@ public enum DICOMULPDU: Sendable, Equatable {
                 while userOffset < item.value.count {
                     let subitem = try readItem(item.value, offset: &userOffset)
                     if subitem.type == 0x51, subitem.value.count == 4 { maximumLength = readUInt32(subitem.value, at: 0) }
+                    if subitem.type == 0x58 { userIdentity = try DICOMUserIdentity.decode(subitem.value) }
                 }
             default: continue
             }
         }
         guard let applicationContext, !contexts.isEmpty else { throw DICOMULError.malformedPDU }
-        return DICOMAssociationRequest(calledAETitle: called, callingAETitle: calling, applicationContextUID: applicationContext, presentationContexts: contexts, maximumPDULength: maximumLength)
+        return DICOMAssociationRequest(calledAETitle: called, callingAETitle: calling, applicationContextUID: applicationContext, presentationContexts: contexts, maximumPDULength: maximumLength, userIdentity: userIdentity)
     }
 
     private static func encodeAssociationAcceptance(_ acceptance: DICOMAssociationAcceptance) throws -> Data {

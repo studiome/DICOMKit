@@ -203,6 +203,12 @@ struct DICOMULTests {
         _ = try await association.request(DICOMAssociationRequest(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 5, abstractSyntaxUID: sopClass, transferSyntaxUIDs: ["1.2.840.10008.1.2"])]))
         #expect(try await association.cFind(messageID: 22, sopClassUID: sopClass, identifier: Data()).status == 0)
     }
+
+    @Test func encodesAssociationUserIdentity() throws {
+        let identity = DICOMUserIdentity.usernameAndPassword(username: "dicom", password: "secret")
+        let request = DICOMAssociationRequest(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, abstractSyntaxUID: "1.2.840.10008.1.1", transferSyntaxUIDs: ["1.2.840.10008.1.2"])], userIdentity: identity)
+        #expect(try DICOMULPDU.decode(DICOMULPDU.associationRequest(request).encoded()) == .associationRequest(request))
+    }
 }
 
 private actor DICOMULMockTransport: DICOMULTransport {
