@@ -65,6 +65,11 @@ struct DICOMElementValueTests {
         #expect(DICOMDictionary.vr(for: DICOMTag(group: 0x0008, element: 0x0060)) == .CS) // Modality
         #expect(DICOMDictionary.vr(for: DICOMTag(group: 0x0020, element: 0x000D)) == .UI) // Study UID
         #expect(DICOMDictionary.vr(for: DICOMTag(group: 0x5200, element: 0x9230)) == .SQ) // Per-frame FG
+        #expect(DICOMDictionary.vr(for: DICOMTag(group: 0x0008, element: 0x1030)) == .LO) // Study Description
+        #expect(DICOMDictionary.vr(for: DICOMTag(group: 0x0018, element: 0x0050)) == .DS) // Slice Thickness
+        #expect(DICOMDictionary.vr(for: DICOMTag(group: 0x0020, element: 0x0032)) == .DS) // Image Position (Patient)
+        #expect(DICOMDictionary.vr(for: DICOMTag(group: 0x0040, element: 0x0244)) == .DA) // Performed Procedure Step Start Date
+        #expect(DICOMDictionary.vr(for: DICOMTag(group: 0x0054, element: 0x0016)) == .SQ) // Radiopharmaceutical Information Sequence
     }
 
     @Test func doubleValueParsesNegativeNumber() {

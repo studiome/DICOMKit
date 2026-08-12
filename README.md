@@ -15,6 +15,8 @@ See the [changelog](CHANGELOG.md) for the current implementation status.
 - Validates the DICOM Part 10 preamble and `DICM` prefix
 - Reads File Meta Information
 - Parses datasets encoded with Explicit VR Little Endian and Implicit VR Little Endian
+- Resolves a curated set of frequently used PS3.6 Value Representations during
+  Implicit VR parsing; unknown defined-length attributes remain `UN`
 - Parses defined-length and undefined-length sequences recursively
 - Exposes a lightweight Swift object model: `DICOMFile`, `DICOMDataset`,
   `DICOMElement`, `DICOMTag`, and `DICOMVR`
