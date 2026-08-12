@@ -134,6 +134,27 @@ public actor DICOMAssociation {
         }
     }
 
+    /// Performs C-GET and returns the final DIMSE status. The caller must
+    /// separately negotiate storage presentation contexts to accept C-STORE
+    /// sub-operations sent by the peer during a pending C-GET response.
+    public func cGet(messageID: UInt16, contextID: UInt8, sopClassUID: String, identifier: Data) async throws -> UInt16 {
+        guard let acceptance, acceptance.presentationContexts.contains(where: { $0.id == contextID && $0.result == .acceptance }) else { throw DICOMAssociationError.notAssociated }
+        let maximumPayload = max(1, Int(acceptance.maximumPDULength) - 12)
+        try await transport.send(.pData(try DICOMDIMSECommand.cGetRequest(messageID: messageID, affectedSOPClassUID: sopClassUID).commandPDVs(contextID: contextID, maximumPayloadLength: maximumPayload)))
+        try await transport.send(.pData(pdvs(data: identifier, contextID: contextID, maximumPayloadLength: maximumPayload)))
+        var response = Data()
+        while true {
+            guard case .pData(let values) = try await transport.receive() else { throw DICOMAssociationError.unexpectedPDU }
+            for value in values where value.contextID == contextID && value.isCommand {
+                response.append(value.data)
+                guard value.isLastFragment else { continue }
+                guard case .cGetResponse(let responseID, let status) = try DICOMDIMSECommand.decodeCommandSet(response), responseID == messageID else { throw DICOMAssociationError.unexpectedDIMSECommand }
+                response.removeAll(keepingCapacity: true)
+                if !isPending(status) { return status }
+            }
+        }
+    }
+
     /// Releases an established association. This method is idempotent.
     public func release() async throws {
         guard acceptance != nil else { return }

@@ -20,6 +20,8 @@ public enum DICOMDIMSECommand: Sendable, Equatable {
     case cFindResponse(messageIDBeingRespondedTo: UInt16, status: UInt16)
     case cMoveRequest(messageID: UInt16, affectedSOPClassUID: String, moveDestination: String)
     case cMoveResponse(messageIDBeingRespondedTo: UInt16, status: UInt16)
+    case cGetRequest(messageID: UInt16, affectedSOPClassUID: String)
+    case cGetResponse(messageIDBeingRespondedTo: UInt16, status: UInt16)
 
     /// Serializes this command set using the mandatory Implicit VR Little Endian syntax.
     public func encodedCommandSet() throws -> Data {
@@ -67,6 +69,17 @@ public enum DICOMDIMSECommand: Sendable, Equatable {
             Self.appendElement(tag: 0x08000000, value: Self.uint16(0), to: &content)
         case .cMoveResponse(let messageID, let status):
             Self.appendElement(tag: 0x01000000, value: Self.uint16(0x8021), to: &content)
+            Self.appendElement(tag: 0x01200000, value: Self.uint16(messageID), to: &content)
+            Self.appendElement(tag: 0x08000000, value: Self.uint16(0x0101), to: &content)
+            Self.appendElement(tag: 0x09000000, value: Self.uint16(status), to: &content)
+        case .cGetRequest(let messageID, let sopClassUID):
+            Self.appendElement(tag: 0x00020000, value: Self.ui(sopClassUID), to: &content)
+            Self.appendElement(tag: 0x01000000, value: Self.uint16(0x0010), to: &content)
+            Self.appendElement(tag: 0x01100000, value: Self.uint16(messageID), to: &content)
+            Self.appendElement(tag: 0x07000000, value: Self.uint16(0), to: &content)
+            Self.appendElement(tag: 0x08000000, value: Self.uint16(0), to: &content)
+        case .cGetResponse(let messageID, let status):
+            Self.appendElement(tag: 0x01000000, value: Self.uint16(0x8010), to: &content)
             Self.appendElement(tag: 0x01200000, value: Self.uint16(messageID), to: &content)
             Self.appendElement(tag: 0x08000000, value: Self.uint16(0x0101), to: &content)
             Self.appendElement(tag: 0x09000000, value: Self.uint16(status), to: &content)
@@ -118,6 +131,12 @@ public enum DICOMDIMSECommand: Sendable, Equatable {
         case 0x8021:
             guard values[0x08000000].flatMap(readUInt16) == 0x0101, let messageID = values[0x01200000].flatMap(readUInt16), let status = values[0x09000000].flatMap(readUInt16) else { throw DICOMDIMSEError.malformedCommandSet }
             return .cMoveResponse(messageIDBeingRespondedTo: messageID, status: status)
+        case 0x0010:
+            guard let messageID = values[0x01100000].flatMap(readUInt16), values[0x08000000].flatMap(readUInt16) == 0, let sopClassUID = values[0x00020000].flatMap(readUI) else { throw DICOMDIMSEError.malformedCommandSet }
+            return .cGetRequest(messageID: messageID, affectedSOPClassUID: sopClassUID)
+        case 0x8010:
+            guard values[0x08000000].flatMap(readUInt16) == 0x0101, let messageID = values[0x01200000].flatMap(readUInt16), let status = values[0x09000000].flatMap(readUInt16) else { throw DICOMDIMSEError.malformedCommandSet }
+            return .cGetResponse(messageIDBeingRespondedTo: messageID, status: status)
         default: throw DICOMDIMSEError.unsupportedCommand(field)
         }
     }
