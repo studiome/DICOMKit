@@ -5,6 +5,30 @@ import Testing
 /// The 16-bit monochrome path, where stored samples are masked, sign-extended,
 /// rescaled, and windowed before they become 8-bit gray.
 struct PixelDataWindowingTests {
+    @Test func exposesEnhancedMultiFrameRenderingAttributes() throws {
+        func group(intercept: String, center: String) -> DICOMDataset {
+            DICOMDataset(elements: [
+                DICOMElement(tag: .pixelValueTransformationSequence, vr: .SQ, value: Data(), sequenceItems: [DICOMDataset(elements: [
+                    DICOMElement(tag: .rescaleSlope, vr: .DS, value: Data("1".utf8)),
+                    DICOMElement(tag: .rescaleIntercept, vr: .DS, value: Data(intercept.utf8))
+                ])]),
+                DICOMElement(tag: .frameVOILUTSequence, vr: .SQ, value: Data(), sequenceItems: [DICOMDataset(elements: [
+                    DICOMElement(tag: .windowCenter, vr: .DS, value: Data(center.utf8)),
+                    DICOMElement(tag: .windowWidth, vr: .DS, value: Data("100".utf8))
+                ])])
+            ])
+        }
+        let file = try DICOMFile(data: DICOMWriter.write(dataset: DICOMDataset(elements: [
+            DICOMElement(tag: .numberOfFrames, vr: .IS, value: Data("2".utf8)),
+            DICOMElement(tag: .perFrameFunctionalGroupsSequence, vr: .SQ, value: Data(), sequenceItems: [group(intercept: "-1000", center: "-950"), group(intercept: "0", center: "50")])
+        ])))
+
+        #expect(file.frameAttributes == [
+            DICOMFrameAttributes(rescaleSlope: 1, rescaleIntercept: -1000, windowCenter: -950, windowWidth: 100),
+            DICOMFrameAttributes(rescaleSlope: 1, rescaleIntercept: 0, windowCenter: 50, windowWidth: 100)
+        ])
+    }
+
     @Test func excludesPixelPaddingFromAutomaticWindow() throws {
         let pixelData = DICOMPixelData(
             value: uint16(0) + uint16(100) + uint16(200), rows: 1, columns: 3,

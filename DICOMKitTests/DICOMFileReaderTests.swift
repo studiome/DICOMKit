@@ -3,6 +3,33 @@ import Testing
 @testable import DICOMKit
 
 struct DICOMFileReaderTests {
+    @Test func readsFileURLUsingMappedData() throws {
+        let data = part10File(transferSyntaxUID: TransferSyntax.explicitVRLittleEndian.uid, datasetElements: [
+            element(tag: .patientName, vr: .PN, value: "Doe^Jane")
+        ])
+        let url = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("DICOMKit-\(UUID().uuidString).dcm")
+        try data.write(to: url)
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        let file = try DICOMFile(url: url)
+
+        #expect(file.dataset[.patientName]?.stringValue == "Doe^Jane")
+    }
+
+    @Test func retainsMetadataAndReopensPixelDataOnDemand() throws {
+        let data = imageFile(rows: 1, columns: 2, bitsAllocated: 8, pixelData: Data([0x12, 0x34]))
+        let url = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("DICOMKit-\(UUID().uuidString).dcm")
+        try data.write(to: url)
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        let metadata = try DICOMMetadataFile(url: url)
+        let lazy = try #require(metadata.makeLazyPixelData())
+
+        #expect(metadata.dataset[.pixelData] == nil)
+        #expect(!lazy.isLoaded)
+        #expect(lazy.loadFirstFrame()?.value == Data([0x12, 0x34]))
+    }
+
     @Test func readsFloatAndDoubleFloatPixelData() throws {
         let floatBits = Float(1.5).bitPattern
         let doubleBits = 2.25.bitPattern

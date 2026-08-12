@@ -99,6 +99,23 @@ struct DICOMElementValueTests {
 }
 
 struct DICOMDatasetTests {
+    @Test func exposesOverlayICCProfileAndPresentationLUT() throws {
+        let overlayGroup: UInt16 = 0x6000
+        let dataset = DICOMDataset(elements: [
+            DICOMElement(tag: DICOMTag(group: overlayGroup, element: 0x0010), vr: .US, value: uint16(2)),
+            DICOMElement(tag: DICOMTag(group: overlayGroup, element: 0x0011), vr: .US, value: uint16(3)),
+            DICOMElement(tag: DICOMTag(group: overlayGroup, element: 0x0050), vr: .SS, value: Data([0xFF, 0xFF, 2, 0])),
+            DICOMElement(tag: DICOMTag(group: overlayGroup, element: 0x3000), vr: .OW, value: Data([0xA0])),
+            DICOMElement(tag: DICOMTag(group: 0x0028, element: 0x2000), vr: .OB, value: Data([1, 2, 3])),
+            DICOMElement(tag: DICOMTag(group: 0x2050, element: 0x0020), vr: .CS, value: Data("INVERSE".utf8))
+        ])
+        let file = try DICOMFile(data: DICOMWriter.write(dataset: dataset))
+
+        #expect(file.overlays == [DICOMOverlay(group: overlayGroup, rows: 2, columns: 3, origin: [-1, 2], data: Data([0xA0, 0]))])
+        #expect(file.iccProfile == Data([1, 2, 3, 0]))
+        #expect(file.presentationLUTShape == .inverse)
+    }
+
     @Test func appliesBasicConfidentialityProfileWithStableUIDRemapping() {
         let dataset = DICOMDataset(elements: [
             DICOMElement(tag: .patientName, vr: .PN, value: Data("Doe^Jane".utf8)),

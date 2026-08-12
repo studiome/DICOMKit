@@ -41,7 +41,11 @@ if let pixelData = file.pixelData {
 - ``DICOMJSONDataset`` — Convert supported values to and from typed DICOM JSON.
 - ``DICOMPixelData`` — Render supported uncompressed Pixel Data.
 - ``DICOMFloatingPixelData`` — Access native Float and Double Float Pixel Data.
+- ``DICOMFrameAttributes`` — Inspect Enhanced Multi-frame display attributes.
+- ``DICOMOverlay`` — Access embedded Overlay Plane bitmaps.
+- ``DICOMPresentationLUTShape`` — Inspect presentation polarity.
 - ``DICOMLazyPixelData`` — Defer Pixel Data frame decoding until it is needed.
+- ``DICOMMetadataFile`` — Retain metadata and reopen local Pixel Data on demand.
 
 The library supports defined-length and undefined-length sequences, a focused
 set of uncompressed image formats and 8-bit/16-bit monochrome plus 8-bit RGB

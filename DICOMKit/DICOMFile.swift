@@ -22,6 +22,21 @@ private struct FrameRenderingAttributes {
     var windowWidth: Double?
 }
 
+/// Rescale and VOI window attributes resolved for one image frame.
+public struct DICOMFrameAttributes: Sendable, Equatable {
+    public let rescaleSlope: Double?
+    public let rescaleIntercept: Double?
+    public let windowCenter: Double?
+    public let windowWidth: Double?
+
+    public init(rescaleSlope: Double? = nil, rescaleIntercept: Double? = nil, windowCenter: Double? = nil, windowWidth: Double? = nil) {
+        self.rescaleSlope = rescaleSlope
+        self.rescaleIntercept = rescaleIntercept
+        self.windowCenter = windowCenter
+        self.windowWidth = windowWidth
+    }
+}
+
 /// A parsed DICOM Part 10 file.
 public struct DICOMFile: Sendable {
     /// The File Meta Information dataset (group `0002`).
@@ -30,6 +45,16 @@ public struct DICOMFile: Sendable {
     public let dataset: DICOMDataset
     /// The transfer syntax declared by the File Meta Information.
     public let transferSyntax: TransferSyntax
+
+    /// Parses a DICOM Part 10 file from a URL using `Data`'s mapped-file hint.
+    ///
+    /// The operating system may map the source instead of eagerly copying the
+    /// file. Individual element values are still materialized by the parser;
+    /// use this entry point for large local files when the platform supports
+    /// mapped data.
+    public init(url: URL) throws {
+        try self.init(data: Data(contentsOf: url, options: .mappedIfSafe))
+    }
 
     /// Typed display and patient-space geometry, when the dataset supplies it.
     public var imageGeometry: DICOMImageGeometry? {
@@ -47,6 +72,44 @@ public struct DICOMFile: Sendable {
             imagePositionPatient: imagePosition?.count == 3 ? imagePosition : nil,
             imageOrientationPatient: imageOrientation?.count == 6 ? imageOrientation : nil
         )
+    }
+
+    /// Enhanced Multi-frame rendering attributes, resolved per frame.
+    ///
+    /// Shared Functional Groups provide defaults; Per-frame Functional Groups
+    /// override them for matching frame indexes. Returns an empty array unless
+    /// a positive Number of Frames is available.
+    public var frameAttributes: [DICOMFrameAttributes] {
+        guard let frameCount = Int(dataset[.numberOfFrames]?.stringValue ?? ""), frameCount > 0 else { return [] }
+        return renderingAttributes(frameCount: frameCount).map {
+            DICOMFrameAttributes(rescaleSlope: $0.rescaleSlope, rescaleIntercept: $0.rescaleIntercept, windowCenter: $0.windowCenter, windowWidth: $0.windowWidth)
+        }
+    }
+
+    /// Bitmap Overlay Planes embedded in this dataset.
+    public var overlays: [DICOMOverlay] {
+        stride(from: UInt16(0x6000), through: UInt16(0x60FE), by: 2).compactMap { group in
+            let rows = dataset[DICOMTag(group: group, element: 0x0010)]?.uint16Value
+            let columns = dataset[DICOMTag(group: group, element: 0x0011)]?.uint16Value
+            let data = dataset[DICOMTag(group: group, element: 0x3000)]?.value
+            guard let rows, let columns, let data else { return nil }
+            let origin = dataset[DICOMTag(group: group, element: 0x0050)]?.int16Values?.map(Int.init)
+            return DICOMOverlay(group: group, rows: Int(rows), columns: Int(columns), origin: origin?.count == 2 ? origin : nil, data: data)
+        }
+    }
+
+    /// The embedded ICC Profile `(0028,2000)`, when present.
+    public var iccProfile: Data? {
+        dataset[DICOMTag(group: 0x0028, element: 0x2000)]?.value
+    }
+
+    /// The Presentation LUT Shape `(2050,0020)`, when it is supported.
+    public var presentationLUTShape: DICOMPresentationLUTShape? {
+        switch dataset[DICOMTag(group: 0x2050, element: 0x0020)]?.stringValue?.uppercased() {
+        case "IDENTITY": .identity
+        case "INVERSE": .inverse
+        default: nil
+        }
     }
 
     /// The first frame of ``pixelDataFrames``, if available.
