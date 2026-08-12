@@ -93,6 +93,24 @@ struct DICOMElementValueTests {
 }
 
 struct DICOMDatasetTests {
+    @Test func validatesTypeOneAndTypeTwoModuleRequirements() {
+        let validator = DICOMModuleValidator(requirements: [
+            DICOMModuleRequirement(tag: .patientName, vr: .PN, requirement: .type1),
+            DICOMModuleRequirement(tag: .studyInstanceUID, vr: .UI, requirement: .type1),
+            DICOMModuleRequirement(tag: .sopInstanceUID, vr: .UI, requirement: .type2)
+        ])
+        let dataset = DICOMDataset(elements: [
+            DICOMElement(tag: .patientName, vr: .PN, value: Data()),
+            DICOMElement(tag: .sopInstanceUID, vr: .LO, value: Data())
+        ])
+
+        #expect(validator.validate(dataset) == [
+            DICOMValidationIssue(tag: .patientName, kind: .emptyRequiredElement),
+            DICOMValidationIssue(tag: .studyInstanceUID, kind: .missingRequiredElement),
+            DICOMValidationIssue(tag: .sopInstanceUID, kind: .unexpectedVR(expected: .UI, actual: .LO))
+        ])
+    }
+
     @Test func anonymizesNestedTagsAndPrivateElements() {
         let privateTag = DICOMTag(group: 0x0019, element: 0x1001)
         let nested = DICOMDataset(elements: [DICOMElement(tag: .patientName, vr: .PN, value: Data("Doe^Jane".utf8))])

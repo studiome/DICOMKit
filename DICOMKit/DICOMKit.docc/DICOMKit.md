@@ -98,6 +98,9 @@ to test requests without a network connection.
 - ``DICOMVR``
 - ``TransferSyntax``
 - ``DICOMError``
+- ``DICOMModuleValidator``
+- ``DICOMModuleRequirement``
+- ``DICOMValidationIssue``
 
 ### DICOMweb
 
