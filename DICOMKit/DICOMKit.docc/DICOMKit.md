@@ -12,6 +12,10 @@ plus 16-bit monochrome data, as `CGImage`. The 16-bit path
 correctly handles signed (`Pixel Representation`) samples, `Bits Stored`
 masking, and `Rescale Slope`/`Rescale Intercept` before windowing.
 
+Implicit VR parsing resolves 5,092 public tags with unambiguous VRs from the
+generated DICOM PS3.6 2025a dictionary. Context-dependent and private tags
+remain `UN` unless supplied through DICOMKit's explicit handling.
+
 ```swift
 let file = try DICOMFile(data: data)
 let name = file.dataset[.patientName]?.stringValue

@@ -70,6 +70,7 @@ struct DICOMElementValueTests {
         #expect(DICOMDictionary.vr(for: DICOMTag(group: 0x0020, element: 0x0032)) == .DS) // Image Position (Patient)
         #expect(DICOMDictionary.vr(for: DICOMTag(group: 0x0040, element: 0x0244)) == .DA) // Performed Procedure Step Start Date
         #expect(DICOMDictionary.vr(for: DICOMTag(group: 0x0054, element: 0x0016)) == .SQ) // Radiopharmaceutical Information Sequence
+        #expect(DICOMDictionary.vr(for: DICOMTag(group: 0x0062, element: 0x0001)) == .CS) // Segmentation Type
     }
 
     @Test func doubleValueParsesNegativeNumber() {

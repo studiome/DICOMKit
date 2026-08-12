@@ -4,7 +4,7 @@
 /// VR encoding doesn't declare explicitly.
 enum DICOMDictionary {
     static func vr(for tag: DICOMTag) -> DICOMVR? {
-        entries[tag]
+        entries[tag] ?? generatedEntries[tag]
     }
 
     /// Frequently used standard public tags required by the reader's supported
