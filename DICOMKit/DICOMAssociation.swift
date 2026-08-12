@@ -119,6 +119,12 @@ public actor DICOMAssociation {
         }
     }
 
+    /// Sends C-STORE using the accepted presentation context for `sopClassUID`.
+    public func cStore(messageID: UInt16, sopClassUID: String, sopInstanceUID: String, dataset: Data) async throws -> UInt16 {
+        guard let contextID = presentationContextID(for: sopClassUID) else { throw DICOMAssociationError.notAssociated }
+        return try await cStore(messageID: messageID, contextID: contextID, sopClassUID: sopClassUID, sopInstanceUID: sopInstanceUID, dataset: dataset)
+    }
+
     /// Performs C-FIND, collecting identifier datasets for every pending response.
     public func cFind(messageID: UInt16, contextID: UInt8, sopClassUID: String, identifier: Data) async throws -> DICOMCFindResult {
         guard let acceptance, acceptance.presentationContexts.contains(where: { $0.id == contextID && $0.result == .acceptance }) else { throw DICOMAssociationError.notAssociated }
