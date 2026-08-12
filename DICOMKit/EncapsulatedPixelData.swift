@@ -11,9 +11,10 @@ enum EncapsulatedPixelData {
     /// Basic Offset Table to locate the fragment each frame starts at.
     ///
     /// A single-frame image may omit the Basic Offset Table, in which case
-    /// every fragment belongs to that one frame. Multi-frame pixel data
-    /// without a Basic Offset Table has no reliable frame boundaries and is
-    /// rejected rather than guessed at.
+    /// every fragment belongs to that one frame. A multi-frame image may also
+    /// omit it when it has exactly one fragment per frame; stream order then
+    /// gives unambiguous boundaries. Other empty-table multi-frame layouts
+    /// require an Extended Offset Table or are rejected rather than guessed.
     ///
     /// - Parameters:
     ///   - fragments: The fragment payloads, in stream order.
@@ -30,7 +31,11 @@ enum EncapsulatedPixelData {
         guard frameCount > 0, fragments.count == fragmentOffsets.count else {
             throw DICOMImageError.invalidImageAttributes
         }
-        if frameCount == 1, basicOffsetTable.isEmpty { return [fragments] }
+        if basicOffsetTable.isEmpty {
+            if frameCount == 1 { return [fragments] }
+            guard fragments.count == frameCount else { throw DICOMImageError.unsupportedPixelFormat }
+            return fragments.map { [$0] }
+        }
         guard basicOffsetTable.count == frameCount * 4 else { throw DICOMImageError.unsupportedPixelFormat }
         let offsets = stride(from: 0, to: basicOffsetTable.count, by: 4).map {
             Int(basicOffsetTable.littleEndian(at: $0, as: UInt32.self))

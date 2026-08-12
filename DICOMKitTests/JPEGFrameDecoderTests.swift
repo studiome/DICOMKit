@@ -641,8 +641,9 @@ struct JPEGFrameDecoderTests {
     }
 
     @Test func rejectsMultiFrameJPEGWithoutBasicOffsetTable() throws {
-        // Without a Basic Offset Table there's no reliable way to tell which
-        // fragment starts which frame.
+        // Without an offset table there is no reliable way to tell where the
+        // second frame starts when the first frame spans multiple fragments.
+        let firstFrame = jpegData(gray: Data([0]), width: 1, height: 1)
         let data = imageFile(
             transferSyntaxUID: TransferSyntax.jpegBaseline.uid,
             numberOfFrames: 2,
@@ -650,7 +651,8 @@ struct JPEGFrameDecoderTests {
             columns: 1,
             bitsAllocated: 8,
             pixelDataElement: encapsulatedPixelData(fragments: [
-                jpegData(gray: Data([0]), width: 1, height: 1),
+                Data(firstFrame.prefix(firstFrame.count / 2)),
+                Data(firstFrame.dropFirst(firstFrame.count / 2)),
                 jpegData(gray: Data([255]), width: 1, height: 1)
             ])
         )

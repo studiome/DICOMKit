@@ -47,7 +47,8 @@ sample-interleaved and plane-interleaved 8-bit `RGB` and sample-interleaved
 Parameters and restart markers. The vendored CharLS decoder supports JPEG-LS
 Lossless and Near-Lossless sample, line, and plane interleave modes, including
 multi-component 8-bit and 16-bit frames.
-Multi-frame JPEG-LS data requires a Basic Offset Table and is available through
+Multi-frame JPEG-LS data requires a Basic Offset Table, Extended Offset Table,
+or one fragment per frame with an empty Basic Offset Table, and is available through
 ``DICOMFile/pixelDataFrames``.
 JPEG Baseline (Process 1) and JPEG Lossless Process 14 are decoded through
 libjpeg-turbo's TurboJPEG API; JPEG 2000 Lossless and JPEG 2000 are decoded

@@ -126,10 +126,9 @@ struct RLELosslessDecoderTests {
         #expect(try imageBytes(frames[1].cgImage()) == Data([0x34]))
     }
 
-    @Test func rejectsMultiFrameRLEWithoutBasicOffsetTable() throws {
-        // An empty Basic Offset Table leaves the frame boundaries undefined
-        // once there's more than one frame, so the fragments must not be
-        // guessed at.
+    @Test func decodesMultiFrameRLEWithEmptyBasicOffsetTableWhenEachFrameIsOneFragment() throws {
+        // DICOM permits an empty Basic Offset Table when every frame occupies
+        // exactly one fragment: stream order then determines each boundary.
         let data = imageFile(
             transferSyntaxUID: TransferSyntax.rleLossless.uid,
             numberOfFrames: 2,
@@ -138,6 +137,29 @@ struct RLELosslessDecoderTests {
             bitsAllocated: 8,
             pixelDataElement: encapsulatedPixelData(fragments: [
                 rleFrame(segment: Data([0x00, 0x12])),
+                rleFrame(segment: Data([0x00, 0x34]))
+            ])
+        )
+
+        let frames = try #require(DICOMFile(data: data).pixelDataFrames)
+        #expect(frames.count == 2)
+        #expect(try imageBytes(frames[0].cgImage()) == Data([0x12]))
+        #expect(try imageBytes(frames[1].cgImage()) == Data([0x34]))
+    }
+
+    @Test func rejectsMultiFrameRLEWithEmptyBasicOffsetTableAndAmbiguousFragments() throws {
+        // Frame 1 spans two fragments while frame 2 spans one, but no offset
+        // table identifies where the second frame starts.
+        let firstFrame = rleFrame(segment: Data([0x00, 0x12]))
+        let data = imageFile(
+            transferSyntaxUID: TransferSyntax.rleLossless.uid,
+            numberOfFrames: 2,
+            rows: 1,
+            columns: 1,
+            bitsAllocated: 8,
+            pixelDataElement: encapsulatedPixelData(fragments: [
+                Data(firstFrame.prefix(32)),
+                Data(firstFrame.dropFirst(32)),
                 rleFrame(segment: Data([0x00, 0x34]))
             ])
         )

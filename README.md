@@ -51,7 +51,8 @@ See the [changelog](CHANGELOG.md) for the current implementation status.
   and JPEG 2000 Lossless / JPEG 2000 Pixel Data with ImageIO, as either
   interleaved `RGB` (whatever color space the JPEG itself uses, including
   `YBR_FULL_422`) or single-sample
-  `MONOCHROME1` / `MONOCHROME2`; multiple frames require a Basic Offset Table
+  `MONOCHROME1` / `MONOCHROME2`; multiple frames use a Basic Offset Table,
+  Extended Offset Table, or one-fragment-per-frame empty Basic Offset Table
 - Writes DICOM Part 10 files using Explicit VR Little Endian or Implicit VR
   Little Endian, including defined- or undefined-length Sequences and native
   Pixel Data
