@@ -62,6 +62,8 @@ All notable changes to DICOMKit are documented here.
 - Added lightweight study/series/instance grouping, configurable recursive
   anonymization, Type 1/Type 2 module-requirement validation, and flat
   DICOMDIR Directory Record Sequence reading.
+- Raised the minimum deployment target to iPadOS 16.0 because the
+  association response timeout uses `Duration`.
 
 ## v0.4 — Complete
 

@@ -214,7 +214,7 @@ try await association.respond(to: store, status: .success)
 
 - Xcode 26.6 or later
 - Swift 6 (language mode) / Swift Package Manager 6.0 or later
-- iPadOS 15.0 or later
+- iPadOS 16.0 or later
 - macOS 14.0 or later
 
 ## Installation
@@ -274,7 +274,7 @@ To compile the package for iOS and iPadOS:
 
 ```bash
 swift build \
-  --triple arm64-apple-ios15.0 \
+  --triple arm64-apple-ios16.0 \
   --sdk "$(xcrun --sdk iphoneos --show-sdk-path)"
 ```
 

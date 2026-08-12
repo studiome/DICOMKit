@@ -33,7 +33,7 @@ jobs:
       - name: Build package for iOS and iPadOS
         run: |
           ios_sdk="$(xcrun --sdk iphoneos --show-sdk-path)"
-          swift build --triple arm64-apple-ios15.0 --sdk "$ios_sdk"
+          swift build --triple arm64-apple-ios16.0 --sdk "$ios_sdk"
 
       - name: Test package on iOS Simulator
         run: |
