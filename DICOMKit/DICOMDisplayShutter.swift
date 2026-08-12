@@ -89,3 +89,52 @@ public struct DICOMDisplayShutter: Sendable, Equatable {
         return inside
     }
 }
+
+extension DICOMDataset {
+    /// The Display Shutter module (PS3.3 C.7.6.11), when this dataset names a
+    /// shape ``DICOMDisplayShutter`` models.
+    ///
+    /// `nil` when Shutter Shape `(0018,1600)` is absent, or when every value
+    /// it names is one this type doesn't model. Shared by
+    /// ``DICOMFile/displayShutter`` and ``DICOMPresentationState``, since a
+    /// GSPS dataset carries this same module.
+    var displayShutter: DICOMDisplayShutter? {
+        guard let shapeNames = self[DICOMTag(group: 0x0018, element: 0x1600)]?.stringValues else { return nil }
+        var shapes: [DICOMShutterShape] = []
+        for name in shapeNames {
+            switch name.uppercased() {
+            case "RECTANGULAR":
+                guard let left = self[DICOMTag(group: 0x0018, element: 0x1602)]?.stringValue.flatMap(Int.init),
+                      let right = self[DICOMTag(group: 0x0018, element: 0x1604)]?.stringValue.flatMap(Int.init),
+                      let upper = self[DICOMTag(group: 0x0018, element: 0x1606)]?.stringValue.flatMap(Int.init),
+                      let lower = self[DICOMTag(group: 0x0018, element: 0x1608)]?.stringValue.flatMap(Int.init) else { continue }
+                shapes.append(.rectangular(left: left, right: right, upper: upper, lower: lower))
+            case "CIRCULAR":
+                guard let center = self[DICOMTag(group: 0x0018, element: 0x1610)]?.stringValues,
+                      center.count == 2,
+                      let row = Int(center[0]), let column = Int(center[1]),
+                      let radius = self[DICOMTag(group: 0x0018, element: 0x1612)]?.stringValue.flatMap(Int.init) else { continue }
+                shapes.append(.circular(center: DICOMShutterVertex(row: row, column: column), radius: radius))
+            case "POLYGONAL":
+                guard let coordinateStrings = self[DICOMTag(group: 0x0018, element: 0x1620)]?.stringValues else { continue }
+                let coordinates = coordinateStrings.compactMap(Int.init)
+                guard coordinates.count == coordinateStrings.count,
+                      coordinates.count >= 6, coordinates.count.isMultiple(of: 2) else { continue }
+                let vertices = stride(from: 0, to: coordinates.count, by: 2).map {
+                    DICOMShutterVertex(row: coordinates[$0], column: coordinates[$0 + 1])
+                }
+                shapes.append(.polygonal(vertices: vertices))
+            case "BITMAP":
+                guard let overlayGroup = self[DICOMTag(group: 0x0018, element: 0x1623)]?.uint16Value else { continue }
+                shapes.append(.bitmap(overlayGroup: overlayGroup))
+            default:
+                continue
+            }
+        }
+        guard !shapes.isEmpty else { return nil }
+        return DICOMDisplayShutter(
+            shapes: shapes,
+            presentationValue: self[DICOMTag(group: 0x0018, element: 0x1622)]?.uint16Value
+        )
+    }
+}

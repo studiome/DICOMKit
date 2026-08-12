@@ -139,52 +139,12 @@ public struct DICOMFile: Sendable {
     /// `nil` when Shutter Shape `(0018,1600)` is absent, or when every value
     /// it names is one this type doesn't model.
     public var displayShutter: DICOMDisplayShutter? {
-        guard let shapeNames = dataset[DICOMTag(group: 0x0018, element: 0x1600)]?.stringValues else { return nil }
-        var shapes: [DICOMShutterShape] = []
-        for name in shapeNames {
-            switch name.uppercased() {
-            case "RECTANGULAR":
-                guard let left = dataset[DICOMTag(group: 0x0018, element: 0x1602)]?.stringValue.flatMap(Int.init),
-                      let right = dataset[DICOMTag(group: 0x0018, element: 0x1604)]?.stringValue.flatMap(Int.init),
-                      let upper = dataset[DICOMTag(group: 0x0018, element: 0x1606)]?.stringValue.flatMap(Int.init),
-                      let lower = dataset[DICOMTag(group: 0x0018, element: 0x1608)]?.stringValue.flatMap(Int.init) else { continue }
-                shapes.append(.rectangular(left: left, right: right, upper: upper, lower: lower))
-            case "CIRCULAR":
-                guard let center = dataset[DICOMTag(group: 0x0018, element: 0x1610)]?.stringValues,
-                      center.count == 2,
-                      let row = Int(center[0]), let column = Int(center[1]),
-                      let radius = dataset[DICOMTag(group: 0x0018, element: 0x1612)]?.stringValue.flatMap(Int.init) else { continue }
-                shapes.append(.circular(center: DICOMShutterVertex(row: row, column: column), radius: radius))
-            case "POLYGONAL":
-                guard let coordinateStrings = dataset[DICOMTag(group: 0x0018, element: 0x1620)]?.stringValues else { continue }
-                let coordinates = coordinateStrings.compactMap(Int.init)
-                guard coordinates.count == coordinateStrings.count,
-                      coordinates.count >= 6, coordinates.count.isMultiple(of: 2) else { continue }
-                let vertices = stride(from: 0, to: coordinates.count, by: 2).map {
-                    DICOMShutterVertex(row: coordinates[$0], column: coordinates[$0 + 1])
-                }
-                shapes.append(.polygonal(vertices: vertices))
-            case "BITMAP":
-                guard let overlayGroup = dataset[DICOMTag(group: 0x0018, element: 0x1623)]?.uint16Value else { continue }
-                shapes.append(.bitmap(overlayGroup: overlayGroup))
-            default:
-                continue
-            }
-        }
-        guard !shapes.isEmpty else { return nil }
-        return DICOMDisplayShutter(
-            shapes: shapes,
-            presentationValue: dataset[DICOMTag(group: 0x0018, element: 0x1622)]?.uint16Value
-        )
+        dataset.displayShutter
     }
 
     /// The Presentation LUT Shape `(2050,0020)`, when it is supported.
     public var presentationLUTShape: DICOMPresentationLUTShape? {
-        switch dataset[DICOMTag(group: 0x2050, element: 0x0020)]?.stringValue?.uppercased() {
-        case "IDENTITY": .identity
-        case "INVERSE": .inverse
-        default: nil
-        }
+        dataset.presentationLUTShape
     }
 
     /// The first frame of ``pixelDataFrames``, if available.
@@ -266,8 +226,8 @@ public struct DICOMFile: Sendable {
         let sourcePhotometric = PhotometricInterpretation(name: photometricInterpretation)
         let sourcePlanarConfiguration = Int(dataset[.planarConfiguration]?.uint16Value ?? 0)
         let paletteColorLUT = sourcePhotometric == .paletteColor ? makePaletteColorLUT() : nil
-        let windowPresets = makeWindowPresets()
-        let voiLUTs = makeVOILUTs()
+        let windowPresets = dataset.makeWindowPresets()
+        let voiLUTs = dataset.makeVOILUTs()
         let modalityLUT = makeModalityLUT()
         let shutter = displayShutter
         let frameAttributes = renderingAttributes(frameCount: frameCount)
@@ -578,42 +538,6 @@ public struct DICOMFile: Sendable {
             windowCenter: voi?[.windowCenter]?.doubleValue,
             windowWidth: voi?[.windowWidth]?.doubleValue
         )
-    }
-
-    private func makeWindowPresets() -> [DICOMWindowPreset] {
-        guard let centers = dataset[.windowCenter]?.doubleValues,
-              let widths = dataset[.windowWidth]?.doubleValues,
-              centers.count == widths.count else { return [] }
-        let explanations = dataset[.windowCenterWidthExplanation]?.stringValues ?? []
-        return zip(centers.indices, zip(centers, widths)).map { index, values in
-            DICOMWindowPreset(center: values.0, width: values.1, explanation: explanations.indices.contains(index) ? explanations[index] : nil)
-        }
-    }
-
-    private func makeVOILUTs() -> [DICOMVOILUT] {
-        guard let items = dataset[.voiLUTSequence]?.sequenceItems else { return [] }
-        return items.compactMap { item in
-            guard let descriptor = item[.lutDescriptor]?.uint16Values,
-                  descriptor.count == 3,
-                  let dataElement = item[.lutData] else { return nil }
-            let count = descriptor[0] == 0 ? 65_536 : Int(descriptor[0])
-            let bitsPerEntry = Int(descriptor[2])
-            let data: [UInt16]?
-            if bitsPerEntry <= 8, dataElement.vr == .OB, dataElement.value.count >= count {
-                data = dataElement.value.prefix(count).map(UInt16.init)
-            } else if let words = dataElement.uint16Values, words.count >= count {
-                data = Array(words.prefix(count))
-            } else {
-                data = nil
-            }
-            guard let data else { return nil }
-            return try? DICOMVOILUT(
-                firstMappedValue: Int16(bitPattern: descriptor[1]),
-                bitsPerEntry: bitsPerEntry,
-                entries: data,
-                explanation: item[.lutExplanation]?.stringValue
-            )
-        }
     }
 
     /// Builds the Modality LUT declared by the single item of Modality LUT

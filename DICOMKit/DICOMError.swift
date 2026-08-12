@@ -27,4 +27,7 @@ public enum DICOMError: Error, Sendable, Equatable {
     case invalidSequenceItem(DICOMTag)
     /// Encapsulated Pixel Data does not contain valid fragments.
     case invalidEncapsulatedPixelData
+    /// A dataset's SOP Class UID `(0008,0016)` is present but is not
+    /// Grayscale Softcopy Presentation State Storage.
+    case invalidPresentationState
 }

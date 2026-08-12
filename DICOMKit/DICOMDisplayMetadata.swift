@@ -25,3 +25,18 @@ public enum DICOMPresentationLUTShape: Sendable, Equatable {
     case identity
     case inverse
 }
+
+extension DICOMDataset {
+    /// The Presentation LUT Shape `(2050,0020)`, when it is supported.
+    ///
+    /// Shared by ``DICOMFile/presentationLUTShape`` and
+    /// ``DICOMPresentationState``, since a GSPS dataset carries this same
+    /// attribute at its top level.
+    var presentationLUTShape: DICOMPresentationLUTShape? {
+        switch self[DICOMTag(group: 0x2050, element: 0x0020)]?.stringValue?.uppercased() {
+        case "IDENTITY": .identity
+        case "INVERSE": .inverse
+        default: nil
+        }
+    }
+}
