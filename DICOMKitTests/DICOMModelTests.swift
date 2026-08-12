@@ -326,6 +326,29 @@ struct DICOMULTests {
         #expect(try DICOMULPDU.decode(DICOMULPDU.associationAcceptance(acceptance).encoded()) == .associationAcceptance(acceptance))
     }
 
+    @Test func oversizedJWTUserIdentityThrowsPDUTooLarge() throws {
+        let negotiation = DICOMUserIdentityNegotiation(identity: .jwt(String(repeating: "a", count: 70_000)))
+        let request = DICOMAssociationRequest(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, abstractSyntaxUID: DICOMSOPClass.verification, transferSyntaxUIDs: ["1.2.840.10008.1.2"])], userIdentity: negotiation)
+        #expect(throws: DICOMULError.pduTooLarge) { try DICOMULPDU.associationRequest(request).encoded() }
+    }
+
+    @Test func oversizedUsernameUserIdentityThrowsPDUTooLarge() throws {
+        let negotiation = DICOMUserIdentityNegotiation(identity: .username(String(repeating: "a", count: 65_530)))
+        let request = DICOMAssociationRequest(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, abstractSyntaxUID: DICOMSOPClass.verification, transferSyntaxUIDs: ["1.2.840.10008.1.2"])], userIdentity: negotiation)
+        #expect(throws: DICOMULError.pduTooLarge) { try DICOMULPDU.associationRequest(request).encoded() }
+    }
+
+    @Test func oversizedUserIdentityResponseThrowsPDUTooLarge() throws {
+        let acceptance = DICOMAssociationAcceptance(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, result: .acceptance, transferSyntaxUID: "1.2.840.10008.1.2")], userIdentityResponse: Data(count: 65_535))
+        #expect(throws: DICOMULError.pduTooLarge) { try DICOMULPDU.associationAcceptance(acceptance).encoded() }
+    }
+
+    @Test func smallUserIdentityStillRoundTripsUnchanged() throws {
+        let negotiation = DICOMUserIdentityNegotiation(identity: .usernameAndPassword(username: "dicom", password: "secret"), positiveResponseRequested: true)
+        let request = DICOMAssociationRequest(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, abstractSyntaxUID: DICOMSOPClass.verification, transferSyntaxUIDs: ["1.2.840.10008.1.2"])], userIdentity: negotiation)
+        #expect(try DICOMULPDU.decode(DICOMULPDU.associationRequest(request).encoded()) == .associationRequest(request))
+    }
+
     @Test func peerAbortDuringDIMSEOperationThrowsAborted() async throws {
         let transport = DICOMULMockTransport(received: [
             .associationAcceptance(DICOMAssociationAcceptance(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, result: .acceptance, transferSyntaxUID: "1.2.840.10008.1.2")])),

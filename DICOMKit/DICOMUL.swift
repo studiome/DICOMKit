@@ -31,18 +31,20 @@ public enum DICOMUserIdentity: Sendable, Equatable {
     case saml(String)
     case jwt(String)
 
-    fileprivate func encoded(positiveResponseRequested: Bool) -> Data? {
+    fileprivate func encoded(positiveResponseRequested: Bool) throws -> Data {
         switch self {
-        case .username(let username): return encode(type: 1, positiveResponseRequested: positiveResponseRequested, primary: Data(username.utf8), secondary: Data())
-        case .usernameAndPassword(let username, let password): return encode(type: 2, positiveResponseRequested: positiveResponseRequested, primary: Data(username.utf8), secondary: Data(password.utf8))
-        case .kerberos(let ticket): return encode(type: 3, positiveResponseRequested: positiveResponseRequested, primary: ticket, secondary: Data())
-        case .saml(let assertion): return encode(type: 4, positiveResponseRequested: positiveResponseRequested, primary: Data(assertion.utf8), secondary: Data())
-        case .jwt(let token): return encode(type: 5, positiveResponseRequested: positiveResponseRequested, primary: Data(token.utf8), secondary: Data())
+        case .username(let username): return try encode(type: 1, positiveResponseRequested: positiveResponseRequested, primary: Data(username.utf8), secondary: Data())
+        case .usernameAndPassword(let username, let password): return try encode(type: 2, positiveResponseRequested: positiveResponseRequested, primary: Data(username.utf8), secondary: Data(password.utf8))
+        case .kerberos(let ticket): return try encode(type: 3, positiveResponseRequested: positiveResponseRequested, primary: ticket, secondary: Data())
+        case .saml(let assertion): return try encode(type: 4, positiveResponseRequested: positiveResponseRequested, primary: Data(assertion.utf8), secondary: Data())
+        case .jwt(let token): return try encode(type: 5, positiveResponseRequested: positiveResponseRequested, primary: Data(token.utf8), secondary: Data())
         }
     }
 
-    private func encode(type: UInt8, positiveResponseRequested: Bool, primary: Data, secondary: Data) -> Data? {
-        guard primary.count <= Int(UInt16.max), secondary.count <= Int(UInt16.max) else { return nil }
+    /// The 6 bytes of framing (type, flag, two 2-byte length prefixes) plus both fields
+    /// must fit within the item value's UInt16 length, or `appendItem` would trap.
+    private func encode(type: UInt8, positiveResponseRequested: Bool, primary: Data, secondary: Data) throws -> Data {
+        guard 6 + primary.count + secondary.count <= Int(UInt16.max) else { throw DICOMULError.pduTooLarge }
         var data = Data([type, positiveResponseRequested ? 1 : 0, UInt8(primary.count >> 8), UInt8(primary.count & 0xFF)])
         data.append(primary); data.append(UInt8(secondary.count >> 8)); data.append(UInt8(secondary.count & 0xFF)); data.append(secondary)
         return data
@@ -297,29 +299,30 @@ public enum DICOMULPDU: Sendable, Equatable {
         body.append(try aeTitle(request.calledAETitle))
         body.append(try aeTitle(request.callingAETitle))
         body.append(Data(repeating: 0, count: 32))
-        appendItem(type: 0x10, value: Data(request.applicationContextUID.utf8), to: &body)
+        try appendItem(type: 0x10, value: Data(request.applicationContextUID.utf8), to: &body)
         for context in request.presentationContexts {
             guard context.id != 0, context.id % 2 == 1, !context.abstractSyntaxUID.isEmpty, !context.transferSyntaxUIDs.isEmpty else {
                 throw DICOMULError.invalidPresentationContext
             }
             var value = Data([context.id, 0, 0, 0])
-            appendItem(type: 0x30, value: Data(context.abstractSyntaxUID.utf8), to: &value)
+            try appendItem(type: 0x30, value: Data(context.abstractSyntaxUID.utf8), to: &value)
             for syntax in context.transferSyntaxUIDs {
-                appendItem(type: 0x40, value: Data(syntax.utf8), to: &value)
+                try appendItem(type: 0x40, value: Data(syntax.utf8), to: &value)
             }
-            appendItem(type: 0x20, value: value, to: &body)
+            try appendItem(type: 0x20, value: value, to: &body)
         }
         var userInformation = Data()
         var maximumLength = Data()
         appendUInt32(request.maximumPDULength, to: &maximumLength)
-        appendItem(type: 0x51, value: maximumLength, to: &userInformation)
-        appendImplementation(request.implementation, to: &userInformation)
-        if let window = request.asynchronousOperationsWindow { appendAsyncWindow(window, to: &userInformation) }
-        for role in request.roleSelections { appendItem(type: 0x54, value: encodeRoleSelection(role), to: &userInformation) }
-        if let negotiation = request.userIdentity, let identity = negotiation.identity.encoded(positiveResponseRequested: negotiation.positiveResponseRequested) {
-            appendItem(type: 0x58, value: identity, to: &userInformation)
+        try appendItem(type: 0x51, value: maximumLength, to: &userInformation)
+        try appendImplementation(request.implementation, to: &userInformation)
+        if let window = request.asynchronousOperationsWindow { try appendAsyncWindow(window, to: &userInformation) }
+        for role in request.roleSelections { try appendItem(type: 0x54, value: encodeRoleSelection(role), to: &userInformation) }
+        if let negotiation = request.userIdentity {
+            let identity = try negotiation.identity.encoded(positiveResponseRequested: negotiation.positiveResponseRequested)
+            try appendItem(type: 0x58, value: identity, to: &userInformation)
         }
-        appendItem(type: 0x50, value: userInformation, to: &body)
+        try appendItem(type: 0x50, value: userInformation, to: &body)
         return body
     }
 
@@ -368,19 +371,19 @@ public enum DICOMULPDU: Sendable, Equatable {
     private static func encodeAssociationAcceptance(_ acceptance: DICOMAssociationAcceptance) throws -> Data {
         var body = Data([0, 1, 0, 0])
         body.append(try aeTitle(acceptance.calledAETitle)); body.append(try aeTitle(acceptance.callingAETitle)); body.append(Data(repeating: 0, count: 32))
-        appendItem(type: 0x10, value: Data(acceptance.applicationContextUID.utf8), to: &body)
+        try appendItem(type: 0x10, value: Data(acceptance.applicationContextUID.utf8), to: &body)
         for context in acceptance.presentationContexts {
             guard context.id != 0, context.id % 2 == 1 else { throw DICOMULError.invalidPresentationContext }
             var value = Data([context.id, 0, context.result.rawValue, 0])
-            appendItem(type: 0x40, value: Data(context.transferSyntaxUID.utf8), to: &value)
-            appendItem(type: 0x21, value: value, to: &body)
+            try appendItem(type: 0x40, value: Data(context.transferSyntaxUID.utf8), to: &value)
+            try appendItem(type: 0x21, value: value, to: &body)
         }
-        var user = Data(); var maximum = Data(); appendUInt32(acceptance.maximumPDULength, to: &maximum); appendItem(type: 0x51, value: maximum, to: &user)
-        appendImplementation(acceptance.implementation, to: &user)
-        if let window = acceptance.asynchronousOperationsWindow { appendAsyncWindow(window, to: &user) }
-        for role in acceptance.roleSelections { appendItem(type: 0x54, value: encodeRoleSelection(role), to: &user) }
+        var user = Data(); var maximum = Data(); appendUInt32(acceptance.maximumPDULength, to: &maximum); try appendItem(type: 0x51, value: maximum, to: &user)
+        try appendImplementation(acceptance.implementation, to: &user)
+        if let window = acceptance.asynchronousOperationsWindow { try appendAsyncWindow(window, to: &user) }
+        for role in acceptance.roleSelections { try appendItem(type: 0x54, value: encodeRoleSelection(role), to: &user) }
         if let response = acceptance.userIdentityResponse { try appendUserIdentityResponse(response, to: &user) }
-        appendItem(type: 0x50, value: user, to: &body)
+        try appendItem(type: 0x50, value: user, to: &body)
         return body
     }
 
@@ -474,18 +477,19 @@ public enum DICOMULPDU: Sendable, Equatable {
         return title.trimmingCharacters(in: .whitespaces)
     }
 
-    private static func appendItem(type: UInt8, value: Data, to data: inout Data) {
+    private static func appendItem(type: UInt8, value: Data, to data: inout Data) throws {
+        guard value.count <= Int(UInt16.max) else { throw DICOMULError.pduTooLarge }
         data.append(type); data.append(0); appendUInt16(UInt16(value.count), to: &data); data.append(value)
     }
 
-    private static func appendImplementation(_ implementation: DICOMImplementationIdentification, to userInformation: inout Data) {
+    private static func appendImplementation(_ implementation: DICOMImplementationIdentification, to userInformation: inout Data) throws {
         var classUID = Data(implementation.classUID.utf8)
         if classUID.count % 2 != 0 { classUID.append(0x00) }
-        appendItem(type: 0x52, value: classUID, to: &userInformation)
+        try appendItem(type: 0x52, value: classUID, to: &userInformation)
         if let versionName = implementation.versionName {
             var name = Data(versionName.utf8)
             if name.count % 2 != 0 { name.append(0x20) }
-            appendItem(type: 0x55, value: name, to: &userInformation)
+            try appendItem(type: 0x55, value: name, to: &userInformation)
         }
     }
 
@@ -510,9 +514,9 @@ public enum DICOMULPDU: Sendable, Equatable {
         return DICOMRoleSelection(sopClassUID: uid, supportsSCURole: scu != 0, supportsSCPRole: scp != 0)
     }
 
-    private static func appendAsyncWindow(_ window: DICOMAsynchronousOperationsWindow, to userInformation: inout Data) {
+    private static func appendAsyncWindow(_ window: DICOMAsynchronousOperationsWindow, to userInformation: inout Data) throws {
         var value = Data(); appendUInt16(window.maximumInvoked, to: &value); appendUInt16(window.maximumPerformed, to: &value)
-        appendItem(type: 0x53, value: value, to: &userInformation)
+        try appendItem(type: 0x53, value: value, to: &userInformation)
     }
 
     private static func decodeAsyncWindow(_ data: Data) throws -> DICOMAsynchronousOperationsWindow {
@@ -523,9 +527,9 @@ public enum DICOMULPDU: Sendable, Equatable {
     }
 
     private static func appendUserIdentityResponse(_ response: Data, to userInformation: inout Data) throws {
-        guard response.count <= Int(UInt16.max) else { throw DICOMULError.malformedPDU }
+        guard 2 + response.count <= Int(UInt16.max) else { throw DICOMULError.pduTooLarge }
         var value = Data(); appendUInt16(UInt16(response.count), to: &value); value.append(response)
-        appendItem(type: 0x59, value: value, to: &userInformation)
+        try appendItem(type: 0x59, value: value, to: &userInformation)
     }
 
     private static func decodeUserIdentityResponse(_ data: Data) throws -> Data {
