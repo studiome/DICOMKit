@@ -76,15 +76,9 @@ encapsulated images use a Basic Offset Table, Extended Offset Table, or an
 empty Basic Offset Table when each frame consists of exactly one fragment, and
 are available through ``DICOMFile/pixelDataFrames``. libjpeg-turbo is pinned as a checksum-verified
 SwiftPM binary target. The previous Process 14 decoder remains as a temporary
-fallback while fixture-output comparisons are accumulated. JPEG
-DIMSE provides a transport-independent Association actor backed by a caller-supplied
-``DICOMULTransport``. ``NetworkDICOMULTransport`` implements TCP or explicitly
-configured TLS using Network.framework. The current SCU APIs cover C-ECHO,
-C-STORE, C-FIND, C-MOVE, C-GET, and C-CANCEL; ``DICOMCStoreRequest`` and
-``DICOMAssociation/receiveCStore()`` provide the corresponding C-STORE SCP
-primitive. Applications should use a negotiated presentation context for each
-SOP Class, or use the SOP Class convenience overloads. This is a protocol
-foundation, not a clinical interoperability or PACS conformance claim. Pixel Padding Value `(0028,0120)`
+fallback while fixture-output comparisons are accumulated.
+
+Pixel Padding Value `(0028,0120)`
 and Pixel Padding Range Limit `(0028,0121)` are excluded from automatically
 computed windows.
 
@@ -106,6 +100,24 @@ series, and instance searches; WADO-RS instance, metadata, rendered image,
 thumbnail, frame, and BulkData retrieval; and STOW-RS multipart storage.
 Inject a ``DICOMwebTransport`` to add application-specific authentication or
 to test requests without a network connection.
+
+``DICOMAssociation`` is a transport-independent DIMSE actor backed by a
+caller-supplied ``DICOMULTransport``. ``NetworkDICOMULTransport`` implements TCP
+or explicitly configured TLS with Network.framework, and
+``NetworkDICOMULListener`` accepts inbound connections. Association negotiation
+covers Implementation Class UID and Version Name, SCP/SCU Role Selection,
+Asynchronous Operations Window, and User Identity, and the actor reports a peer
+A-ABORT or A-RELEASE-RQ rather than treating it as an unexpected PDU.
+
+As an SCU, ``DICOMAssociation`` performs C-ECHO, C-STORE, C-FIND, C-MOVE,
+C-GET, and C-CANCEL, returning a classified ``DICOMDIMSEStatus`` and, for
+C-MOVE and C-GET, ``DICOMSubOperationCounts``. As an SCP, it accepts an
+association against a ``DICOMAssociationPolicy``, receives requests through
+``DICOMAssociation/receiveRequest()``, and answers them with the matching
+`respondTo…` method. Applications negotiate one presentation context per SOP
+Class — ``DICOMSOPClass`` lists the common UIDs — and can use the SOP Class
+convenience overloads instead of passing context identifiers. This is a
+protocol foundation, not a clinical interoperability or PACS conformance claim.
 
 ## Topics
 
@@ -137,6 +149,40 @@ to test requests without a network connection.
 - ``DICOMwebError``
 - ``DICOMJSONDataset``
 - ``DICOMJSONBulkDataResolver``
+
+### DIMSE networking
+
+- ``DICOMAssociation``
+- ``DICOMAssociationPolicy``
+- ``DICOMAssociationNegotiation``
+- ``DICOMAssociationRequest``
+- ``DICOMAssociationAcceptance``
+- ``DICOMAssociationRejection``
+- ``DICOMPresentationContext``
+- ``DICOMPresentationContextAcceptance``
+- ``DICOMRoleSelection``
+- ``DICOMUserIdentity``
+- ``DICOMUserIdentityNegotiation``
+- ``DICOMImplementationIdentification``
+- ``DICOMAsynchronousOperationsWindow``
+- ``DICOMDIMSECommand``
+- ``DICOMDIMSEStatus``
+- ``DICOMDIMSERequest``
+- ``DICOMSubOperationCounts``
+- ``DICOMCFindResult``
+- ``DICOMCMoveResult``
+- ``DICOMCGetResult``
+- ``DICOMCStoreRequest``
+- ``DICOMSOPClass``
+- ``DICOMULPDU``
+- ``DICOMPDataValue``
+- ``DICOMULTransport``
+- ``NetworkDICOMULTransport``
+- ``NetworkDICOMULListener``
+- ``DICOMAssociationError``
+- ``DICOMDIMSEError``
+- ``DICOMULError``
+- ``DICOMNetworkError``
 
 ### Image rendering
 

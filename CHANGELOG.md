@@ -4,6 +4,30 @@ All notable changes to DICOMKit are documented here.
 
 ## v0.5 — Unreleased
 
+- Added a DIMSE SCU and SCP foundation on top of the DICOM Upper Layer
+  protocol: association PDUs, a Network.framework TCP/TLS transport, an
+  inbound `NetworkDICOMULListener`, and C-ECHO, C-STORE, C-FIND, C-MOVE,
+  C-GET, and C-CANCEL.
+- Added the remaining User Information negotiation sub-items: Implementation
+  Class UID and Version Name, SCP/SCU Role Selection, Asynchronous Operations
+  Window, and the User Identity server response. DICOMKit's default
+  Implementation Class UID is derived from a UUID under the ISO/IEC 9834-8
+  arc; applications shipping a product should supply their own.
+- Added A-ABORT and peer-initiated A-RELEASE handling, so an aborted or
+  peer-released association reports `DICOMAssociationError.aborted` or
+  `.releasedByPeer` instead of an unexpected-PDU error.
+- Added `DICOMDIMSEStatus` status classification and C-MOVE / C-GET
+  sub-operation counts and Error Comment, and corrected the Command Data Set
+  Type element emitted on query and retrieve responses.
+- Added SCP-side association acceptance driven by a `DICOMAssociationPolicy`,
+  `DICOMAssociation.receiveRequest()`, and C-ECHO, C-STORE, C-FIND, C-MOVE,
+  and C-GET response helpers.
+- Added `DICOMSOPClass` well-known SOP Class UIDs,
+  `DICOMWriter.encodeDataset` for bare datasets without File Meta
+  Information, and `DICOMAssociation.cStore(messageID:file:)`.
+- Fixed a `NetworkDICOMULTransport.connect()` crash: its connection state
+  handler stayed attached after the connection settled, so a later
+  cancellation resumed the same continuation twice.
 - Added `DICOMwebClient` for QIDO-RS study searches, WADO-RS single-instance
   retrieval, and STOW-RS multipart instance storage.
 - Added injectable `DICOMwebTransport` and response validation for testable

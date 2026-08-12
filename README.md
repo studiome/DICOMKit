@@ -25,8 +25,8 @@ See the [changelog](CHANGELOG.md) for the current implementation status.
 - Groups files into `DICOMStudy` / `DICOMSeries` / `DICOMInstance` models and
   sorts instances by image position, instance number, then SOP Instance UID
 - Reads DICOMDIR Directory Record Sequences as ordered flat records, including
-  record type and referenced file/SOP identifiers (offset-linked tree recovery
-  is not yet implemented)
+  record type and referenced file/SOP identifiers, and rebuilds the
+  patient/study/series/instance tree from the standard offset links
 - Provides a caller-configured recursive `DICOMAnonymizer` for removing or
   replacing attributes, including private tags; it is not a PS3.15 profile
   conformance claim. `DICOMDeidentificationProfile` also provides a
@@ -81,17 +81,29 @@ See the [changelog](CHANGELOG.md) for the current implementation status.
   Endian, Deflated Explicit VR Little Endian, or Implicit VR Little Endian,
   including defined- or undefined-length Sequences and native Pixel Data;
   writes caller-supplied compressed fragments with generated Basic Offset
-  Tables for supported encapsulated transfer syntaxes
+  Tables for supported encapsulated transfer syntaxes; `DICOMWriter.encodeDataset`
+  emits a bare dataset without File Meta Information for DIMSE transfer
 - Provides async DICOMweb clients for QIDO-RS study/series/instance searches,
   WADO-RS instance/metadata/rendered-image/thumbnail/frame/BulkData retrieval, and STOW-RS multipart
   instance storage; WADO metadata can also be decoded as typed DICOM JSON;
   QIDO-RS `limit` / `offset` pagination and transports are injectable for
   application authentication and testing; callers can opt into transient HTTP
   response retries
-- Provides a DIMSE SCU/SCP foundation: DICOM Upper Layer association PDUs,
-  Network.framework TCP/TLS transport, timeout handling, C-ECHO, C-STORE
-  (including SCP receipt), C-FIND, C-MOVE, C-GET, and C-CANCEL. Applications
-  select negotiated presentation contexts by SOP Class UID.
+- Provides a DIMSE SCU and SCP foundation:
+  - DICOM Upper Layer association PDUs, including Implementation Class UID and
+    Version Name, SCP/SCU Role Selection, Asynchronous Operations Window, and
+    User Identity negotiation with its server response
+  - A-ABORT and peer-initiated A-RELEASE handling, plus response timeouts
+  - Network.framework TCP/TLS transport, and `NetworkDICOMULListener` for
+    inbound connections
+  - SCU services: C-ECHO, C-STORE, C-FIND, C-MOVE, C-GET, and C-CANCEL, with
+    classified DIMSE statuses and C-MOVE / C-GET sub-operation counts
+  - SCP services: association acceptance and presentation-context negotiation
+    driven by a `DICOMAssociationPolicy`, `receiveRequest()`, and C-ECHO,
+    C-STORE, C-FIND, C-MOVE, and C-GET responses
+  - `DICOMSOPClass` well-known SOP Class UIDs, and file-based C-STORE through
+    `DICOMFile.encodedDatasetData(transferSyntax:)`
+  - This is a protocol foundation, not a PACS conformance claim
 - Uses the BSD-3-Clause CharLS codec through a Git submodule for JPEG-LS
   decoding, including sample, line, and plane interleave modes
 
@@ -154,6 +166,48 @@ let instance = try await client.retrieveInstance(
     seriesInstanceUID: "4.5.6",
     sopInstanceUID: "7.8.9"
 )
+```
+
+Query a remote Application Entity over DIMSE, then release the association:
+
+```swift
+let transport = try NetworkDICOMULTransport(host: "pacs.example.com", port: 104)
+let association = DICOMAssociation(transport: transport, responseTimeout: .seconds(30))
+try await association.request(DICOMAssociationRequest(
+    calledAETitle: "PACS",
+    callingAETitle: "DICOMKIT",
+    presentationContexts: [
+        DICOMPresentationContext(
+            id: 1,
+            abstractSyntaxUID: DICOMSOPClass.studyRootQueryRetrieveFind,
+            transferSyntaxUIDs: [TransferSyntax.explicitVRLittleEndian.uid]
+        )
+    ]
+))
+let matches = try await association.cFind(
+    messageID: 1,
+    sopClassUID: DICOMSOPClass.studyRootQueryRetrieveFind,
+    identifier: try DICOMWriter.encodeDataset(query)
+)
+try await association.release()
+```
+
+Accept inbound associations and store what a peer sends:
+
+```swift
+let policy = DICOMAssociationPolicy(
+    calledAETitles: ["DICOMKIT"],
+    supportedAbstractSyntaxes: DICOMSOPClass.imageStorage,
+    supportedTransferSyntaxes: [TransferSyntax.explicitVRLittleEndian.uid]
+)
+let listener = try NetworkDICOMULListener(port: 11112)
+try await listener.start()
+
+let transport = try await listener.accept()
+let association = DICOMAssociation(transport: transport)
+try await association.accept(try await association.receiveAssociationRequest(), policy: policy)
+let store = try await association.receiveCStore()
+try await association.respond(to: store, status: .success)
 ```
 
 ## Requirements
@@ -244,7 +298,7 @@ pull request:
 
 ## Roadmap
 
-1. DIMSE networking
+1. DIMSE N-services (Modality Performed Procedure Step, Storage Commitment)
 
 ## License
 
