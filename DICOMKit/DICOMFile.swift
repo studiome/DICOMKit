@@ -86,6 +86,36 @@ public struct DICOMFile: Sendable {
         }
     }
 
+    /// Cine module attributes (PS3.3 C.7.6.5), when the dataset carries any.
+    ///
+    /// `nil` when none of the underlying attributes is present, so callers
+    /// can distinguish "no Cine module" from "a Cine module whose attributes
+    /// are all absent/default."
+    public var cineAttributes: DICOMCineAttributes? {
+        let frameTime = dataset[DICOMTag(group: 0x0018, element: 0x1063)]?.doubleValue
+        let frameTimeVector = dataset[DICOMTag(group: 0x0018, element: 0x1065)]?.doubleValues
+        let cineRate = Int(dataset[DICOMTag(group: 0x0018, element: 0x0040)]?.stringValue ?? "")
+        let recommendedDisplayFrameRate = Int(dataset[DICOMTag(group: 0x0008, element: 0x2144)]?.stringValue ?? "")
+        let startTrim = Int(dataset[DICOMTag(group: 0x0008, element: 0x2142)]?.stringValue ?? "")
+        let stopTrim = Int(dataset[DICOMTag(group: 0x0008, element: 0x2143)]?.stringValue ?? "")
+        let actualFrameDuration = Int(dataset[DICOMTag(group: 0x0018, element: 0x1242)]?.stringValue ?? "")
+        let preferredPlaybackSequencing = dataset[DICOMTag(group: 0x0018, element: 0x1244)]?.uint16Value.map(Int.init)
+        guard frameTime != nil || frameTimeVector != nil || cineRate != nil || recommendedDisplayFrameRate != nil
+            || startTrim != nil || stopTrim != nil || actualFrameDuration != nil || preferredPlaybackSequencing != nil else {
+            return nil
+        }
+        return DICOMCineAttributes(
+            frameTime: frameTime,
+            frameTimeVector: frameTimeVector,
+            cineRate: cineRate,
+            recommendedDisplayFrameRate: recommendedDisplayFrameRate,
+            startTrim: startTrim,
+            stopTrim: stopTrim,
+            actualFrameDuration: actualFrameDuration,
+            preferredPlaybackSequencing: preferredPlaybackSequencing
+        )
+    }
+
     /// Bitmap Overlay Planes embedded in this dataset.
     public var overlays: [DICOMOverlay] {
         stride(from: UInt16(0x6000), through: UInt16(0x60FE), by: 2).compactMap { group in
