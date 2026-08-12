@@ -64,6 +64,28 @@ public enum TransferSyntax: Sendable, Equatable {
         }
     }
 
+    /// Whether ``DICOMWriter`` can serialize datasets using this syntax.
+    var isWritable: Bool {
+        switch self {
+        case .implicitVRLittleEndian, .explicitVRLittleEndian, .rleLossless,
+             .jpegBaseline, .jpegLossless, .jpegLosslessSV1, .jpegLSLossless,
+             .jpegLSNearLossless, .jpeg2000Lossless, .jpeg2000:
+            true
+        case .explicitVRBigEndian, .deflatedExplicitVRLittleEndian, .unknown:
+            false
+        }
+    }
+
+    var usesEncapsulatedPixelData: Bool {
+        switch self {
+        case .rleLossless, .jpegBaseline, .jpegLossless, .jpegLosslessSV1,
+             .jpegLSLossless, .jpegLSNearLossless, .jpeg2000Lossless, .jpeg2000:
+            true
+        default:
+            false
+        }
+    }
+
     init(uid: String) {
         switch uid {
         case Self.implicitVRLittleEndian.uid: self = .implicitVRLittleEndian

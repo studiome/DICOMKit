@@ -32,6 +32,36 @@ public struct DICOMElement: Sendable, Equatable {
         self.basicOffsetTable = basicOffsetTable
     }
 
+    /// Creates encapsulated Pixel Data from already-compressed frame fragments.
+    ///
+    /// Each nested array represents one frame and may contain one or more
+    /// fragments. The initializer calculates the Basic Offset Table using
+    /// DICOM item-header and even-length padding rules; it does not compress
+    /// pixel samples itself.
+    public init(encapsulatedPixelDataFrames frames: [[Data]], vr: DICOMVR = .OB) throws {
+        guard !frames.isEmpty, frames.allSatisfy({ !$0.isEmpty }), (vr == .OB || vr == .OW) else {
+            throw DICOMError.invalidEncapsulatedPixelData
+        }
+        var fragments: [Data] = []
+        var offsets: [Int] = []
+        var basicOffsetTable = Data()
+        var offset = 0
+        for frame in frames {
+            guard offset <= Int(UInt32.max) else { throw DICOMError.invalidEncapsulatedPixelData }
+            let offset32 = UInt32(offset)
+            basicOffsetTable.append(UInt8(offset32 & 0xFF)); basicOffsetTable.append(UInt8(offset32 >> 8))
+            basicOffsetTable.append(UInt8(offset32 >> 16)); basicOffsetTable.append(UInt8(offset32 >> 24))
+            for fragment in frame {
+                offsets.append(offset)
+                fragments.append(fragment)
+                let paddedLength = fragment.count + (fragment.count.isMultiple(of: 2) ? 0 : 1)
+                guard offset <= Int.max - 8 - paddedLength else { throw DICOMError.invalidEncapsulatedPixelData }
+                offset += 8 + paddedLength
+            }
+        }
+        self.init(tag: .pixelData, vr: vr, value: Data(), encapsulatedFragments: fragments, encapsulatedFragmentOffsets: offsets, basicOffsetTable: basicOffsetTable)
+    }
+
     /// The UTF-8 string value with DICOM space and NUL padding removed.
     ///
     /// Returns `nil` for sequence elements or values that aren't valid UTF-8.

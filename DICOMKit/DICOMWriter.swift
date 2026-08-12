@@ -1,6 +1,6 @@
 import Foundation
 
-/// Writes uncompressed DICOM Part 10 files using Little Endian transfer syntaxes.
+/// Writes DICOM Part 10 files using supported Little Endian transfer syntaxes.
 public enum DICOMWriter {
     /// The length representation used for sequence and item containers.
     public enum SequenceLengthEncoding: Sendable {
@@ -11,8 +11,10 @@ public enum DICOMWriter {
     }
     /// Serializes File Meta Information and a dataset into a Part 10 file.
     ///
-    /// The v0.4 writer supports Explicit and Implicit VR Little Endian datasets, including
-    /// recursively defined-length sequences and native Pixel Data.
+    /// Supports native Explicit/Implicit VR Little Endian datasets and
+    /// already-encapsulated Pixel Data for the supported compressed transfer
+    /// syntaxes. Compression is supplied by the caller; this writer only
+    /// serializes the fragments and their Basic Offset Table.
     public static func write(
         metaInformation: DICOMDataset = DICOMDataset(),
         dataset: DICOMDataset,
@@ -20,7 +22,7 @@ public enum DICOMWriter {
         requiredMetaInformation: DICOMFileMetaInformation? = nil,
         sequenceLengthEncoding: SequenceLengthEncoding = .defined
     ) throws -> Data {
-        guard transferSyntax == .explicitVRLittleEndian || transferSyntax == .implicitVRLittleEndian else {
+        guard transferSyntax.isWritable else {
             throw DICOMError.unsupportedTransferSyntax(transferSyntax.uid)
         }
 
@@ -59,12 +61,29 @@ public enum DICOMWriter {
         )
         output.append(encodedMeta)
         for element in dataset where element.tag.group != 0x0002 {
-            try append(element, to: &output, explicitVR: transferSyntax == .explicitVRLittleEndian, sequenceLengthEncoding: sequenceLengthEncoding)
+            if element.tag == .pixelData,
+               transferSyntax.usesEncapsulatedPixelData,
+               element.encapsulatedFragments == nil {
+                throw DICOMError.invalidEncapsulatedPixelData
+            }
+            try append(element, to: &output, explicitVR: transferSyntax != .implicitVRLittleEndian, sequenceLengthEncoding: sequenceLengthEncoding)
         }
         return output
     }
 
     private static func append(_ element: DICOMElement, to output: inout Data, explicitVR: Bool, sequenceLengthEncoding: SequenceLengthEncoding) throws {
+        if element.tag == .pixelData, let fragments = element.encapsulatedFragments {
+            guard explicitVR, let basicOffsetTable = element.basicOffsetTable else { throw DICOMError.invalidEncapsulatedPixelData }
+            appendUInt16(element.tag.group, to: &output)
+            appendUInt16(element.tag.element, to: &output)
+            output.append(contentsOf: element.vr.rawValue.utf8)
+            output.append(contentsOf: [0, 0])
+            appendUInt32(.max, to: &output)
+            appendItem(basicOffsetTable, to: &output)
+            for fragment in fragments { appendItem(fragment, to: &output) }
+            appendItemTag(0xE0DD, to: &output)
+            return
+        }
         appendUInt16(element.tag.group, to: &output)
         appendUInt16(element.tag.element, to: &output)
         let value: Data
@@ -120,5 +139,12 @@ public enum DICOMWriter {
     }
     private static func appendItemTag(_ element: UInt16, to data: inout Data) {
         appendUInt16(0xFFFE, to: &data); appendUInt16(element, to: &data); appendUInt32(0, to: &data)
+    }
+
+    private static func appendItem(_ value: Data, to data: inout Data) {
+        let padded = paddedValue(value, vr: .OB)
+        appendUInt16(0xFFFE, to: &data); appendUInt16(0xE000, to: &data)
+        appendUInt32(UInt32(padded.count), to: &data)
+        data.append(padded)
     }
 }

@@ -55,7 +55,8 @@ See the [changelog](CHANGELOG.md) for the current implementation status.
   Extended Offset Table, or one-fragment-per-frame empty Basic Offset Table
 - Writes DICOM Part 10 files using Explicit VR Little Endian or Implicit VR
   Little Endian, including defined- or undefined-length Sequences and native
-  Pixel Data
+  Pixel Data; writes caller-supplied compressed fragments with generated Basic
+  Offset Tables for supported encapsulated transfer syntaxes
 - Provides async DICOMweb clients for QIDO-RS study searches, WADO-RS
   instance retrieval, and STOW-RS multipart instance storage; transports are
   injectable for application authentication and testing
