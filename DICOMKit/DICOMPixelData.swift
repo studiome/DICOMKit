@@ -76,9 +76,9 @@ public struct DICOMPixelData: Sendable {
     /// Composes with ``photometricInterpretation`` rather than replacing it:
     /// rendered polarity is inverted when exactly one of
     /// `photometricInterpretation == .monochrome1` and
-    /// `presentationLUTShape == .inverse` holds (see ``invertsPolarity``).
-    /// An `INVERSE` shape on a `MONOCHROME1` image therefore renders as if
-    /// the image were `MONOCHROME2`.
+    /// `presentationLUTShape == .inverse` holds. An `INVERSE` shape on a
+    /// `MONOCHROME1` image therefore renders as if the image were
+    /// `MONOCHROME2`.
     public let presentationLUTShape: DICOMPresentationLUTShape?
 
     /// Creates uncompressed pixel data and its rendering attributes.
