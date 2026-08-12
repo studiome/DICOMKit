@@ -102,6 +102,21 @@ struct DICOMULTests {
         #expect(result.status == 0)
         #expect(result.identifiers == [Data([4, 5])])
     }
+
+    @Test func encodesAndDecodesCMoveRequest() throws {
+        let request = DICOMDIMSECommand.cMoveRequest(messageID: 15, affectedSOPClassUID: "1.2.840.10008.5.1.4.1.2.2.2", moveDestination: "STORE-SCP")
+        #expect(try DICOMDIMSECommand.decodeCommandSet(request.encodedCommandSet()) == request)
+    }
+
+    @Test func associationPerformsCMove() async throws {
+        let transport = DICOMULMockTransport(received: [
+            .associationAcceptance(DICOMAssociationAcceptance(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, result: .acceptance, transferSyntaxUID: "1.2.840.10008.1.2")])),
+            .pData(try DICOMDIMSECommand.cMoveResponse(messageIDBeingRespondedTo: 16, status: 0).commandPDVs(contextID: 1, maximumPayloadLength: 1024))
+        ])
+        let association = DICOMAssociation(transport: transport)
+        _ = try await association.request(DICOMAssociationRequest(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, abstractSyntaxUID: "1.2.840.10008.5.1.4.1.2.2.2", transferSyntaxUIDs: ["1.2.840.10008.1.2"])]))
+        #expect(try await association.cMove(messageID: 16, contextID: 1, sopClassUID: "1.2.840.10008.5.1.4.1.2.2.2", destination: "STORE-SCP", identifier: Data()) == 0)
+    }
 }
 
 private actor DICOMULMockTransport: DICOMULTransport {

@@ -18,6 +18,8 @@ public enum DICOMDIMSECommand: Sendable, Equatable {
     case cStoreResponse(messageIDBeingRespondedTo: UInt16, status: UInt16)
     case cFindRequest(messageID: UInt16, affectedSOPClassUID: String)
     case cFindResponse(messageIDBeingRespondedTo: UInt16, status: UInt16)
+    case cMoveRequest(messageID: UInt16, affectedSOPClassUID: String, moveDestination: String)
+    case cMoveResponse(messageIDBeingRespondedTo: UInt16, status: UInt16)
 
     /// Serializes this command set using the mandatory Implicit VR Little Endian syntax.
     public func encodedCommandSet() throws -> Data {
@@ -54,6 +56,19 @@ public enum DICOMDIMSECommand: Sendable, Equatable {
             Self.appendElement(tag: 0x01000000, value: Self.uint16(0x8020), to: &content)
             Self.appendElement(tag: 0x01200000, value: Self.uint16(messageID), to: &content)
             Self.appendElement(tag: 0x08000000, value: Self.uint16(0), to: &content)
+            Self.appendElement(tag: 0x09000000, value: Self.uint16(status), to: &content)
+        case .cMoveRequest(let messageID, let sopClassUID, let destination):
+            guard destination.utf8.count <= 16 else { throw DICOMDIMSEError.malformedCommandSet }
+            Self.appendElement(tag: 0x00020000, value: Self.ui(sopClassUID), to: &content)
+            Self.appendElement(tag: 0x01000000, value: Self.uint16(0x0021), to: &content)
+            Self.appendElement(tag: 0x01100000, value: Self.uint16(messageID), to: &content)
+            Self.appendElement(tag: 0x06000000, value: Self.ae(destination), to: &content)
+            Self.appendElement(tag: 0x07000000, value: Self.uint16(0), to: &content)
+            Self.appendElement(tag: 0x08000000, value: Self.uint16(0), to: &content)
+        case .cMoveResponse(let messageID, let status):
+            Self.appendElement(tag: 0x01000000, value: Self.uint16(0x8021), to: &content)
+            Self.appendElement(tag: 0x01200000, value: Self.uint16(messageID), to: &content)
+            Self.appendElement(tag: 0x08000000, value: Self.uint16(0x0101), to: &content)
             Self.appendElement(tag: 0x09000000, value: Self.uint16(status), to: &content)
         }
         var result = Data()
@@ -97,6 +112,12 @@ public enum DICOMDIMSECommand: Sendable, Equatable {
         case 0x8020:
             guard let messageID = values[0x01200000].flatMap(readUInt16), let status = values[0x09000000].flatMap(readUInt16) else { throw DICOMDIMSEError.malformedCommandSet }
             return .cFindResponse(messageIDBeingRespondedTo: messageID, status: status)
+        case 0x0021:
+            guard let messageID = values[0x01100000].flatMap(readUInt16), values[0x08000000].flatMap(readUInt16) == 0, let sopClassUID = values[0x00020000].flatMap(readUI), let destination = values[0x06000000].flatMap(readAE) else { throw DICOMDIMSEError.malformedCommandSet }
+            return .cMoveRequest(messageID: messageID, affectedSOPClassUID: sopClassUID, moveDestination: destination)
+        case 0x8021:
+            guard values[0x08000000].flatMap(readUInt16) == 0x0101, let messageID = values[0x01200000].flatMap(readUInt16), let status = values[0x09000000].flatMap(readUInt16) else { throw DICOMDIMSEError.malformedCommandSet }
+            return .cMoveResponse(messageIDBeingRespondedTo: messageID, status: status)
         default: throw DICOMDIMSEError.unsupportedCommand(field)
         }
     }
@@ -123,4 +144,6 @@ public enum DICOMDIMSECommand: Sendable, Equatable {
     private static func readUInt16(_ value: Data) -> UInt16? { guard value.count == 2 else { return nil }; return UInt16(value[0]) | UInt16(value[1]) << 8 }
     private static func ui(_ value: String) -> Data { var bytes = Data(value.utf8); if bytes.count % 2 != 0 { bytes.append(0) }; return bytes }
     private static func readUI(_ value: Data) -> String? { String(data: value, encoding: .ascii)?.trimmingCharacters(in: CharacterSet(charactersIn: "\u{0} ")) }
+    private static func ae(_ value: String) -> Data { Data(value.utf8) + Data(repeating: 0x20, count: 16 - value.utf8.count) }
+    private static func readAE(_ value: Data) -> String? { guard value.count == 16 else { return nil }; return String(data: value, encoding: .ascii)?.trimmingCharacters(in: .whitespaces) }
 }

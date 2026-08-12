@@ -113,6 +113,27 @@ public actor DICOMAssociation {
         }
     }
 
+    /// Performs C-MOVE and returns its final DIMSE status. Pending progress
+    /// responses are consumed until the peer emits a final response.
+    public func cMove(messageID: UInt16, contextID: UInt8, sopClassUID: String, destination: String, identifier: Data) async throws -> UInt16 {
+        guard let acceptance, acceptance.presentationContexts.contains(where: { $0.id == contextID && $0.result == .acceptance }) else { throw DICOMAssociationError.notAssociated }
+        let maximumPayload = max(1, Int(acceptance.maximumPDULength) - 12)
+        let command = DICOMDIMSECommand.cMoveRequest(messageID: messageID, affectedSOPClassUID: sopClassUID, moveDestination: destination)
+        try await transport.send(.pData(try command.commandPDVs(contextID: contextID, maximumPayloadLength: maximumPayload)))
+        try await transport.send(.pData(pdvs(data: identifier, contextID: contextID, maximumPayloadLength: maximumPayload)))
+        var response = Data()
+        while true {
+            guard case .pData(let values) = try await transport.receive() else { throw DICOMAssociationError.unexpectedPDU }
+            for value in values where value.contextID == contextID && value.isCommand {
+                response.append(value.data)
+                guard value.isLastFragment else { continue }
+                guard case .cMoveResponse(let responseID, let status) = try DICOMDIMSECommand.decodeCommandSet(response), responseID == messageID else { throw DICOMAssociationError.unexpectedDIMSECommand }
+                response.removeAll(keepingCapacity: true)
+                if !isPending(status) { return status }
+            }
+        }
+    }
+
     /// Releases an established association. This method is idempotent.
     public func release() async throws {
         guard acceptance != nil else { return }
