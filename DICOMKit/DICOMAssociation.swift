@@ -184,9 +184,18 @@ public actor DICOMAssociation {
         return try await cMove(messageID: messageID, contextID: contextID, sopClassUID: sopClassUID, destination: destination, identifier: identifier)
     }
 
+    /// Returns the accepted SCP/SCU role selection for `sopClassUID` from the
+    /// A-ASSOCIATE-AC, or `nil` when the peer did not negotiate one.
+    public func negotiatedRoles(for sopClassUID: String) -> DICOMRoleSelection? {
+        acceptance?.roleSelections.first { $0.sopClassUID == sopClassUID }
+    }
+
     /// Performs C-GET and returns the final DIMSE status. The caller must
     /// separately negotiate storage presentation contexts to accept C-STORE
-    /// sub-operations sent by the peer during a pending C-GET response.
+    /// sub-operations sent by the peer during a pending C-GET response. Per
+    /// PS3.7 Annex D.3.3.4, a C-GET SCU must propose an SCP role in SCP/SCU
+    /// role selection negotiation for each storage SOP Class it expects to
+    /// receive during the exchange.
     public func cGet(messageID: UInt16, contextID: UInt8, sopClassUID: String, identifier: Data) async throws -> UInt16 {
         guard let acceptance, acceptance.presentationContexts.contains(where: { $0.id == contextID && $0.result == .acceptance }) else { throw DICOMAssociationError.notAssociated }
         let maximumPayload = max(1, Int(acceptance.maximumPDULength) - 12)

@@ -242,6 +242,41 @@ struct DICOMULTests {
             try DICOMImplementationIdentification(classUID: "1.2.3", versionName: "01234567890123456")
         }
     }
+
+    @Test func encodesAndDecodesRoleSelectionInRequest() throws {
+        let role = DICOMRoleSelection(sopClassUID: "1.2.840.10008.5.1.4.1.1.2", supportsSCURole: true, supportsSCPRole: true)
+        let request = DICOMAssociationRequest(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, abstractSyntaxUID: "1.2.840.10008.1.1", transferSyntaxUIDs: ["1.2.840.10008.1.2"])], roleSelections: [role])
+        #expect(try DICOMULPDU.decode(DICOMULPDU.associationRequest(request).encoded()) == .associationRequest(request))
+    }
+
+    @Test func encodesAndDecodesRoleSelectionInAcceptance() throws {
+        let role = DICOMRoleSelection(sopClassUID: "1.2.840.10008.5.1.4.1.1.2", supportsSCURole: false, supportsSCPRole: true)
+        let acceptance = DICOMAssociationAcceptance(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, result: .acceptance, transferSyntaxUID: "1.2.840.10008.1.2")], roleSelections: [role])
+        #expect(try DICOMULPDU.decode(DICOMULPDU.associationAcceptance(acceptance).encoded()) == .associationAcceptance(acceptance))
+    }
+
+    @Test func associationReturnsNegotiatedRoleForSOPClass() async throws {
+        let sopClass = "1.2.840.10008.5.1.4.1.1.2"
+        let acceptedRole = DICOMRoleSelection(sopClassUID: sopClass, supportsSCURole: false, supportsSCPRole: true)
+        let transport = DICOMULMockTransport(received: [
+            .associationAcceptance(DICOMAssociationAcceptance(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, result: .acceptance, transferSyntaxUID: "1.2.840.10008.1.2")], roleSelections: [acceptedRole]))
+        ])
+        let association = DICOMAssociation(transport: transport)
+        _ = try await association.request(DICOMAssociationRequest(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, abstractSyntaxUID: sopClass, transferSyntaxUIDs: ["1.2.840.10008.1.2"])], roleSelections: [DICOMRoleSelection(sopClassUID: sopClass, supportsSCURole: true, supportsSCPRole: true)]))
+        #expect(await association.negotiatedRoles(for: sopClass) == acceptedRole)
+        #expect(await association.negotiatedRoles(for: "1.2.3.4.5") == nil)
+    }
+
+    @Test func throwsForMalformedRoleSelectionBody() throws {
+        var userInformation = Data()
+        userInformation.append(ulItem(0x51, ulUInt32(16_384)))
+        var malformedRole = Data([0, 20])
+        malformedRole.append(Data("1.2.3".utf8))
+        malformedRole.append(Data([1, 1]))
+        userInformation.append(ulItem(0x54, malformedRole))
+        let pdu = rawAssociationRequestPDU(userInformation: userInformation)
+        #expect(throws: DICOMULError.malformedPDU) { try DICOMULPDU.decode(pdu) }
+    }
 }
 
 /// Builds a raw Upper Layer sub-item / item (4-byte header: type, reserved, 2-byte BE length).
