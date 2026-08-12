@@ -12,6 +12,8 @@ extension URLSession: DICOMwebTransport {}
 
 /// Errors returned while constructing or handling DICOMweb requests.
 public enum DICOMwebError: Error, Sendable, Equatable {
+    /// A QIDO-RS page had a non-positive limit or negative offset.
+    case invalidQIDOPagination
     /// The server returned a status outside the successful HTTP range.
     case unsuccessfulHTTPStatus(Int)
     /// The server response was not HTTP.
@@ -20,6 +22,24 @@ public enum DICOMwebError: Error, Sendable, Equatable {
     case missingMultipartBoundary
     /// A multipart response did not contain a DICOM part.
     case invalidMultipartResponse
+}
+
+/// A QIDO-RS result page described by the standard `limit` and `offset` parameters.
+public struct DICOMQIDOPagination: Sendable, Equatable {
+    /// Maximum number of matching datasets to return. Must be greater than zero.
+    public let limit: Int
+    /// Number of matching datasets to skip. Must not be negative.
+    public let offset: Int
+
+    /// Creates a result page request.
+    ///
+    /// - Throws: ``DICOMwebError/invalidQIDOPagination`` if `limit` is not
+    ///   positive or `offset` is negative.
+    public init(limit: Int, offset: Int = 0) throws {
+        guard limit > 0, offset >= 0 else { throw DICOMwebError.invalidQIDOPagination }
+        self.limit = limit
+        self.offset = offset
+    }
 }
 
 /// An async client for the QIDO-RS, WADO-RS, and STOW-RS DICOMweb services.
@@ -44,26 +64,21 @@ public struct DICOMwebClient: Sendable {
     }
 
     /// Performs a QIDO-RS study search and returns the DICOM JSON response.
-    public func searchStudies(query: [URLQueryItem] = []) async throws -> Data {
-        var components = URLComponents(url: endpoint(["studies"]), resolvingAgainstBaseURL: false)!
-        components.queryItems = query.isEmpty ? nil : query
-        var request = URLRequest(url: components.url!)
-        request.httpMethod = "GET"
-        request.setValue("application/dicom+json", forHTTPHeaderField: "Accept")
-        return try await perform(request).data
+    public func searchStudies(query: [URLQueryItem] = [], pagination: DICOMQIDOPagination? = nil) async throws -> Data {
+        try await qidoSearch(path: ["studies"], query: query, pagination: pagination)
     }
 
     /// Performs a QIDO-RS series search within a study.
-    public func searchSeries(studyInstanceUID: String, query: [URLQueryItem] = []) async throws -> Data {
-        try await qidoSearch(path: ["studies", studyInstanceUID, "series"], query: query)
+    public func searchSeries(studyInstanceUID: String, query: [URLQueryItem] = [], pagination: DICOMQIDOPagination? = nil) async throws -> Data {
+        try await qidoSearch(path: ["studies", studyInstanceUID, "series"], query: query, pagination: pagination)
     }
 
     /// Performs a QIDO-RS instance search, optionally scoped to a series.
-    public func searchInstances(studyInstanceUID: String, seriesInstanceUID: String? = nil, query: [URLQueryItem] = []) async throws -> Data {
+    public func searchInstances(studyInstanceUID: String, seriesInstanceUID: String? = nil, query: [URLQueryItem] = [], pagination: DICOMQIDOPagination? = nil) async throws -> Data {
         var path = ["studies", studyInstanceUID]
         if let seriesInstanceUID { path += ["series", seriesInstanceUID] }
         path.append("instances")
-        return try await qidoSearch(path: path, query: query)
+        return try await qidoSearch(path: path, query: query, pagination: pagination)
     }
 
     /// Retrieves one DICOM Part 10 instance through WADO-RS.
@@ -143,9 +158,14 @@ public struct DICOMwebClient: Sendable {
         return try await perform(request).data
     }
 
-    private func qidoSearch(path: [String], query: [URLQueryItem]) async throws -> Data {
+    private func qidoSearch(path: [String], query: [URLQueryItem], pagination: DICOMQIDOPagination?) async throws -> Data {
         var components = URLComponents(url: endpoint(path), resolvingAgainstBaseURL: false)!
-        components.queryItems = query.isEmpty ? nil : query
+        var queryItems = query
+        if let pagination {
+            queryItems.append(URLQueryItem(name: "limit", value: String(pagination.limit)))
+            queryItems.append(URLQueryItem(name: "offset", value: String(pagination.offset)))
+        }
+        components.queryItems = queryItems.isEmpty ? nil : queryItems
         var request = URLRequest(url: components.url!)
         request.httpMethod = "GET"
         request.setValue("application/dicom+json", forHTTPHeaderField: "Accept")

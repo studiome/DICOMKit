@@ -3,6 +3,23 @@ import Testing
 @testable import DICOMKit
 
 struct DICOMwebClientTests {
+    @Test func qidoSearchAddsPaginationParameters() async throws {
+        let transport = CapturingDICOMwebTransport(response: Data("[]".utf8))
+        let client = DICOMwebClient(baseURL: URL(string: "https://example.test/dicomweb")!, transport: transport)
+
+        _ = try await client.searchStudies(
+            query: [URLQueryItem(name: "PatientName", value: "Doe*")],
+            pagination: try DICOMQIDOPagination(limit: 25, offset: 50)
+        )
+
+        let queryItems = URLComponents(url: try #require(transport.requests.first?.url), resolvingAgainstBaseURL: false)?.queryItems
+        #expect(queryItems == [
+            URLQueryItem(name: "PatientName", value: "Doe*"),
+            URLQueryItem(name: "limit", value: "25"),
+            URLQueryItem(name: "offset", value: "50")
+        ])
+    }
+
     @Test func wadoDecodesTypedMetadata() async throws {
         let response = Data("[{\"00100010\":{\"vr\":\"PN\",\"Value\":[{\"Alphabetic\":\"Doe^Jane\"}]}}]".utf8)
         let transport = CapturingDICOMwebTransport(response: response)
