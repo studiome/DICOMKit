@@ -93,6 +93,21 @@ struct DICOMElementValueTests {
 }
 
 struct DICOMDatasetTests {
+    @Test func anonymizesNestedTagsAndPrivateElements() {
+        let privateTag = DICOMTag(group: 0x0019, element: 0x1001)
+        let nested = DICOMDataset(elements: [DICOMElement(tag: .patientName, vr: .PN, value: Data("Doe^Jane".utf8))])
+        let dataset = DICOMDataset(elements: [
+            DICOMElement(tag: .patientName, vr: .PN, value: Data("Doe^Jane".utf8)),
+            DICOMElement(tag: privateTag, vr: .LO, value: Data("secret".utf8)),
+            DICOMElement(tag: .referencedStudySequence, vr: .SQ, value: Data(), sequenceItems: [nested])
+        ])
+        let anonymizer = DICOMAnonymizer(actions: [.patientName: .replace("Anonymous")])
+        let result = anonymizer.anonymize(dataset)
+
+        #expect(result[.patientName]?.stringValue == "Anonymous")
+        #expect(result[privateTag] == nil)
+        #expect(result[.referencedStudySequence]?.sequenceItems?.first?[.patientName]?.stringValue == "Anonymous")
+    }
     @Test func groupsAndSortsStudyInstances() throws {
         func file(uid: String, instance: String, z: String) throws -> DICOMFile {
             try DICOMFile(data: DICOMWriter.write(dataset: DICOMDataset(elements: [

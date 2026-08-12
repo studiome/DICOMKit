@@ -20,6 +20,9 @@ See the [changelog](CHANGELOG.md) for the current implementation status.
   `DICOMElement`, `DICOMTag`, and `DICOMVR`
 - Groups files into `DICOMStudy` / `DICOMSeries` / `DICOMInstance` models and
   sorts instances by image position, instance number, then SOP Instance UID
+- Provides a caller-configured recursive `DICOMAnonymizer` for removing or
+  replacing attributes, including private tags; it is not a PS3.15 profile
+  conformance claim
 - Provides typed access for common string and `UInt16` values
 - Converts supported in-memory datasets to and from typed DICOM JSON
   (PS3.18 Annex F), including string VRs, `US`, sequences, and inline binary
