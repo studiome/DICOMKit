@@ -419,6 +419,7 @@ public enum DICOMULPDU: Sendable, Equatable {
 
     private static func decodeAcceptedPresentationContext(_ data: Data) throws -> DICOMPresentationContextAcceptance {
         guard data.count >= 4, let result = DICOMPresentationContextAcceptance.Result(rawValue: data[2]) else { throw DICOMULError.invalidPresentationContext }
+        guard data[0] != 0, data[0] % 2 == 1 else { throw DICOMULError.invalidPresentationContext }
         var offset = 4; let item = try readItem(data, offset: &offset)
         guard offset == data.count, item.type == 0x40, let syntax = String(data: item.value, encoding: .ascii) else { throw DICOMULError.invalidPresentationContext }
         return DICOMPresentationContextAcceptance(id: data[0], result: result, transferSyntaxUID: syntax)
@@ -426,6 +427,7 @@ public enum DICOMULPDU: Sendable, Equatable {
 
     private static func decodePresentationContext(_ data: Data) throws -> DICOMPresentationContext {
         guard data.count >= 4 else { throw DICOMULError.malformedPDU }
+        guard data[0] != 0, data[0] % 2 == 1 else { throw DICOMULError.invalidPresentationContext }
         var offset = 4
         var abstract: String?
         var transferSyntaxes: [String] = []

@@ -127,11 +127,21 @@ public actor DICOMAssociation {
         switch policy.negotiate(request) {
         case .accept(let result):
             requestedPresentationContexts = request.presentationContexts
-            try await transport.send(.associationAcceptance(result))
+            do {
+                try await transport.send(.associationAcceptance(result))
+            } catch {
+                await transport.close()
+                throw error
+            }
             acceptance = result
             return result
         case .reject(let rejection):
-            try await transport.send(.associationRejection(rejection))
+            do {
+                try await transport.send(.associationRejection(rejection))
+            } catch {
+                await transport.close()
+                throw error
+            }
             await transport.close()
             throw DICOMAssociationError.rejected(rejection)
         }

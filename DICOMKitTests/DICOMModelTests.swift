@@ -270,6 +270,45 @@ struct DICOMULTests {
         #expect(request.implementation.versionName == nil)
     }
 
+    @Test func decodeThrowsInvalidPresentationContextForEvenContextID() throws {
+        let pdu = rawAssociationRequestPDU(contextID: 2, userInformation: ulItem(0x51, ulUInt32(16_384)))
+        #expect(throws: DICOMULError.invalidPresentationContext) { try DICOMULPDU.decode(pdu) }
+    }
+
+    @Test func decodeThrowsInvalidPresentationContextForZeroContextID() throws {
+        let pdu = rawAssociationRequestPDU(contextID: 0, userInformation: ulItem(0x51, ulUInt32(16_384)))
+        #expect(throws: DICOMULError.invalidPresentationContext) { try DICOMULPDU.decode(pdu) }
+    }
+
+    @Test func decodeThrowsInvalidPresentationContextForEvenAcceptedContextID() throws {
+        let pdu = rawAssociationAcceptancePDU(contextID: 2, userInformation: ulItem(0x51, ulUInt32(16_384)))
+        #expect(throws: DICOMULError.invalidPresentationContext) { try DICOMULPDU.decode(pdu) }
+    }
+
+    @Test func decodeAcceptsValidOddPresentationContextID() throws {
+        let pdu = rawAssociationRequestPDU(contextID: 3, userInformation: ulItem(0x51, ulUInt32(16_384)))
+        guard case .associationRequest(let request) = try DICOMULPDU.decode(pdu) else { Issue.record("expected associationRequest"); return }
+        #expect(request.presentationContexts.first?.id == 3)
+    }
+
+    @Test func acceptClosesTransportWhenSendingAcceptanceFails() async throws {
+        let transport = DICOMULSendFailingTransport()
+        let association = DICOMAssociation(transport: transport)
+        let policy = DICOMAssociationPolicy(supportedAbstractSyntaxes: [DICOMSOPClass.verification], supportedTransferSyntaxes: ["1.2.840.10008.1.2"])
+        let request = DICOMAssociationRequest(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, abstractSyntaxUID: DICOMSOPClass.verification, transferSyntaxUIDs: ["1.2.840.10008.1.2"])])
+        await #expect(throws: DICOMNetworkError.connectionClosed) { try await association.accept(request, policy: policy) }
+        #expect(await transport.wasClosed)
+    }
+
+    @Test func acceptClosesTransportWhenSendingRejectionFails() async throws {
+        let transport = DICOMULSendFailingTransport()
+        let association = DICOMAssociation(transport: transport)
+        let policy = DICOMAssociationPolicy(calledAETitles: ["PACS"], supportedAbstractSyntaxes: [DICOMSOPClass.verification], supportedTransferSyntaxes: ["1.2.840.10008.1.2"])
+        let request = DICOMAssociationRequest(calledAETitle: "OTHER", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, abstractSyntaxUID: DICOMSOPClass.verification, transferSyntaxUIDs: ["1.2.840.10008.1.2"])])
+        await #expect(throws: DICOMNetworkError.connectionClosed) { try await association.accept(request, policy: policy) }
+        #expect(await transport.wasClosed)
+    }
+
     @Test func throwsForOversizedImplementationVersionName() {
         #expect(throws: DICOMULError.malformedPDU) {
             try DICOMImplementationIdentification(classUID: "1.2.3", versionName: "01234567890123456")
@@ -818,13 +857,13 @@ private func ulAETitle(_ value: String) -> Data {
 
 /// Builds a complete, well-formed A-ASSOCIATE-RQ PDU with a caller-supplied User Information
 /// item body, to simulate peers whose extended negotiation sub-items differ from DICOMKit's own.
-private func rawAssociationRequestPDU(userInformation: Data) -> Data {
+private func rawAssociationRequestPDU(contextID: UInt8 = 1, userInformation: Data) -> Data {
     var body = Data([0, 1, 0, 0])
     body.append(ulAETitle("PACS"))
     body.append(ulAETitle("DICOMKIT"))
     body.append(Data(repeating: 0, count: 32))
     body.append(ulItem(0x10, Data(DICOMAssociationRequest.dicomApplicationContextUID.utf8)))
-    var context = Data([1, 0, 0, 0])
+    var context = Data([contextID, 0, 0, 0])
     context.append(ulItem(0x30, Data("1.2.840.10008.1.1".utf8)))
     context.append(ulItem(0x40, Data("1.2.840.10008.1.2".utf8)))
     body.append(ulItem(0x20, context))
@@ -837,13 +876,13 @@ private func rawAssociationRequestPDU(userInformation: Data) -> Data {
 
 /// Builds a complete, well-formed A-ASSOCIATE-AC PDU with a caller-supplied User Information
 /// item body, to simulate peers whose extended negotiation sub-items differ from DICOMKit's own.
-private func rawAssociationAcceptancePDU(userInformation: Data) -> Data {
+private func rawAssociationAcceptancePDU(contextID: UInt8 = 1, userInformation: Data) -> Data {
     var body = Data([0, 1, 0, 0])
     body.append(ulAETitle("PACS"))
     body.append(ulAETitle("DICOMKIT"))
     body.append(Data(repeating: 0, count: 32))
     body.append(ulItem(0x10, Data(DICOMAssociationRequest.dicomApplicationContextUID.utf8)))
-    var context = Data([1, 0, 0, 0])
+    var context = Data([contextID, 0, 0, 0])
     context.append(ulItem(0x40, Data("1.2.840.10008.1.2".utf8)))
     body.append(ulItem(0x21, context))
     body.append(ulItem(0x50, userInformation))
@@ -860,6 +899,15 @@ private actor DICOMULMockTransport: DICOMULTransport {
     func send(_ pdu: DICOMULPDU) async throws { sent.append(pdu) }
     func receive() async throws -> DICOMULPDU { received.removeFirst() }
     func close() async {}
+}
+
+/// Fails every `send`, to prove a failure sending A-ASSOCIATE-AC/RJ leaves the transport closed
+/// rather than open with the peer never answered.
+private actor DICOMULSendFailingTransport: DICOMULTransport {
+    private(set) var wasClosed = false
+    func send(_ pdu: DICOMULPDU) async throws { throw DICOMNetworkError.connectionClosed }
+    func receive() async throws -> DICOMULPDU { throw DICOMNetworkError.connectionClosed }
+    func close() async { wasClosed = true }
 }
 
 private actor DICOMULNeverRespondingTransport: DICOMULTransport {
