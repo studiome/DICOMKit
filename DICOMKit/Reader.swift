@@ -67,7 +67,8 @@ struct Reader {
         }
 
         if vr == .SQ || (vr == .UN && length == .max) {
-            return DICOMElement(tag: tag, vr: vr, value: Data(), sequenceItems: try readSequence(transferSyntax: transferSyntax, length: length))
+            let sequence = try readSequence(transferSyntax: transferSyntax, length: length)
+            return DICOMElement(tag: tag, vr: vr, value: Data(), sequenceItems: sequence.items, sequenceItemOffsets: sequence.itemOffsets)
         }
         if tag == .pixelData, length == .max {
             let encapsulated = try readEncapsulatedPixelData(byteOrder: byteOrder)
@@ -118,7 +119,7 @@ struct Reader {
         throw DICOMError.truncatedData
     }
 
-    mutating func readSequence(transferSyntax: TransferSyntax, length: UInt32) throws -> [DICOMDataset] {
+    mutating func readSequence(transferSyntax: TransferSyntax, length: UInt32) throws -> (items: [DICOMDataset], itemOffsets: [UInt32]) {
         let endOffset: Int?
         if length == .max {
             endOffset = nil
@@ -129,14 +130,16 @@ struct Reader {
         }
 
         var items: [DICOMDataset] = []
+        var itemOffsets: [UInt32] = []
         while offset < data.count {
-            if let endOffset, offset == endOffset { return items }
+            if let endOffset, offset == endOffset { return (items, itemOffsets) }
             let byteOrder: ByteOrder = transferSyntax == .explicitVRBigEndian ? .bigEndian : .littleEndian
+            let itemOffset = offset
             let itemTag = try readTag(byteOrder: byteOrder)
             let itemLength = try readUInt32(byteOrder: byteOrder)
             if itemTag == DICOMTag(group: 0xFFFE, element: 0xE0DD) {
                 guard endOffset == nil, itemLength == 0 else { throw DICOMError.invalidSequenceItem(itemTag) }
-                return items
+                return (items, itemOffsets)
             }
             guard itemTag == DICOMTag(group: 0xFFFE, element: 0xE000) else {
                 throw DICOMError.invalidSequenceItem(itemTag)
@@ -151,8 +154,10 @@ struct Reader {
                 itemElements = try readDataset(transferSyntax: transferSyntax, endingAt: itemEndOffset)
             }
             items.append(DICOMDataset(elements: itemElements))
+            guard itemOffset <= Int(UInt32.max) else { throw DICOMError.truncatedData }
+            itemOffsets.append(UInt32(itemOffset))
         }
-        if let endOffset, offset == endOffset { return items }
+        if let endOffset, offset == endOffset { return (items, itemOffsets) }
         throw DICOMError.truncatedData
     }
 

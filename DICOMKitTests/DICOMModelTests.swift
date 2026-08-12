@@ -111,22 +111,31 @@ struct DICOMDatasetTests {
     }
 
     @Test func readsDICOMDirectoryRecords() throws {
-        let record = DICOMDataset(elements: [
+        let imageRecord = DICOMDataset(elements: [
             DICOMElement(tag: .directoryRecordType, vr: .CS, value: Data("IMAGE".utf8)),
             DICOMElement(tag: .referencedFileID, vr: .CS, value: Data("IMAGES\\0001".utf8)),
             DICOMElement(tag: .referencedSOPClassUIDInFile, vr: .UI, value: Data("1.2.840.10008.5.1.4.1.1.2".utf8)),
             DICOMElement(tag: .referencedSOPInstanceUIDInFile, vr: .UI, value: Data("1.2.3.4".utf8))
         ])
+        let patientRecord = DICOMDataset(elements: [
+            DICOMElement(tag: .directoryRecordType, vr: .CS, value: Data("PATIENT".utf8)),
+            DICOMElement(tag: .offsetOfReferencedLowerLevelDirectoryEntity, vr: .UL, value: uint32(200))
+        ])
         let dataset = DICOMDataset(elements: [
-            DICOMElement(tag: .directoryRecordSequence, vr: .SQ, value: Data(), sequenceItems: [record])
+            DICOMElement(tag: .offsetOfTheFirstDirectoryRecordOfTheRootDirectoryEntity, vr: .UL, value: uint32(100)),
+            DICOMElement(tag: .directoryRecordSequence, vr: .SQ, value: Data(), sequenceItems: [patientRecord, imageRecord], sequenceItemOffsets: [100, 200])
         ])
 
         let directory = try DICOMDirectory(dataset: dataset)
 
-        #expect(directory.records == [DICOMDirectoryRecord(
+        #expect(directory.records == [DICOMDirectoryRecord(recordType: "PATIENT", itemOffset: 100), DICOMDirectoryRecord(
             recordType: "IMAGE", referencedFileID: ["IMAGES", "0001"],
-            referencedSOPClassUID: "1.2.840.10008.5.1.4.1.1.2", referencedSOPInstanceUID: "1.2.3.4"
+            referencedSOPClassUID: "1.2.840.10008.5.1.4.1.1.2", referencedSOPInstanceUID: "1.2.3.4", itemOffset: 200
         )])
+        #expect(directory.rootRecords == [DICOMDirectoryNode(record: DICOMDirectoryRecord(recordType: "PATIENT", itemOffset: 100), children: [DICOMDirectoryNode(record: DICOMDirectoryRecord(
+            recordType: "IMAGE", referencedFileID: ["IMAGES", "0001"],
+            referencedSOPClassUID: "1.2.840.10008.5.1.4.1.1.2", referencedSOPInstanceUID: "1.2.3.4", itemOffset: 200
+        ))])])
     }
 
     @Test func rejectsDICOMJSONWithNonTagTopLevelKey() {

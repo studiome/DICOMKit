@@ -12,6 +12,11 @@ extension DICOMTag {
     public static let implementationVersionName = DICOMTag(group: 0x0002, element: 0x0013)
     /// Directory Record Sequence `(0004,1220)` in a DICOMDIR dataset.
     public static let directoryRecordSequence = DICOMTag(group: 0x0004, element: 0x1220)
+    public static let offsetOfTheFirstDirectoryRecordOfTheRootDirectoryEntity = DICOMTag(group: 0x0004, element: 0x1200)
+    public static let offsetOfTheLastDirectoryRecordOfTheRootDirectoryEntity = DICOMTag(group: 0x0004, element: 0x1202)
+    public static let offsetOfTheNextDirectoryRecord = DICOMTag(group: 0x0004, element: 0x1400)
+    public static let recordInUseFlag = DICOMTag(group: 0x0004, element: 0x1410)
+    public static let offsetOfReferencedLowerLevelDirectoryEntity = DICOMTag(group: 0x0004, element: 0x1420)
     /// Directory Record Type `(0004,1430)` in a DICOMDIR record.
     public static let directoryRecordType = DICOMTag(group: 0x0004, element: 0x1430)
     /// Referenced File ID `(0004,1500)` in a DICOMDIR record.
