@@ -84,8 +84,8 @@ caller-supplied compressed fragments through
 Offset Table; it does not compress samples itself.
 
 ``DICOMwebClient`` provides an async HTTP foundation for QIDO-RS study,
-series, and instance searches; WADO-RS instance, metadata, frame, and BulkData
-retrieval; and STOW-RS multipart storage.
+series, and instance searches; WADO-RS instance, metadata, rendered image,
+thumbnail, frame, and BulkData retrieval; and STOW-RS multipart storage.
 Inject a ``DICOMwebTransport`` to add application-specific authentication or
 to test requests without a network connection.
 

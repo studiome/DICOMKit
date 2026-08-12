@@ -3,6 +3,20 @@ import Testing
 @testable import DICOMKit
 
 struct DICOMwebClientTests {
+    @Test func wadoRetrievesRenderedImageAndThumbnail() async throws {
+        let transport = CapturingDICOMwebTransport(response: Data("image".utf8))
+        let client = DICOMwebClient(baseURL: URL(string: "https://example.test/dicomweb")!, transport: transport)
+
+        _ = try await client.retrieveRenderedInstance(studyInstanceUID: "1.2.3", seriesInstanceUID: "4.5.6", sopInstanceUID: "7.8.9", mediaType: "image/png")
+        _ = try await client.retrieveThumbnail(studyInstanceUID: "1.2.3", seriesInstanceUID: "4.5.6", sopInstanceUID: "7.8.9")
+
+        #expect(transport.requests.map { $0.url?.path } == [
+            "/dicomweb/studies/1.2.3/series/4.5.6/instances/7.8.9/rendered",
+            "/dicomweb/studies/1.2.3/series/4.5.6/instances/7.8.9/thumbnail"
+        ])
+        #expect(transport.requests.map { $0.value(forHTTPHeaderField: "Accept") } == ["image/png", "image/jpeg"])
+    }
+
     @Test func qidoSearchAddsPaginationParameters() async throws {
         let transport = CapturingDICOMwebTransport(response: Data("[]".utf8))
         let client = DICOMwebClient(baseURL: URL(string: "https://example.test/dicomweb")!, transport: transport)

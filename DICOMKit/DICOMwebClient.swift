@@ -125,6 +125,34 @@ public struct DICOMwebClient: Sendable {
         return try JSONDecoder().decode([DICOMJSONDataset].self, from: data)
     }
 
+    /// Retrieves a server-rendered representation of one instance through WADO-RS.
+    ///
+    /// The default `image/jpeg` has broad client support. Pass another rendered
+    /// media type, such as `image/png`, only when the target server supports it.
+    public func retrieveRenderedInstance(
+        studyInstanceUID: String,
+        seriesInstanceUID: String,
+        sopInstanceUID: String,
+        mediaType: String = "image/jpeg"
+    ) async throws -> Data {
+        try await retrieveData(
+            path: ["studies", studyInstanceUID, "series", seriesInstanceUID, "instances", sopInstanceUID, "rendered"],
+            accept: mediaType
+        )
+    }
+
+    /// Retrieves an instance thumbnail through the WADO-RS thumbnail resource.
+    public func retrieveThumbnail(
+        studyInstanceUID: String,
+        seriesInstanceUID: String,
+        sopInstanceUID: String
+    ) async throws -> Data {
+        try await retrieveData(
+            path: ["studies", studyInstanceUID, "series", seriesInstanceUID, "instances", sopInstanceUID, "thumbnail"],
+            accept: "image/jpeg"
+        )
+    }
+
     /// Retrieves one or more WADO-RS frames. Frame numbers are one-based.
     public func retrieveFrames(studyInstanceUID: String, seriesInstanceUID: String, sopInstanceUID: String, frameNumbers: [Int]) async throws -> Data {
         guard !frameNumbers.isEmpty, frameNumbers.allSatisfy({ $0 > 0 }) else { throw DICOMwebError.invalidMultipartResponse }

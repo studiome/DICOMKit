@@ -72,7 +72,7 @@ See the [changelog](CHANGELOG.md) for the current implementation status.
   writes caller-supplied compressed fragments with generated Basic Offset
   Tables for supported encapsulated transfer syntaxes
 - Provides async DICOMweb clients for QIDO-RS study/series/instance searches,
-  WADO-RS instance/metadata/frame/BulkData retrieval, and STOW-RS multipart
+  WADO-RS instance/metadata/rendered-image/thumbnail/frame/BulkData retrieval, and STOW-RS multipart
   instance storage; WADO metadata can also be decoded as typed DICOM JSON;
   QIDO-RS `limit` / `offset` pagination and transports are injectable for
   application authentication and testing
