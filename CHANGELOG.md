@@ -26,6 +26,18 @@ All notable changes to DICOMKit are documented here.
   libjpeg-turbo is also the primary decoder for JPEG Lossless Process 14.
   The prior Process 14 decoder remains as a temporary fallback while fixture
   output is compared, including for restart-marker streams TurboJPEG rejects.
+- Added native Float Pixel Data and Double Float Pixel Data access, pixel
+  padding-aware automatic windowing, palette color and additional YBR rendering,
+  and enhanced multi-frame rendering attributes.
+- Added Explicit VR Big Endian and Deflated Explicit VR Little Endian reading
+  and writing, encapsulated Pixel Data serialization, and empty/extended
+  offset-table multi-frame support where frame boundaries are unambiguous.
+- Added typed PS3.18 DICOM JSON conversion and typed WADO-RS metadata
+  retrieval, plus QIDO-RS series and instance searches, WADO-RS frame and
+  BulkData retrieval, and study-scoped STOW-RS.
+- Added lightweight study/series/instance grouping, configurable recursive
+  anonymization, Type 1/Type 2 module-requirement validation, and flat
+  DICOMDIR Directory Record Sequence reading.
 
 ## v0.4 — Complete
 
@@ -51,7 +63,9 @@ All notable changes to DICOMKit are documented here.
 
 - JPEG Lossless only supports single-scan, 1:1:1 component sampling; subsampled
   and multi-scan frames remain unsupported.
-- Encapsulated multi-frame pixel data requires a Basic Offset Table.
+- Encapsulated multi-frame pixel data supports a Basic Offset Table, Extended
+  Offset Table, or an empty Basic Offset Table only when every frame occupies
+  exactly one fragment; ambiguous empty-table streams remain unsupported.
 - CharLS does not support JPEG-LS subsampled scans or Point Transform.
-- libjpeg-turbo is currently used only for 8-bit JPEG Baseline Pixel Data;
-  DICOMKit does not expose its encoding or non-Baseline modes.
+- libjpeg-turbo decodes JPEG Baseline and JPEG Lossless Process 14; DICOMKit
+  does not expose codec encoding.

@@ -5,9 +5,10 @@ Swift-first utilities for reading DICOM Part 10 files on iPadOS and macOS.
 ## Overview
 
 DICOMKit provides a small, type-safe DICOM object model and a reader for
-Part 10 files encoded with Explicit VR Little Endian or Implicit VR Little
-Endian transfer syntax. It also renders uncompressed 8-bit monochrome and RGB
-Pixel Data, plus 16-bit monochrome data, as `CGImage`. The 16-bit path
+Part 10 files encoded with Explicit VR Little Endian, Implicit VR Little
+Endian, Explicit VR Big Endian, or Deflated Explicit VR Little Endian transfer
+syntax. It also renders supported uncompressed monochrome and RGB Pixel Data,
+plus 16-bit monochrome data, as `CGImage`. The 16-bit path
 correctly handles signed (`Pixel Representation`) samples, `Bits Stored`
 masking, and `Rescale Slope`/`Rescale Intercept` before windowing.
 
@@ -60,13 +61,14 @@ through ImageIO. The Baseline and JPEG 2000 backends produce 8-bit samples:
 frames, while frames declaring any other `Bits Allocated` are reported as
 undecodable. DICOMKit normalizes Process 14 output into the declared DICOM
 storage and preserves its transfer-syntax and component validations. Multi-frame
-encapsulated images require a Basic Offset Table and are available through
-``DICOMFile/pixelDataFrames``. libjpeg-turbo is pinned as a checksum-verified
+encapsulated images use a Basic Offset Table, Extended Offset Table, or an
+empty Basic Offset Table when each frame consists of exactly one fragment, and
+are available through ``DICOMFile/pixelDataFrames``. libjpeg-turbo is pinned as a checksum-verified
 SwiftPM binary target. The previous Process 14 decoder remains as a temporary
 fallback while fixture-output comparisons are accumulated. JPEG
-DIMSE remains outside the current scope.
-Pixel Padding Value
-`(0028,0120)` is also not yet applied.
+DIMSE remains outside the current scope. Pixel Padding Value `(0028,0120)`
+and Pixel Padding Range Limit `(0028,0121)` are excluded from automatically
+computed windows.
 
 Use ``DICOMFile/makeLazyPixelData()`` when image frames may not be displayed
 immediately. It defers and memoizes frame decoding; the parsed file's encoded
@@ -81,8 +83,9 @@ caller-supplied compressed fragments through
 ``DICOMElement/init(encapsulatedPixelDataFrames:vr:)`` with a generated Basic
 Offset Table; it does not compress samples itself.
 
-``DICOMwebClient`` provides an async HTTP foundation for QIDO-RS study
-searches, WADO-RS single-instance retrieval, and STOW-RS multipart storage.
+``DICOMwebClient`` provides an async HTTP foundation for QIDO-RS study,
+series, and instance searches; WADO-RS instance, metadata, frame, and BulkData
+retrieval; and STOW-RS multipart storage.
 Inject a ``DICOMwebTransport`` to add application-specific authentication or
 to test requests without a network connection.
 
