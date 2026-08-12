@@ -19,6 +19,26 @@ public struct DICOMNativePixelDataReference: Sendable, Equatable {
     }
 }
 
+/// File ranges for encapsulated Pixel Data fragments without retained JPEG,
+/// JPEG-LS, JPEG 2000, or RLE payload bytes.
+public struct DICOMEncapsulatedPixelDataReference: Sendable, Equatable {
+    public let url: URL
+    public let basicOffsetTable: Data
+    public let fragmentRanges: [Range<Int>]
+
+    /// Loads one compressed fragment on demand.
+    public func loadFragment(at index: Int) throws -> Data {
+        guard fragmentRanges.indices.contains(index) else { throw DICOMError.invalidEncapsulatedPixelData }
+        let range = fragmentRanges[index]
+        let handle = try FileHandle(forReadingFrom: url)
+        defer { try? handle.close() }
+        try handle.seek(toOffset: UInt64(range.lowerBound))
+        let data = try handle.read(upToCount: range.count) ?? Data()
+        guard data.count == range.count else { throw DICOMError.truncatedData }
+        return data
+    }
+}
+
 /// Metadata retained from a file while Pixel Data is loaded only on demand.
 ///
 /// For ordinary (non-deflated) native Pixel Data, parsing skips the value
@@ -30,6 +50,7 @@ public struct DICOMMetadataFile: Sendable {
     public let dataset: DICOMDataset
     public let transferSyntax: TransferSyntax
     public let nativePixelDataReference: DICOMNativePixelDataReference?
+    public let encapsulatedPixelDataReference: DICOMEncapsulatedPixelDataReference?
     private let sourceURL: URL
 
     public init(url: URL) throws {
@@ -51,10 +72,17 @@ public struct DICOMMetadataFile: Sendable {
             var inflated = Reader(data: decoded, offset: 0)
             dataset = DICOMDataset(elements: try inflated.readDataset(transferSyntax: .explicitVRLittleEndian))
             nativePixelDataReference = nil
+            encapsulatedPixelDataReference = nil
         } else {
             reader.skipsNativePixelData = !syntax.usesEncapsulatedPixelData
+            reader.skipsEncapsulatedPixelData = syntax.usesEncapsulatedPixelData
             dataset = DICOMDataset(elements: try reader.readDataset(transferSyntax: syntax).filter { $0.tag != .pixelData && $0.tag != .floatPixelData && $0.tag != .doubleFloatPixelData })
             nativePixelDataReference = reader.skippedNativePixelDataRange.map { DICOMNativePixelDataReference(url: url, range: $0) }
+            if let table = reader.skippedBasicOffsetTable, let ranges = reader.skippedEncapsulatedFragmentRanges {
+                encapsulatedPixelDataReference = DICOMEncapsulatedPixelDataReference(url: url, basicOffsetTable: table, fragmentRanges: ranges)
+            } else {
+                encapsulatedPixelDataReference = nil
+            }
         }
     }
 

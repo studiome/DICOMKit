@@ -31,6 +31,27 @@ struct DICOMFileReaderTests {
         #expect(lazy.loadFirstFrame()?.value == Data([0x12, 0x34]))
     }
 
+    @Test func retainsEncapsulatedFragmentRangesWithoutPayload() throws {
+        let pixelData = try DICOMElement(encapsulatedPixelDataFrames: [[Data([0xAA, 0xBB])]])
+        let data = try DICOMWriter.write(
+            dataset: DICOMDataset(elements: [
+                DICOMElement(tag: .sopClassUID, vr: .UI, value: Data("1.2.840.10008.5.1.4.1.1.7".utf8)),
+                DICOMElement(tag: .sopInstanceUID, vr: .UI, value: Data("1.2.3".utf8)),
+                pixelData
+            ]),
+            transferSyntax: .jpegBaseline
+        )
+        let url = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("DICOMKit-\(UUID().uuidString).dcm")
+        try data.write(to: url)
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        let metadata = try DICOMMetadataFile(url: url)
+        let reference = try #require(metadata.encapsulatedPixelDataReference)
+        #expect(metadata.dataset[.pixelData] == nil)
+        #expect(reference.fragmentRanges.count == 1)
+        #expect(try reference.loadFragment(at: 0) == Data([0xAA, 0xBB]))
+    }
+
     @Test func readsFloatAndDoubleFloatPixelData() throws {
         let floatBits = Float(1.5).bitPattern
         let doubleBits = 2.25.bitPattern
