@@ -158,6 +158,13 @@ struct DICOMULTests {
         try await association.cCancel(messageIDBeingRespondedTo: 20, contextID: 1)
         #expect(await transport.sent.count == 2)
     }
+
+    @Test func associationTimesOutWhileAwaitingResponse() async throws {
+        let transport = DICOMULNeverRespondingTransport()
+        let association = DICOMAssociation(transport: transport, responseTimeout: .milliseconds(1))
+        let request = DICOMAssociationRequest(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, abstractSyntaxUID: "1.2.840.10008.1.1", transferSyntaxUIDs: ["1.2.840.10008.1.2"])])
+        await #expect(throws: DICOMAssociationError.timedOut) { try await association.request(request) }
+    }
 }
 
 private actor DICOMULMockTransport: DICOMULTransport {
@@ -166,6 +173,12 @@ private actor DICOMULMockTransport: DICOMULTransport {
     init(received: [DICOMULPDU]) { self.received = received }
     func send(_ pdu: DICOMULPDU) async throws { sent.append(pdu) }
     func receive() async throws -> DICOMULPDU { received.removeFirst() }
+    func close() async {}
+}
+
+private actor DICOMULNeverRespondingTransport: DICOMULTransport {
+    func send(_ pdu: DICOMULPDU) async throws {}
+    func receive() async throws -> DICOMULPDU { try await Task.sleep(for: .seconds(60)); throw DICOMNetworkError.connectionClosed }
     func close() async {}
 }
 

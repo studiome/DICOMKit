@@ -17,6 +17,7 @@ public enum DICOMAssociationError: Error, Sendable, Equatable {
     case rejected(DICOMAssociationRejection)
     case unexpectedPDU
     case unexpectedDIMSECommand
+    case timedOut
 }
 
 /// The final status and identifier datasets returned by a C-FIND operation.
@@ -41,16 +42,22 @@ public struct DICOMCStoreRequest: Sendable, Equatable {
 /// A serial DICOM SCU association built on a caller-supplied PDU transport.
 public actor DICOMAssociation {
     private let transport: any DICOMULTransport
+    private let responseTimeout: Duration?
     private var acceptance: DICOMAssociationAcceptance?
 
-    public init(transport: any DICOMULTransport) { self.transport = transport }
+    /// Creates an association. A non-`nil` timeout applies to every peer PDU
+    /// awaited by this actor, including association negotiation and DIMSE responses.
+    public init(transport: any DICOMULTransport, responseTimeout: Duration? = nil) {
+        self.transport = transport
+        self.responseTimeout = responseTimeout
+    }
 
     /// Sends A-ASSOCIATE-RQ and waits for acceptance or rejection.
     @discardableResult
     public func request(_ request: DICOMAssociationRequest) async throws -> DICOMAssociationAcceptance {
         guard acceptance == nil else { throw DICOMAssociationError.unexpectedPDU }
         try await transport.send(.associationRequest(request))
-        switch try await transport.receive() {
+        switch try await receivePDU() {
         case .associationAcceptance(let result): acceptance = result; return result
         case .associationRejection(let rejection): throw DICOMAssociationError.rejected(rejection)
         default: throw DICOMAssociationError.unexpectedPDU
@@ -65,7 +72,7 @@ public actor DICOMAssociation {
         try await transport.send(.pData(values))
         var command = Data()
         while true {
-            guard case .pData(let received) = try await transport.receive() else { throw DICOMAssociationError.unexpectedPDU }
+            guard case .pData(let received) = try await receivePDU() else { throw DICOMAssociationError.unexpectedPDU }
             for value in received where value.contextID == contextID && value.isCommand {
                 command.append(value.data)
                 if value.isLastFragment {
@@ -88,7 +95,7 @@ public actor DICOMAssociation {
         try await transport.send(.pData(dataValues))
         var response = Data()
         while true {
-            guard case .pData(let values) = try await transport.receive() else { throw DICOMAssociationError.unexpectedPDU }
+            guard case .pData(let values) = try await receivePDU() else { throw DICOMAssociationError.unexpectedPDU }
             for value in values where value.contextID == contextID && value.isCommand {
                 response.append(value.data)
                 if value.isLastFragment {
@@ -108,7 +115,7 @@ public actor DICOMAssociation {
         var identifiers: [Data] = []
         var responseCommand = Data()
         while true {
-            guard case .pData(let values) = try await transport.receive() else { throw DICOMAssociationError.unexpectedPDU }
+            guard case .pData(let values) = try await receivePDU() else { throw DICOMAssociationError.unexpectedPDU }
             for value in values where value.contextID == contextID {
                 if value.isCommand {
                     responseCommand.append(value.data)
@@ -135,7 +142,7 @@ public actor DICOMAssociation {
         try await transport.send(.pData(pdvs(data: identifier, contextID: contextID, maximumPayloadLength: maximumPayload)))
         var response = Data()
         while true {
-            guard case .pData(let values) = try await transport.receive() else { throw DICOMAssociationError.unexpectedPDU }
+            guard case .pData(let values) = try await receivePDU() else { throw DICOMAssociationError.unexpectedPDU }
             for value in values where value.contextID == contextID && value.isCommand {
                 response.append(value.data)
                 guard value.isLastFragment else { continue }
@@ -156,7 +163,7 @@ public actor DICOMAssociation {
         try await transport.send(.pData(pdvs(data: identifier, contextID: contextID, maximumPayloadLength: maximumPayload)))
         var response = Data()
         while true {
-            guard case .pData(let values) = try await transport.receive() else { throw DICOMAssociationError.unexpectedPDU }
+            guard case .pData(let values) = try await receivePDU() else { throw DICOMAssociationError.unexpectedPDU }
             for value in values where value.contextID == contextID && value.isCommand {
                 response.append(value.data)
                 guard value.isLastFragment else { continue }
@@ -174,7 +181,7 @@ public actor DICOMAssociation {
         var command = Data()
         var contextID: UInt8?
         while true {
-            guard case .pData(let values) = try await transport.receive() else { throw DICOMAssociationError.unexpectedPDU }
+            guard case .pData(let values) = try await receivePDU() else { throw DICOMAssociationError.unexpectedPDU }
             for value in values where value.isCommand {
                 contextID = contextID ?? value.contextID
                 guard contextID == value.contextID else { throw DICOMAssociationError.unexpectedDIMSECommand }
@@ -183,7 +190,7 @@ public actor DICOMAssociation {
                 guard case .cStoreRequest(let messageID, let sopClassUID, let sopInstanceUID) = try DICOMDIMSECommand.decodeCommandSet(command), let contextID else { throw DICOMAssociationError.unexpectedDIMSECommand }
                 var dataset = Data()
                 while true {
-                    guard case .pData(let datasetValues) = try await transport.receive() else { throw DICOMAssociationError.unexpectedPDU }
+                    guard case .pData(let datasetValues) = try await receivePDU() else { throw DICOMAssociationError.unexpectedPDU }
                     for fragment in datasetValues where fragment.contextID == contextID && !fragment.isCommand {
                         dataset.append(fragment.data)
                         if fragment.isLastFragment { return DICOMCStoreRequest(messageID: messageID, contextID: contextID, sopClassUID: sopClassUID, sopInstanceUID: sopInstanceUID, dataset: dataset) }
@@ -213,7 +220,7 @@ public actor DICOMAssociation {
     public func release() async throws {
         guard acceptance != nil else { return }
         try await transport.send(.releaseRequest)
-        guard case .releaseResponse = try await transport.receive() else { throw DICOMAssociationError.unexpectedPDU }
+        guard case .releaseResponse = try await receivePDU() else { throw DICOMAssociationError.unexpectedPDU }
         acceptance = nil
         await transport.close()
     }
@@ -225,4 +232,19 @@ public actor DICOMAssociation {
     }
 
     private func isPending(_ status: UInt16) -> Bool { status == 0xFF00 || status == 0xFF01 }
+
+    private func receivePDU() async throws -> DICOMULPDU {
+        guard let responseTimeout else { return try await transport.receive() }
+        let transport = self.transport
+        return try await withThrowingTaskGroup(of: DICOMULPDU.self) { group in
+            group.addTask { try await transport.receive() }
+            group.addTask {
+                try await Task.sleep(for: responseTimeout)
+                throw DICOMAssociationError.timedOut
+            }
+            guard let first = try await group.next() else { throw DICOMAssociationError.timedOut }
+            group.cancelAll()
+            return first
+        }
+    }
 }
