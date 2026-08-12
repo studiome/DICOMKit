@@ -52,6 +52,42 @@ struct NetworkDICOMULListenerTests {
             #expect(decodedAcceptance == acceptance)
         }
     }
+
+    @Test func acceptThrowsCancellationErrorPromptlyWhenAwaitingTaskIsCancelled() async throws {
+        try await withTimeout(seconds: 10) {
+            let listener = try NetworkDICOMULListener(port: 0)
+            try await listener.start()
+            try await Self.waitForBoundPort(of: listener)
+
+            let waiter = Task { try await listener.accept() }
+            // Give accept() a moment to reach its suspension point before cancelling.
+            try await Task.sleep(for: .milliseconds(20))
+            waiter.cancel()
+
+            await #expect(throws: CancellationError.self) { try await waiter.value }
+            await listener.stop()
+        }
+    }
+
+    @Test func acceptThrowsConnectionClosedAfterStop() async throws {
+        try await withTimeout(seconds: 10) {
+            let listener = try NetworkDICOMULListener(port: 0)
+            try await listener.start()
+            try await Self.waitForBoundPort(of: listener)
+
+            await listener.stop()
+
+            await #expect(throws: DICOMNetworkError.connectionClosed) { try await listener.accept() }
+        }
+    }
+
+    private static func waitForBoundPort(of listener: NetworkDICOMULListener) async throws {
+        for _ in 0..<200 {
+            if await listener.port != nil { return }
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        Issue.record("listener did not report a bound port")
+    }
 }
 
 private struct TestTimeoutError: Error {}

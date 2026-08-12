@@ -7,7 +7,8 @@ public actor NetworkDICOMULListener {
     private let listener: NWListener
     private var boundPort: UInt16?
     private var pendingConnections: [NWConnection] = []
-    private var pendingContinuations: [CheckedContinuation<NetworkDICOMULTransport, Error>] = []
+    private var pendingWaiters: [(id: Int, continuation: CheckedContinuation<NetworkDICOMULTransport, Error>)] = []
+    private var nextWaiterID = 0
     private var closedError: Error?
 
     public init(port: UInt16, parameters: NWParameters = .tcp) throws {
@@ -33,20 +34,39 @@ public actor NetworkDICOMULListener {
     }
 
     /// Returns the next inbound connection as a transport, waiting if none has arrived yet.
+    /// Cancelling the awaiting task throws `CancellationError` promptly instead of leaking
+    /// the wait.
     public func accept() async throws -> NetworkDICOMULTransport {
         if let closedError { throw closedError }
         if !pendingConnections.isEmpty {
             return NetworkDICOMULTransport(connection: pendingConnections.removeFirst())
         }
-        return try await withCheckedThrowingContinuation { continuation in
-            pendingContinuations.append(continuation)
+        if Task.isCancelled { throw CancellationError() }
+        let id = nextWaiterID
+        nextWaiterID += 1
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<NetworkDICOMULTransport, Error>) in
+                pendingWaiters.append((id, continuation))
+            }
+        } onCancel: {
+            Task { await self.cancelWaiter(id) }
         }
     }
 
-    /// Stops listening. Causes any pending or subsequent ``accept()`` to throw
+    /// Stops listening. Cancels every queued inbound connection so none is left established
+    /// and unreachable, then causes any pending or subsequent ``accept()`` to throw
     /// ``DICOMNetworkError/connectionClosed``.
     public func stop() {
+        let connections = pendingConnections
+        pendingConnections.removeAll()
+        for connection in connections { connection.cancel() }
         listener.cancel()
+    }
+
+    private func cancelWaiter(_ id: Int) {
+        guard let index = pendingWaiters.firstIndex(where: { $0.id == id }) else { return }
+        let waiter = pendingWaiters.remove(at: index)
+        waiter.continuation.resume(throwing: CancellationError())
     }
 
     private func handle(_ state: NWListener.State) {
@@ -63,8 +83,8 @@ public actor NetworkDICOMULListener {
     }
 
     private func handle(_ connection: NWConnection) {
-        if !pendingContinuations.isEmpty {
-            pendingContinuations.removeFirst().resume(returning: NetworkDICOMULTransport(connection: connection))
+        if !pendingWaiters.isEmpty {
+            pendingWaiters.removeFirst().continuation.resume(returning: NetworkDICOMULTransport(connection: connection))
         } else {
             pendingConnections.append(connection)
         }
@@ -73,8 +93,8 @@ public actor NetworkDICOMULListener {
     private func fail(_ error: Error) {
         guard closedError == nil else { return }
         closedError = error
-        let waiters = pendingContinuations
-        pendingContinuations.removeAll()
-        for waiter in waiters { waiter.resume(throwing: error) }
+        let waiters = pendingWaiters
+        pendingWaiters.removeAll()
+        for waiter in waiters { waiter.continuation.resume(throwing: error) }
     }
 }
