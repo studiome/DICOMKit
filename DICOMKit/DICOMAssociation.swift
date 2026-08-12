@@ -57,6 +57,29 @@ public actor DICOMAssociation {
         }
     }
 
+    /// Sends a C-STORE request and its dataset using the negotiated presentation context.
+    /// The dataset must already use that context's negotiated transfer syntax and excludes
+    /// the Part 10 File Meta Information.
+    public func cStore(messageID: UInt16, contextID: UInt8, sopClassUID: String, sopInstanceUID: String, dataset: Data) async throws -> UInt16 {
+        guard let acceptance, acceptance.presentationContexts.contains(where: { $0.id == contextID && $0.result == .acceptance }) else { throw DICOMAssociationError.notAssociated }
+        let maximumPayload = max(1, Int(acceptance.maximumPDULength) - 12)
+        let command = DICOMDIMSECommand.cStoreRequest(messageID: messageID, affectedSOPClassUID: sopClassUID, affectedSOPInstanceUID: sopInstanceUID)
+        try await transport.send(.pData(try command.commandPDVs(contextID: contextID, maximumPayloadLength: maximumPayload)))
+        let dataValues = pdvs(data: dataset, contextID: contextID, maximumPayloadLength: maximumPayload)
+        try await transport.send(.pData(dataValues))
+        var response = Data()
+        while true {
+            guard case .pData(let values) = try await transport.receive() else { throw DICOMAssociationError.unexpectedPDU }
+            for value in values where value.contextID == contextID && value.isCommand {
+                response.append(value.data)
+                if value.isLastFragment {
+                    guard case .cStoreResponse(let responseID, let status) = try DICOMDIMSECommand.decodeCommandSet(response), responseID == messageID else { throw DICOMAssociationError.unexpectedDIMSECommand }
+                    return status
+                }
+            }
+        }
+    }
+
     /// Releases an established association. This method is idempotent.
     public func release() async throws {
         guard acceptance != nil else { return }
@@ -64,5 +87,11 @@ public actor DICOMAssociation {
         guard case .releaseResponse = try await transport.receive() else { throw DICOMAssociationError.unexpectedPDU }
         acceptance = nil
         await transport.close()
+    }
+
+    private func pdvs(data: Data, contextID: UInt8, maximumPayloadLength: Int) -> [DICOMPDataValue] {
+        if data.isEmpty { return [DICOMPDataValue(contextID: contextID, isCommand: false, isLastFragment: true, data: Data())] }
+        let chunks = stride(from: 0, to: data.count, by: maximumPayloadLength).map { data.subdata(in: $0..<min($0 + maximumPayloadLength, data.count)) }
+        return chunks.enumerated().map { DICOMPDataValue(contextID: contextID, isCommand: false, isLastFragment: $0.offset == chunks.count - 1, data: $0.element) }
     }
 }

@@ -71,6 +71,18 @@ struct DICOMULTests {
         )
         #expect(try DICOMDIMSECommand.decodeCommandSet(request.encodedCommandSet()) == request)
     }
+
+    @Test func associationSendsCStoreDataset() async throws {
+        let transport = DICOMULMockTransport(received: [
+            .associationAcceptance(DICOMAssociationAcceptance(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, result: .acceptance, transferSyntaxUID: "1.2.840.10008.1.2")])),
+            .pData(try DICOMDIMSECommand.cStoreResponse(messageIDBeingRespondedTo: 12, status: 0).commandPDVs(contextID: 1, maximumPayloadLength: 1024))
+        ])
+        let association = DICOMAssociation(transport: transport)
+        _ = try await association.request(DICOMAssociationRequest(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, abstractSyntaxUID: "1.2.840.10008.5.1.4.1.1.2", transferSyntaxUIDs: ["1.2.840.10008.1.2"])]))
+        let status = try await association.cStore(messageID: 12, contextID: 1, sopClassUID: "1.2.840.10008.5.1.4.1.1.2", sopInstanceUID: "1.2.3", dataset: Data([1, 2, 3]))
+        #expect(status == 0)
+        #expect(await transport.sent.count == 3)
+    }
 }
 
 private actor DICOMULMockTransport: DICOMULTransport {

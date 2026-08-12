@@ -15,6 +15,7 @@ public enum DICOMDIMSECommand: Sendable, Equatable {
     case cEchoRequest(messageID: UInt16)
     case cEchoResponse(messageIDBeingRespondedTo: UInt16, status: UInt16)
     case cStoreRequest(messageID: UInt16, affectedSOPClassUID: String, affectedSOPInstanceUID: String)
+    case cStoreResponse(messageIDBeingRespondedTo: UInt16, status: UInt16)
 
     /// Serializes this command set using the mandatory Implicit VR Little Endian syntax.
     public func encodedCommandSet() throws -> Data {
@@ -36,6 +37,11 @@ public enum DICOMDIMSECommand: Sendable, Equatable {
             Self.appendElement(tag: 0x07000000, value: Self.uint16(0), to: &content)
             Self.appendElement(tag: 0x08000000, value: Self.uint16(0), to: &content)
             Self.appendElement(tag: 0x10000000, value: Self.ui(sopInstanceUID), to: &content)
+        case .cStoreResponse(let messageID, let status):
+            Self.appendElement(tag: 0x01000000, value: Self.uint16(0x8001), to: &content)
+            Self.appendElement(tag: 0x01200000, value: Self.uint16(messageID), to: &content)
+            Self.appendElement(tag: 0x08000000, value: Self.uint16(0x0101), to: &content)
+            Self.appendElement(tag: 0x09000000, value: Self.uint16(status), to: &content)
         }
         var result = Data()
         Self.appendElement(tag: 0x00000000, value: Self.uint32(UInt32(content.count)), to: &result)
@@ -69,6 +75,9 @@ public enum DICOMDIMSECommand: Sendable, Equatable {
                   let sopClassUID = values[0x00020000].flatMap(readUI),
                   let sopInstanceUID = values[0x10000000].flatMap(readUI) else { throw DICOMDIMSEError.malformedCommandSet }
             return .cStoreRequest(messageID: messageID, affectedSOPClassUID: sopClassUID, affectedSOPInstanceUID: sopInstanceUID)
+        case 0x8001:
+            guard values[0x08000000].flatMap(readUInt16) == 0x0101, let messageID = values[0x01200000].flatMap(readUInt16), let status = values[0x09000000].flatMap(readUInt16) else { throw DICOMDIMSEError.malformedCommandSet }
+            return .cStoreResponse(messageIDBeingRespondedTo: messageID, status: status)
         default: throw DICOMDIMSEError.unsupportedCommand(field)
         }
     }
