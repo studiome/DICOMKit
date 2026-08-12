@@ -566,6 +566,40 @@ struct DICOMULTests {
         #expect(!final.hasDataset)
     }
 
+    /// A missing or malformed (0000,0800) on a C-FIND-RSP must not be silently treated as
+    /// "identifier follows": that hangs `receiveRequest()`/`cFind` waiting for a dataset a
+    /// peer that omitted the Type 1 element never sends.
+    @Test func cFindResponseRequiresCommandDataSetType() throws {
+        func element(group: UInt16, element: UInt16, value: Data) -> Data {
+            var data = Data([UInt8(group & 0xFF), UInt8(group >> 8), UInt8(element & 0xFF), UInt8(element >> 8)])
+            data.append(UInt8(value.count & 0xFF)); data.append(UInt8((value.count >> 8) & 0xFF)); data.append(UInt8((value.count >> 16) & 0xFF)); data.append(UInt8(value.count >> 24))
+            data.append(value)
+            return data
+        }
+        func uint16(_ value: UInt16) -> Data { Data([UInt8(value & 0xFF), UInt8(value >> 8)]) }
+        func rawCommandSet(dataSetType: Data?) -> Data {
+            var raw = Data()
+            raw.append(element(group: 0x0000, element: 0x0100, value: uint16(0x8020))) // Command Field: C-FIND-RSP
+            raw.append(element(group: 0x0000, element: 0x0120, value: uint16(70))) // Message ID Being Responded To
+            if let dataSetType { raw.append(element(group: 0x0000, element: 0x0800, value: dataSetType)) }
+            raw.append(element(group: 0x0000, element: 0x0900, value: uint16(0x0000))) // Status: success
+            return raw
+        }
+
+        #expect(throws: DICOMDIMSEError.malformedCommandSet) { try DICOMDIMSECommand.decodeCommandSet(rawCommandSet(dataSetType: nil)) }
+        #expect(throws: DICOMDIMSEError.malformedCommandSet) { try DICOMDIMSECommand.decodeCommandSet(rawCommandSet(dataSetType: Data())) }
+
+        guard case .cFindResponse(_, _, let identifierFollowsNo, _) = try DICOMDIMSECommand.decodeCommandSet(rawCommandSet(dataSetType: uint16(0x0101))) else {
+            Issue.record("expected cFindResponse"); return
+        }
+        #expect(!identifierFollowsNo)
+
+        guard case .cFindResponse(_, _, let identifierFollowsYes, _) = try DICOMDIMSECommand.decodeCommandSet(rawCommandSet(dataSetType: uint16(0x0000))) else {
+            Issue.record("expected cFindResponse"); return
+        }
+        #expect(identifierFollowsYes)
+    }
+
     @Test func cMoveAndCGetResponsesEncodeDataSetTypeFromIdentifierFollows() throws {
         let moveWithIdentifier = DICOMDIMSECommand.cMoveResponse(messageIDBeingRespondedTo: 31, status: DICOMDIMSEStatus(rawValue: 0xB000), identifierFollows: true, subOperations: nil, errorComment: nil)
         #expect(commandSetUInt16(tag: 0x08000000, in: try moveWithIdentifier.encodedCommandSet()) == 0x0000)

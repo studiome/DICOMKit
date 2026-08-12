@@ -201,22 +201,22 @@ public enum DICOMDIMSECommand: Sendable, Equatable {
             guard let messageID = values[0x01100000].flatMap(readUInt16), values[0x08000000].flatMap(readUInt16) == 0, let sopClassUID = values[0x00020000].flatMap(readUI) else { throw DICOMDIMSEError.malformedCommandSet }
             return .cFindRequest(messageID: messageID, affectedSOPClassUID: sopClassUID)
         case 0x8020:
-            guard let messageID = values[0x01200000].flatMap(readUInt16), let status = values[0x09000000].flatMap(readUInt16) else { throw DICOMDIMSEError.malformedCommandSet }
-            let identifierFollows = values[0x08000000].flatMap(readUInt16) != 0x0101
+            guard let messageID = values[0x01200000].flatMap(readUInt16), let status = values[0x09000000].flatMap(readUInt16), let dataSetType = values[0x08000000].flatMap(readUInt16) else { throw DICOMDIMSEError.malformedCommandSet }
+            let identifierFollows = dataSetType != 0x0101
             return .cFindResponse(messageIDBeingRespondedTo: messageID, status: DICOMDIMSEStatus(rawValue: status), identifierFollows: identifierFollows, errorComment: values[0x09020000].flatMap(readLO))
         case 0x0021:
             guard let messageID = values[0x01100000].flatMap(readUInt16), values[0x08000000].flatMap(readUInt16) == 0, let sopClassUID = values[0x00020000].flatMap(readUI), let destination = values[0x06000000].flatMap(readAE) else { throw DICOMDIMSEError.malformedCommandSet }
             return .cMoveRequest(messageID: messageID, affectedSOPClassUID: sopClassUID, moveDestination: destination)
         case 0x8021:
-            guard let messageID = values[0x01200000].flatMap(readUInt16), let status = values[0x09000000].flatMap(readUInt16) else { throw DICOMDIMSEError.malformedCommandSet }
-            let identifierFollows = values[0x08000000].flatMap(readUInt16) != 0x0101
+            guard let messageID = values[0x01200000].flatMap(readUInt16), let status = values[0x09000000].flatMap(readUInt16), let dataSetType = values[0x08000000].flatMap(readUInt16) else { throw DICOMDIMSEError.malformedCommandSet }
+            let identifierFollows = dataSetType != 0x0101
             return .cMoveResponse(messageIDBeingRespondedTo: messageID, status: DICOMDIMSEStatus(rawValue: status), identifierFollows: identifierFollows, subOperations: Self.readSubOperationCounts(values), errorComment: values[0x09020000].flatMap(readLO))
         case 0x0010:
             guard let messageID = values[0x01100000].flatMap(readUInt16), values[0x08000000].flatMap(readUInt16) == 0, let sopClassUID = values[0x00020000].flatMap(readUI) else { throw DICOMDIMSEError.malformedCommandSet }
             return .cGetRequest(messageID: messageID, affectedSOPClassUID: sopClassUID)
         case 0x8010:
-            guard let messageID = values[0x01200000].flatMap(readUInt16), let status = values[0x09000000].flatMap(readUInt16) else { throw DICOMDIMSEError.malformedCommandSet }
-            let identifierFollows = values[0x08000000].flatMap(readUInt16) != 0x0101
+            guard let messageID = values[0x01200000].flatMap(readUInt16), let status = values[0x09000000].flatMap(readUInt16), let dataSetType = values[0x08000000].flatMap(readUInt16) else { throw DICOMDIMSEError.malformedCommandSet }
+            let identifierFollows = dataSetType != 0x0101
             return .cGetResponse(messageIDBeingRespondedTo: messageID, status: DICOMDIMSEStatus(rawValue: status), identifierFollows: identifierFollows, subOperations: Self.readSubOperationCounts(values), errorComment: values[0x09020000].flatMap(readLO))
         case 0x0FFF:
             guard values[0x08000000].flatMap(readUInt16) == 0x0101, let messageID = values[0x01200000].flatMap(readUInt16) else { throw DICOMDIMSEError.malformedCommandSet }
