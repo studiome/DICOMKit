@@ -1159,6 +1159,7 @@ private actor DICOMULHangingTransport: DICOMULTransport {
 private struct TestTimeoutError: Error {}
 
 /// Races `operation` against a deadline so a regression cannot hang the suite.
+@discardableResult
 private func withTestTimeout<T: Sendable>(seconds: Double, operation: @Sendable @escaping () async throws -> T) async throws -> T {
     try await withThrowingTaskGroup(of: T.self) { group in
         group.addTask { try await operation() }
