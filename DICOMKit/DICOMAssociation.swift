@@ -19,6 +19,13 @@ public enum DICOMAssociationError: Error, Sendable, Equatable {
     case unexpectedDIMSECommand
 }
 
+/// The final status and identifier datasets returned by a C-FIND operation.
+public struct DICOMCFindResult: Sendable, Equatable {
+    public let status: UInt16
+    public let identifiers: [Data]
+    public init(status: UInt16, identifiers: [Data]) { self.status = status; self.identifiers = identifiers }
+}
+
 /// A serial DICOM SCU association built on a caller-supplied PDU transport.
 public actor DICOMAssociation {
     private let transport: any DICOMULTransport
@@ -80,6 +87,32 @@ public actor DICOMAssociation {
         }
     }
 
+    /// Performs C-FIND, collecting identifier datasets for every pending response.
+    public func cFind(messageID: UInt16, contextID: UInt8, sopClassUID: String, identifier: Data) async throws -> DICOMCFindResult {
+        guard let acceptance, acceptance.presentationContexts.contains(where: { $0.id == contextID && $0.result == .acceptance }) else { throw DICOMAssociationError.notAssociated }
+        let maximumPayload = max(1, Int(acceptance.maximumPDULength) - 12)
+        try await transport.send(.pData(try DICOMDIMSECommand.cFindRequest(messageID: messageID, affectedSOPClassUID: sopClassUID).commandPDVs(contextID: contextID, maximumPayloadLength: maximumPayload)))
+        try await transport.send(.pData(pdvs(data: identifier, contextID: contextID, maximumPayloadLength: maximumPayload)))
+        var identifiers: [Data] = []
+        var responseCommand = Data()
+        while true {
+            guard case .pData(let values) = try await transport.receive() else { throw DICOMAssociationError.unexpectedPDU }
+            for value in values where value.contextID == contextID {
+                if value.isCommand {
+                    responseCommand.append(value.data)
+                    guard value.isLastFragment else { continue }
+                    guard case .cFindResponse(let responseID, let status) = try DICOMDIMSECommand.decodeCommandSet(responseCommand), responseID == messageID else { throw DICOMAssociationError.unexpectedDIMSECommand }
+                    responseCommand.removeAll(keepingCapacity: true)
+                    if !isPending(status) { return DICOMCFindResult(status: status, identifiers: identifiers) }
+                } else {
+                    // Each pending response includes one identifier dataset. A production
+                    // SCP sends the command PDU before this dataset PDU.
+                    identifiers.append(value.data)
+                }
+            }
+        }
+    }
+
     /// Releases an established association. This method is idempotent.
     public func release() async throws {
         guard acceptance != nil else { return }
@@ -94,4 +127,6 @@ public actor DICOMAssociation {
         let chunks = stride(from: 0, to: data.count, by: maximumPayloadLength).map { data.subdata(in: $0..<min($0 + maximumPayloadLength, data.count)) }
         return chunks.enumerated().map { DICOMPDataValue(contextID: contextID, isCommand: false, isLastFragment: $0.offset == chunks.count - 1, data: $0.element) }
     }
+
+    private func isPending(_ status: UInt16) -> Bool { status == 0xFF00 || status == 0xFF01 }
 }

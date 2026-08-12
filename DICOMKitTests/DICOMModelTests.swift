@@ -83,6 +83,25 @@ struct DICOMULTests {
         #expect(status == 0)
         #expect(await transport.sent.count == 3)
     }
+
+    @Test func encodesAndDecodesCFindRequest() throws {
+        let request = DICOMDIMSECommand.cFindRequest(messageID: 13, affectedSOPClassUID: "1.2.840.10008.5.1.4.1.2.2.1")
+        #expect(try DICOMDIMSECommand.decodeCommandSet(request.encodedCommandSet()) == request)
+    }
+
+    @Test func associationCollectsCFindResponses() async throws {
+        let transport = DICOMULMockTransport(received: [
+            .associationAcceptance(DICOMAssociationAcceptance(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, result: .acceptance, transferSyntaxUID: "1.2.840.10008.1.2")])),
+            .pData(try DICOMDIMSECommand.cFindResponse(messageIDBeingRespondedTo: 14, status: 0xFF00).commandPDVs(contextID: 1, maximumPayloadLength: 1024)),
+            .pData([DICOMPDataValue(contextID: 1, isCommand: false, isLastFragment: true, data: Data([4, 5]))]),
+            .pData(try DICOMDIMSECommand.cFindResponse(messageIDBeingRespondedTo: 14, status: 0).commandPDVs(contextID: 1, maximumPayloadLength: 1024))
+        ])
+        let association = DICOMAssociation(transport: transport)
+        _ = try await association.request(DICOMAssociationRequest(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, abstractSyntaxUID: "1.2.840.10008.5.1.4.1.2.2.1", transferSyntaxUIDs: ["1.2.840.10008.1.2"])]))
+        let result = try await association.cFind(messageID: 14, contextID: 1, sopClassUID: "1.2.840.10008.5.1.4.1.2.2.1", identifier: Data([1]))
+        #expect(result.status == 0)
+        #expect(result.identifiers == [Data([4, 5])])
+    }
 }
 
 private actor DICOMULMockTransport: DICOMULTransport {
