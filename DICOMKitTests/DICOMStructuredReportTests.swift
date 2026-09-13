@@ -348,3 +348,99 @@ struct DICOMStructuredReportTests {
         #expect(dateTimes == nil)
     }
 }
+
+/// ``DICOMStructuredReport``: the report root — completion/verification
+/// flags, content date/time, and the parsed Content Tree — plus the guards
+/// that make it safe to run over untrusted input.
+struct DICOMStructuredReportDocumentTests {
+    private func valueTypeElement(_ valueType: String) -> DICOMElement {
+        DICOMElement(tag: DICOMTag(group: 0x0040, element: 0xA040), vr: .CS, value: Data(valueType.utf8))
+    }
+
+    private func relationshipTypeElement(_ relationshipType: String) -> DICOMElement {
+        DICOMElement(tag: DICOMTag(group: 0x0040, element: 0xA010), vr: .CS, value: Data(relationshipType.utf8))
+    }
+
+    private func contentSequenceElement(_ items: [DICOMDataset]) -> DICOMElement {
+        DICOMElement(tag: DICOMTag(group: 0x0040, element: 0xA730), vr: .SQ, value: Data(), sequenceItems: items)
+    }
+
+    private func parse(_ dataset: DICOMDataset) throws -> DICOMStructuredReport {
+        try DICOMStructuredReport(file: DICOMFile(data: DICOMWriter.write(dataset: dataset)))
+    }
+
+    @Test func basicTextSRParsesFlagsAndTwoLevelTree() throws {
+        let grandchild = DICOMDataset(elements: [
+            relationshipTypeElement("CONTAINS"),
+            valueTypeElement("TEXT"),
+            DICOMElement(tag: DICOMTag(group: 0x0040, element: 0xA160), vr: .UT, value: Data("Impression: normal".utf8))
+        ])
+        let child = DICOMDataset(elements: [
+            relationshipTypeElement("CONTAINS"),
+            valueTypeElement("CONTAINER"),
+            DICOMElement(tag: DICOMTag(group: 0x0040, element: 0xA050), vr: .CS, value: Data("SEPARATE".utf8)),
+            contentSequenceElement([grandchild])
+        ])
+        let root = DICOMDataset(elements: [
+            DICOMElement(tag: .sopClassUID, vr: .UI, value: Data(DICOMSOPClass.basicTextSRStorage.utf8)),
+            valueTypeElement("CONTAINER"),
+            DICOMElement(tag: DICOMTag(group: 0x0040, element: 0xA491), vr: .CS, value: Data("COMPLETE".utf8)),
+            DICOMElement(tag: DICOMTag(group: 0x0040, element: 0xA493), vr: .CS, value: Data("VERIFIED".utf8)),
+            DICOMElement(tag: DICOMTag(group: 0x0008, element: 0x0023), vr: .DA, value: Data("20240115".utf8)),
+            DICOMElement(tag: DICOMTag(group: 0x0008, element: 0x0033), vr: .TM, value: Data("143000".utf8)),
+            contentSequenceElement([child])
+        ])
+
+        let report = try parse(root)
+
+        #expect(report.sopClassUID == DICOMSOPClass.basicTextSRStorage)
+        #expect(report.completionFlag == "COMPLETE")
+        #expect(report.verificationFlag == "VERIFIED")
+        #expect(report.contentDate == "20240115")
+        #expect(report.contentTime == "143000")
+        #expect(report.root.valueType == "CONTAINER")
+        #expect(report.root.children.first?.valueType == "CONTAINER")
+        #expect(report.root.children.first?.children.first?.value == .text("Impression: normal"))
+    }
+
+    @Test func datasetWithNoValueTypeThrows() throws {
+        let dataset = DICOMDataset(elements: [
+            DICOMElement(tag: .sopClassUID, vr: .UI, value: Data(DICOMSOPClass.basicTextSRStorage.utf8))
+        ])
+
+        #expect(throws: DICOMError.invalidStructuredReport) {
+            try self.parse(dataset)
+        }
+    }
+
+    @Test func nestingPastDepthLimitThrowsInsteadOfCrashing() throws {
+        func nestedContainer(remainingDepth: Int) -> DICOMDataset {
+            guard remainingDepth > 0 else {
+                return DICOMDataset(elements: [
+                    relationshipTypeElement("CONTAINS"),
+                    valueTypeElement("CONTAINER")
+                ])
+            }
+            let child = nestedContainer(remainingDepth: remainingDepth - 1)
+            return DICOMDataset(elements: [
+                relationshipTypeElement("CONTAINS"),
+                valueTypeElement("CONTAINER"),
+                contentSequenceElement([child])
+            ])
+        }
+
+        // Comfortably past DICOMDataset.structuredReportMaxDepth (64), but
+        // still well short of triggering a stack overflow while *building*
+        // and *decoding* the raw Part 10 bytes themselves — this test's
+        // purpose is to prove DICOMStructuredReport's own guard fires, not
+        // to stress-test the general-purpose sequence reader.
+        let root = DICOMDataset(elements: [
+            valueTypeElement("CONTAINER"),
+            contentSequenceElement([nestedContainer(remainingDepth: 90)])
+        ])
+
+        #expect(throws: DICOMError.invalidStructuredReport) {
+            try self.parse(root)
+        }
+    }
+}

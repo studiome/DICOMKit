@@ -251,3 +251,52 @@ extension DICOMDataset {
         return DICOMSOPReference(sopClassUID: sopClassUID, sopInstanceUID: sopInstanceUID)
     }
 }
+
+/// A DICOM Structured Report (PS3.3 A.35): document-level attributes plus
+/// the Content Tree rooted at ``root``.
+///
+/// DICOMKit parses the tree faithfully — every Content Item, its value, and
+/// its children — but does **not** interpret templates (for example TID
+/// 1500 and its relatives) or impose meaning on a concept name. That is a
+/// much larger, standards-heavy job on its own, and a wrong interpretation
+/// of a measurement is worse than none at all. Consumers that need
+/// template-aware behavior should walk ``root`` themselves, guided by
+/// ``DICOMContentItem/conceptName``.
+public struct DICOMStructuredReport: Sendable, Equatable {
+    /// SOP Class UID `(0008,0016)`.
+    public let sopClassUID: String?
+    /// Completion Flag `(0040,A491)`: `PARTIAL` or `COMPLETE`.
+    public let completionFlag: String?
+    /// Verification Flag `(0040,A493)`: `UNVERIFIED` or `VERIFIED`.
+    public let verificationFlag: String?
+    /// Content Date `(0008,0023)`.
+    public let contentDate: String?
+    /// Content Time `(0008,0033)`.
+    public let contentTime: String?
+    /// The root Content Item. Its attributes — Value Type, Concept Name
+    /// Code Sequence, Continuity of Content, and Content Sequence — live
+    /// directly on the report's dataset, since the dataset itself *is* the
+    /// root item (PS3.3 C.17.3).
+    public let root: DICOMContentItem
+
+    /// Parses a Structured Report from a file's dataset.
+    ///
+    /// - Throws: ``DICOMError/invalidStructuredReport`` when the dataset has
+    ///   no Value Type `(0040,A040)` at all (it isn't an SR), or when a
+    ///   Content Sequence nests deeper than
+    ///   `DICOMDataset.structuredReportMaxDepth` — a guard against a
+    ///   malformed or hostile document driving unbounded recursion.
+    public init(file: DICOMFile) throws {
+        let dataset = file.dataset
+        guard dataset[DICOMTag(group: 0x0040, element: 0xA040)] != nil else {
+            throw DICOMError.invalidStructuredReport
+        }
+
+        sopClassUID = dataset[.sopClassUID]?.stringValue
+        completionFlag = dataset[DICOMTag(group: 0x0040, element: 0xA491)]?.stringValue
+        verificationFlag = dataset[DICOMTag(group: 0x0040, element: 0xA493)]?.stringValue
+        contentDate = dataset[DICOMTag(group: 0x0008, element: 0x0023)]?.stringValue
+        contentTime = dataset[DICOMTag(group: 0x0008, element: 0x0033)]?.stringValue
+        root = try dataset.structuredReportContentItem(isRoot: true, inheriting: .default, depth: 0)
+    }
+}

@@ -101,4 +101,12 @@ public enum DICOMSOPClass {
         petImageStorage,
         rtImageStorage
     ]
+
+    /// The Structured Report SOP Classes above, convenient for negotiating
+    /// or filtering SR storage.
+    public static let structuredReport: Set<String> = [
+        basicTextSRStorage,
+        enhancedSRStorage,
+        comprehensiveSRStorage
+    ]
 }
