@@ -81,6 +81,34 @@ public struct DICOMFile: Sendable {
         )
     }
 
+    /// Per-frame patient-space geometry for an Enhanced Multi-frame object.
+    ///
+    /// One entry per frame (see ``frameFunctionalGroups`` for how frame
+    /// count is resolved). Each entry takes Pixel Spacing, Image Position
+    /// (Patient), and Image Orientation (Patient) from that frame's Pixel
+    /// Measures, Plane Position, and Plane Orientation macros when present,
+    /// falling back to ``imageGeometry``'s top-level attributes — and to
+    /// every other field ``DICOMImageGeometry`` exposes, none of which is
+    /// resolved per frame — when a macro is absent. A single-frame file
+    /// (classic or Enhanced) therefore produces exactly one entry equal to
+    /// ``imageGeometry``.
+    public var frameGeometries: [DICOMImageGeometry] {
+        guard let frameCount = defaultedFrameCount else { return [] }
+        let fallback = imageGeometry
+        return resolvedFunctionalGroups(frameCount: frameCount).map { group in
+            DICOMImageGeometry(
+                pixelSpacing: group.pixelMeasures?.pixelSpacing ?? fallback?.pixelSpacing,
+                pixelAspectRatio: fallback?.pixelAspectRatio,
+                imagePositionPatient: group.planePosition ?? fallback?.imagePositionPatient,
+                imageOrientationPatient: group.planeOrientation ?? fallback?.imageOrientationPatient,
+                imagerPixelSpacing: fallback?.imagerPixelSpacing,
+                nominalScannedPixelSpacing: fallback?.nominalScannedPixelSpacing,
+                pixelSpacingCalibrationType: fallback?.pixelSpacingCalibrationType,
+                pixelSpacingCalibrationDescription: fallback?.pixelSpacingCalibrationDescription
+            )
+        }
+    }
+
     /// Ultrasound region calibration: Sequence of Ultrasound Regions
     /// `(0018,6011)`.
     ///
@@ -653,6 +681,9 @@ public struct DICOMFile: Sendable {
                 if let value = perFrameGroups.rescaleIntercept { resolved.rescaleIntercept = value }
                 if let value = perFrameGroups.windowCenter { resolved.windowCenter = value }
                 if let value = perFrameGroups.windowWidth { resolved.windowWidth = value }
+                if let value = perFrameGroups.pixelMeasures { resolved.pixelMeasures = value }
+                if let value = perFrameGroups.planePosition { resolved.planePosition = value }
+                if let value = perFrameGroups.planeOrientation { resolved.planeOrientation = value }
             }
             return resolved
         }
@@ -664,11 +695,27 @@ public struct DICOMFile: Sendable {
         guard let item else { return DICOMFrameFunctionalGroups() }
         let transformation = item[.pixelValueTransformationSequence]?.sequenceItems?.first
         let voi = item[.frameVOILUTSequence]?.sequenceItems?.first
+        // Pixel Measures Sequence `(0028,9110)`.
+        let pixelMeasuresItem = item[DICOMTag(group: 0x0028, element: 0x9110)]?.sequenceItems?.first
+        let pixelMeasures = pixelMeasuresItem.map {
+            DICOMPixelMeasures(
+                pixelSpacing: $0[.pixelSpacing]?.doubleValues,
+                sliceThickness: $0[DICOMTag(group: 0x0018, element: 0x0050)]?.doubleValue,
+                spacingBetweenSlices: $0[DICOMTag(group: 0x0018, element: 0x0088)]?.doubleValue
+            )
+        }
+        // Plane Position (Patient) Sequence `(0020,9113)`.
+        let planePositionItem = item[DICOMTag(group: 0x0020, element: 0x9113)]?.sequenceItems?.first
+        // Plane Orientation (Patient) Sequence `(0020,9116)`.
+        let planeOrientationItem = item[DICOMTag(group: 0x0020, element: 0x9116)]?.sequenceItems?.first
         return DICOMFrameFunctionalGroups(
             rescaleSlope: transformation?[.rescaleSlope]?.doubleValue,
             rescaleIntercept: transformation?[.rescaleIntercept]?.doubleValue,
             windowCenter: voi?[.windowCenter]?.doubleValue,
-            windowWidth: voi?[.windowWidth]?.doubleValue
+            windowWidth: voi?[.windowWidth]?.doubleValue,
+            pixelMeasures: pixelMeasures,
+            planePosition: planePositionItem?[.imagePositionPatient]?.doubleValues,
+            planeOrientation: planeOrientationItem?[.imageOrientationPatient]?.doubleValues
         )
     }
 

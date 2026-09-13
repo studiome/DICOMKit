@@ -16,16 +16,47 @@ public struct DICOMFrameFunctionalGroups: Sendable, Equatable {
     public var windowCenter: Double?
     /// Window Width `(0028,1051)` from the Frame VOI LUT macro `(0028,9132)`.
     public var windowWidth: Double?
+    /// The Pixel Measures macro `(0028,9110)`.
+    public var pixelMeasures: DICOMPixelMeasures?
+    /// Image Position (Patient) `(0020,0032)` from the Plane Position
+    /// (Patient) macro `(0020,9113)`.
+    public var planePosition: [Double]?
+    /// Image Orientation (Patient) `(0020,0037)` from the Plane Orientation
+    /// (Patient) macro `(0020,9116)`.
+    public var planeOrientation: [Double]?
 
     public init(
         rescaleSlope: Double? = nil,
         rescaleIntercept: Double? = nil,
         windowCenter: Double? = nil,
-        windowWidth: Double? = nil
+        windowWidth: Double? = nil,
+        pixelMeasures: DICOMPixelMeasures? = nil,
+        planePosition: [Double]? = nil,
+        planeOrientation: [Double]? = nil
     ) {
         self.rescaleSlope = rescaleSlope
         self.rescaleIntercept = rescaleIntercept
         self.windowCenter = windowCenter
         self.windowWidth = windowWidth
+        self.pixelMeasures = pixelMeasures
+        self.planePosition = planePosition
+        self.planeOrientation = planeOrientation
+    }
+}
+
+/// The Pixel Measures macro `(0028,9110)`: per-frame spacing attributes for
+/// an Enhanced Multi-frame object.
+public struct DICOMPixelMeasures: Sendable, Equatable {
+    /// Pixel Spacing `(0028,0030)`.
+    public let pixelSpacing: [Double]?
+    /// Slice Thickness `(0018,0050)`.
+    public let sliceThickness: Double?
+    /// Spacing Between Slices `(0018,0088)`.
+    public let spacingBetweenSlices: Double?
+
+    public init(pixelSpacing: [Double]? = nil, sliceThickness: Double? = nil, spacingBetweenSlices: Double? = nil) {
+        self.pixelSpacing = pixelSpacing
+        self.sliceThickness = sliceThickness
+        self.spacingBetweenSlices = spacingBetweenSlices
     }
 }
