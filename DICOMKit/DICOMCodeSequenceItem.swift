@@ -36,3 +36,24 @@ extension DICOMDataset {
         return DICOMCodeSequenceItem(codeValue: codeValue, codingSchemeDesignator: codingSchemeDesignator, codeMeaning: codeMeaning)
     }
 }
+
+extension DICOMCodeSequenceItem {
+    /// Encodes this item as a code sequence item dataset (PS3.3 Section
+    /// 8.9): Code Value `(0008,0100)`, Coding Scheme Designator
+    /// `(0008,0102)`, and Code Meaning `(0008,0104)`. The inverse of
+    /// ``DICOMDataset/codeSequenceItem(inheriting:)``; only non-`nil`
+    /// fields are written.
+    func makeDataset() -> DICOMDataset {
+        var elements: [DICOMElement] = []
+        if let codeValue {
+            elements.append(DICOMElement(tag: DICOMTag(group: 0x0008, element: 0x0100), vr: .SH, value: Data(codeValue.utf8)))
+        }
+        if let codingSchemeDesignator {
+            elements.append(DICOMElement(tag: DICOMTag(group: 0x0008, element: 0x0102), vr: .SH, value: Data(codingSchemeDesignator.utf8)))
+        }
+        if let codeMeaning {
+            elements.append(DICOMElement(tag: DICOMTag(group: 0x0008, element: 0x0104), vr: .LO, value: Data(codeMeaning.utf8)))
+        }
+        return DICOMDataset(elements: elements)
+    }
+}

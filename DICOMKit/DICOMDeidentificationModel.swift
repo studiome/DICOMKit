@@ -67,6 +67,68 @@ public enum DICOMDeidentificationOption: String, Sendable, Equatable, Hashable, 
         case .cleanGraphics: 9
         }
     }
+
+    /// A short, human-readable label used to build De-identification Method
+    /// `(0012,0063)`.
+    fileprivate var label: String {
+        switch self {
+        case .retainSafePrivate: "Retain Safe Private"
+        case .retainUIDs: "Retain UIDs"
+        case .retainDeviceIdentity: "Retain Device Identity"
+        case .retainInstitutionIdentity: "Retain Institution Identity"
+        case .retainPatientCharacteristics: "Retain Patient Characteristics"
+        case .retainLongitudinalFullDates: "Retain Longitudinal Full Dates"
+        case .retainLongitudinalModifiedDates: "Retain Longitudinal Modified Dates"
+        case .cleanDescriptors: "Clean Descriptors"
+        case .cleanStructuredContent: "Clean Structured Content"
+        case .cleanGraphics: "Clean Graphics"
+        }
+    }
+
+    /// The PS3.16 CID 7050 "De-identification Method" code for selecting
+    /// this option, written into De-identification Method Code Sequence
+    /// `(0012,0064)` alongside code `113100` "Basic Application
+    /// Confidentiality Profile", which is always present.
+    ///
+    /// `nil` for ``retainInstitutionIdentity``: CID 7050 has no code for
+    /// PS3.15's Retain Institution Identity Option, even though the option
+    /// itself is a real column of Table E.1-1 — this is a gap in the
+    /// standard's own coding scheme, not an omission here. Selecting that
+    /// option still changes the resolved actions
+    /// ``DICOMConfidentialityProfile/action(for:)`` returns; it just has no
+    /// corresponding code to record.
+    ///
+    /// CID 7050 also defines `113101` "Clean Pixel Data" and `113102`
+    /// "Clean Recognizable Visual Features", for de-identification methods
+    /// that modify pixel data. DICOMKit never emits either code, because it
+    /// never modifies pixel data — see
+    /// ``DICOMConfidentialityProfile/deidentify(_:replacement:)``, which
+    /// refuses outright rather than claim to have handled burned-in pixel
+    /// content.
+    fileprivate var deidentificationMethodCode: DICOMCodeSequenceItem? {
+        switch self {
+        case .retainSafePrivate:
+            DICOMCodeSequenceItem(codeValue: "113111", codingSchemeDesignator: "DCM", codeMeaning: "Retain Safe Private Option")
+        case .retainUIDs:
+            DICOMCodeSequenceItem(codeValue: "113110", codingSchemeDesignator: "DCM", codeMeaning: "Retain UIDs Option")
+        case .retainDeviceIdentity:
+            DICOMCodeSequenceItem(codeValue: "113109", codingSchemeDesignator: "DCM", codeMeaning: "Retain Device Identity Option")
+        case .retainInstitutionIdentity:
+            nil
+        case .retainPatientCharacteristics:
+            DICOMCodeSequenceItem(codeValue: "113108", codingSchemeDesignator: "DCM", codeMeaning: "Retain Patient Characteristics Option")
+        case .retainLongitudinalFullDates:
+            DICOMCodeSequenceItem(codeValue: "113106", codingSchemeDesignator: "DCM", codeMeaning: "Retain Longitudinal Temporal Information Full Dates Option")
+        case .retainLongitudinalModifiedDates:
+            DICOMCodeSequenceItem(codeValue: "113107", codingSchemeDesignator: "DCM", codeMeaning: "Retain Longitudinal Temporal Information Modified Dates Option")
+        case .cleanDescriptors:
+            DICOMCodeSequenceItem(codeValue: "113105", codingSchemeDesignator: "DCM", codeMeaning: "Clean Descriptors Option")
+        case .cleanStructuredContent:
+            DICOMCodeSequenceItem(codeValue: "113104", codingSchemeDesignator: "DCM", codeMeaning: "Clean Structured Content Option")
+        case .cleanGraphics:
+            DICOMCodeSequenceItem(codeValue: "113103", codingSchemeDesignator: "DCM", codeMeaning: "Clean Graphics Option")
+        }
+    }
 }
 
 /// A PS3.15 Basic Application Level Confidentiality Profile, optionally
@@ -270,8 +332,52 @@ public struct DICOMConfidentialityProfile: Sendable {
                 actions[tag] = Self.anonymizerAction(for: resolved, replacement: replacement)
             }
         }
-        let dataset = DICOMAnonymizer(actions: actions).anonymize(file.dataset)
+        let anonymized = DICOMAnonymizer(actions: actions).anonymize(file.dataset)
+        let dataset = DICOMDataset(elements: Array(anonymized) + recordingElements)
         return DeidentificationResult(dataset: dataset, warnings: warnings)
+    }
+
+    /// Patient Identity Removed `(0012,0062)`, De-identification Method
+    /// `(0012,0063)`, and De-identification Method Code Sequence
+    /// `(0012,0064)` (PS3.15 Section E.1.1): a de-identification claim is
+    /// only meaningful if the output records what was actually applied.
+    private var recordingElements: [DICOMElement] {
+        [
+            DICOMElement(tag: DICOMTag(group: 0x0012, element: 0x0062), vr: .CS, value: Data("YES".utf8)),
+            DICOMElement(tag: DICOMTag(group: 0x0012, element: 0x0063), vr: .LO, value: Data(methodDescription.utf8)),
+            DICOMElement(
+                tag: DICOMTag(group: 0x0012, element: 0x0064), vr: .SQ, value: Data(),
+                sequenceItems: methodCodes.map { $0.makeDataset() }
+            )
+        ]
+    }
+
+    /// A human-readable description of the Basic Profile plus every
+    /// selected option, for De-identification Method `(0012,0063)`.
+    /// Truncated defensively to `LO`'s 64-character limit (PS3.5 Section
+    /// 6.2) — the untruncated content is always in
+    /// ``methodCodes``/`(0012,0064)` regardless.
+    private var methodDescription: String {
+        var parts = ["Basic Application Level Confidentiality Profile"]
+        for option in DICOMDeidentificationOption.allCases where options.contains(option) {
+            parts.append(option.label)
+        }
+        let description = parts.joined(separator: "; ")
+        return description.count > 64 ? String(description.prefix(64)) : description
+    }
+
+    /// The PS3.16 CID 7050 codes for De-identification Method Code Sequence
+    /// `(0012,0064)`: `113100` "Basic Application Confidentiality Profile"
+    /// always, plus one code per selected option that has one (see
+    /// ``DICOMDeidentificationOption/deidentificationMethodCode``).
+    private var methodCodes: [DICOMCodeSequenceItem] {
+        var codes = [DICOMCodeSequenceItem(codeValue: "113100", codingSchemeDesignator: "DCM", codeMeaning: "Basic Application Confidentiality Profile")]
+        for option in DICOMDeidentificationOption.allCases where options.contains(option) {
+            if let code = option.deidentificationMethodCode {
+                codes.append(code)
+            }
+        }
+        return codes
     }
 
     /// Every tag present anywhere in `dataset`, including inside sequence

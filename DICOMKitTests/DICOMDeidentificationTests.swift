@@ -221,3 +221,52 @@ struct DICOMBurnedInAnnotationTests {
         #expect(result.warnings.isEmpty == false)
     }
 }
+
+/// Tests for recording what was applied (PS3.15 E.1.1): a de-identification
+/// claim is only meaningful if `deidentify` stamps Patient Identity Removed,
+/// De-identification Method, and De-identification Method Code Sequence
+/// into its output.
+struct DICOMDeidentificationMethodRecordingTests {
+    private let patientIdentityRemoved = DICOMTag(group: 0x0012, element: 0x0062)
+    private let deidentificationMethod = DICOMTag(group: 0x0012, element: 0x0063)
+    private let deidentificationMethodCodeSequence = DICOMTag(group: 0x0012, element: 0x0064)
+    private let codeValue = DICOMTag(group: 0x0008, element: 0x0100)
+
+    private func file() throws -> DICOMFile {
+        try DICOMFile(data: DICOMWriter.write(dataset: DICOMDataset(elements: [
+            DICOMElement(tag: .sopClassUID, vr: .UI, value: Data("1.2.840.10008.5.1.4.1.1.7".utf8)),
+            DICOMElement(tag: .sopInstanceUID, vr: .UI, value: Data("1.2.3".utf8)),
+            DICOMElement(tag: DICOMTag(group: 0x0028, element: 0x0301), vr: .CS, value: Data("NO".utf8))
+        ])))
+    }
+
+    private func codeValues(_ dataset: DICOMDataset) -> Set<String> {
+        Set((dataset[deidentificationMethodCodeSequence]?.sequenceItems ?? []).compactMap { $0[codeValue]?.stringValue })
+    }
+
+    @Test func recordsPatientIdentityRemovedAndBasicProfileCodeWithNoOptionsSelected() throws {
+        let result = try DICOMConfidentialityProfile().deidentify(try file(), replacement: "Anonymous")
+
+        #expect(result.dataset[patientIdentityRemoved]?.stringValue == "YES")
+        #expect(result.dataset[deidentificationMethod]?.stringValue?.isEmpty == false)
+        #expect(codeValues(result.dataset) == ["113100"])
+    }
+
+    @Test func selectingRetainUIDsAddsItsCode() throws {
+        let profile = DICOMConfidentialityProfile(options: [.retainUIDs])
+
+        let result = try profile.deidentify(try file(), replacement: "Anonymous")
+
+        #expect(codeValues(result.dataset).contains("113110"))
+    }
+
+    @Test func unselectedOptionCodesDoNotAppear() throws {
+        let profile = DICOMConfidentialityProfile(options: [.retainUIDs])
+
+        let result = try profile.deidentify(try file(), replacement: "Anonymous")
+
+        // Only the Basic Profile code and Retain UIDs' code should appear —
+        // no other option's code, even though several other options exist.
+        #expect(codeValues(result.dataset) == ["113100", "113110"])
+    }
+}
