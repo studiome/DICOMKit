@@ -72,6 +72,40 @@ public indirect enum DICOMContentItemValue: Sendable, Equatable {
     /// Numeric Value Qualifier Code Sequence `(0040,A301)` when it is not
     /// (for example to record why a measurement couldn't be made).
     case num(value: Double?, units: DICOMCodeSequenceItem?, qualifier: DICOMCodeSequenceItem?)
+    /// `DATE`: Date `(0040,A121)`, kept in its raw `DA` string form. Use
+    /// ``DICOMElement/dateComponentsValue`` on the source element if you
+    /// need `DateComponents` instead of re-deriving them here.
+    case date(String)
+    /// `TIME`: Time `(0040,A122)`, kept in its raw `TM` string form.
+    case time(String)
+    /// `DATETIME`: DateTime `(0040,A120)`, kept in its raw `DT` string form.
+    case dateTime(String)
+    /// `UIDREF`: UID `(0040,A124)`.
+    case uidRef(String)
+    /// `PNAME`: Person Name `(0040,A123)`, decoded with this item's
+    /// (possibly inherited) Specific Character Set.
+    case personName(DICOMPersonName)
+    /// `IMAGE`: Referenced SOP Sequence `(0008,1199)`, plus Referenced Frame
+    /// Number `(0008,1160)` and Referenced Segment Number `(0062,000B)`
+    /// when the reference is scoped to specific frames or segments.
+    case image(reference: DICOMSOPReference, frameNumbers: [Int]?, segmentNumbers: [Int]?)
+    /// `WAVEFORM`: Referenced SOP Sequence `(0008,1199)`, plus Referenced
+    /// Waveform Channels `(0040,A0B0)` when scoped to specific channels.
+    case waveform(reference: DICOMSOPReference, channels: [Int]?)
+    /// `COMPOSITE`: Referenced SOP Sequence `(0008,1199)`, for a reference
+    /// to a whole non-image SOP Instance.
+    case composite(DICOMSOPReference)
+    /// `SCOORD`: Graphic Type `(0070,0023)` and Graphic Data `(0070,0022)`,
+    /// a list of (row, column) or (x, y) pairs flattened into one array.
+    case spatialCoordinates(graphicType: String, data: [Double])
+    /// `SCOORD3D`: like `SCOORD`, plus Referenced Frame of Reference UID
+    /// `(3006,0024)` giving the 3D data's frame of reference.
+    case spatialCoordinates3D(graphicType: String, data: [Double], frameOfReferenceUID: String?)
+    /// `TCOORD`: Temporal Range Type `(0040,A130)`, plus whichever of
+    /// Referenced Sample Positions `(0040,A132)`, Referenced Time Offsets
+    /// `(0040,A138)`, or Referenced DateTime `(0040,A13A)` the range uses to
+    /// name its points.
+    case temporalCoordinates(rangeType: String, samplePositions: [UInt32]?, timeOffsets: [Double]?, dateTimes: [String]?)
     /// Any Value Type DICOMKit does not yet model. The item's ``DICOMContentItem/children``
     /// are still parsed, so an unrecognised item never drops its subtree.
     case unsupported(valueType: String)
@@ -144,8 +178,76 @@ extension DICOMDataset {
             let qualifier = measuredValueItem?[DICOMTag(group: 0x0040, element: 0xA301)]?.sequenceItems?.first?.codeSequenceItem(inheriting: characterSet)
             return .num(value: value, units: units, qualifier: qualifier)
 
+        case "DATE":
+            return .date(self[DICOMTag(group: 0x0040, element: 0xA121)]?.stringValue ?? "")
+
+        case "TIME":
+            return .time(self[DICOMTag(group: 0x0040, element: 0xA122)]?.stringValue ?? "")
+
+        case "DATETIME":
+            return .dateTime(self[DICOMTag(group: 0x0040, element: 0xA120)]?.stringValue ?? "")
+
+        case "UIDREF":
+            return .uidRef(self[DICOMTag(group: 0x0040, element: 0xA124)]?.stringValue ?? "")
+
+        case "PNAME":
+            let personName = self[DICOMTag(group: 0x0040, element: 0xA123)]?.personNameValue(characterSet: characterSet) ?? DICOMPersonName("")
+            return .personName(personName)
+
+        case "IMAGE":
+            guard let reference = self.referencedSOPReference(sequenceTag: DICOMTag(group: 0x0008, element: 0x1199)) else {
+                return .unsupported(valueType: valueType)
+            }
+            let item = self[DICOMTag(group: 0x0008, element: 0x1199)]?.sequenceItems?.first
+            let frameNumbers = item?[DICOMTag(group: 0x0008, element: 0x1160)]?.stringValues?.compactMap(Int.init)
+            let segmentNumbers = item?[DICOMTag(group: 0x0062, element: 0x000B)]?.uint16Values?.map(Int.init)
+            return .image(reference: reference, frameNumbers: frameNumbers, segmentNumbers: segmentNumbers)
+
+        case "WAVEFORM":
+            guard let reference = self.referencedSOPReference(sequenceTag: DICOMTag(group: 0x0008, element: 0x1199)) else {
+                return .unsupported(valueType: valueType)
+            }
+            let item = self[DICOMTag(group: 0x0008, element: 0x1199)]?.sequenceItems?.first
+            let channels = item?[DICOMTag(group: 0x0040, element: 0xA0B0)]?.uint16Values?.map(Int.init)
+            return .waveform(reference: reference, channels: channels)
+
+        case "COMPOSITE":
+            guard let reference = self.referencedSOPReference(sequenceTag: DICOMTag(group: 0x0008, element: 0x1199)) else {
+                return .unsupported(valueType: valueType)
+            }
+            return .composite(reference)
+
+        case "SCOORD":
+            let graphicType = self[DICOMTag(group: 0x0070, element: 0x0023)]?.stringValue ?? ""
+            let data = self[DICOMTag(group: 0x0070, element: 0x0022)]?.float32Values?.map(Double.init) ?? []
+            return .spatialCoordinates(graphicType: graphicType, data: data)
+
+        case "SCOORD3D":
+            let graphicType = self[DICOMTag(group: 0x0070, element: 0x0023)]?.stringValue ?? ""
+            let data = self[DICOMTag(group: 0x0070, element: 0x0022)]?.float32Values?.map(Double.init) ?? []
+            let frameOfReferenceUID = self[DICOMTag(group: 0x3006, element: 0x0024)]?.stringValue
+            return .spatialCoordinates3D(graphicType: graphicType, data: data, frameOfReferenceUID: frameOfReferenceUID)
+
+        case "TCOORD":
+            let rangeType = self[DICOMTag(group: 0x0040, element: 0xA130)]?.stringValue ?? ""
+            let samplePositions = self[DICOMTag(group: 0x0040, element: 0xA132)]?.uint32Values
+            let timeOffsets = self[DICOMTag(group: 0x0040, element: 0xA138)]?.doubleValues
+            let dateTimes = self[DICOMTag(group: 0x0040, element: 0xA13A)]?.stringValues
+            return .temporalCoordinates(rangeType: rangeType, samplePositions: samplePositions, timeOffsets: timeOffsets, dateTimes: dateTimes)
+
         default:
             return .unsupported(valueType: valueType)
         }
+    }
+
+    /// Reads a `DICOMSOPReference` from the first item of the sequence at
+    /// `sequenceTag` — shared by `IMAGE`, `WAVEFORM`, and `COMPOSITE`, whose
+    /// Referenced SOP Sequence all use the same Referenced SOP Class/Instance
+    /// UID pair as ``DICOMStorageCommitment``'s references.
+    private func referencedSOPReference(sequenceTag: DICOMTag) -> DICOMSOPReference? {
+        guard let item = self[sequenceTag]?.sequenceItems?.first,
+              let sopClassUID = item[.referencedSOPClassUID]?.stringValue,
+              let sopInstanceUID = item[.referencedSOPInstanceUID]?.stringValue else { return nil }
+        return DICOMSOPReference(sopClassUID: sopClassUID, sopInstanceUID: sopInstanceUID)
     }
 }

@@ -189,4 +189,162 @@ struct DICOMStructuredReportTests {
 
         #expect(item.children.first?.value == .text("田中"))
     }
+
+    // MARK: - Task 2: the remaining value types
+
+    private func wrapAsChild(valueType: String, elements: [DICOMElement]) -> DICOMDataset {
+        DICOMDataset(elements: [relationshipTypeElement("CONTAINS"), valueTypeElement(valueType)] + elements)
+    }
+
+    private func referencedSOPSequenceElement(sopClassUID: String, sopInstanceUID: String, extra: [DICOMElement] = []) -> DICOMElement {
+        let item = DICOMDataset(elements: [
+            DICOMElement(tag: .referencedSOPClassUID, vr: .UI, value: Data(sopClassUID.utf8)),
+            DICOMElement(tag: .referencedSOPInstanceUID, vr: .UI, value: Data(sopInstanceUID.utf8))
+        ] + extra)
+        return DICOMElement(tag: DICOMTag(group: 0x0008, element: 0x1199), vr: .SQ, value: Data(), sequenceItems: [item])
+    }
+
+    @Test func dateValueParsesRawDicomString() throws {
+        let child = wrapAsChild(valueType: "DATE", elements: [
+            DICOMElement(tag: DICOMTag(group: 0x0040, element: 0xA121), vr: .DA, value: Data("20240115".utf8))
+        ])
+        let item = try parse(DICOMDataset(elements: [valueTypeElement("CONTAINER"), contentSequenceElement([child])]))
+
+        #expect(item.children.first?.value == .date("20240115"))
+    }
+
+    @Test func timeValueParsesRawDicomString() throws {
+        let child = wrapAsChild(valueType: "TIME", elements: [
+            DICOMElement(tag: DICOMTag(group: 0x0040, element: 0xA122), vr: .TM, value: Data("143000".utf8))
+        ])
+        let item = try parse(DICOMDataset(elements: [valueTypeElement("CONTAINER"), contentSequenceElement([child])]))
+
+        #expect(item.children.first?.value == .time("143000"))
+    }
+
+    @Test func dateTimeValueParsesRawDicomString() throws {
+        let child = wrapAsChild(valueType: "DATETIME", elements: [
+            DICOMElement(tag: DICOMTag(group: 0x0040, element: 0xA120), vr: .DT, value: Data("20240115143000".utf8))
+        ])
+        let item = try parse(DICOMDataset(elements: [valueTypeElement("CONTAINER"), contentSequenceElement([child])]))
+
+        #expect(item.children.first?.value == .dateTime("20240115143000"))
+    }
+
+    @Test func uidRefValueParses() throws {
+        let child = wrapAsChild(valueType: "UIDREF", elements: [
+            DICOMElement(tag: DICOMTag(group: 0x0040, element: 0xA124), vr: .UI, value: Data("1.2.3.4.5".utf8))
+        ])
+        let item = try parse(DICOMDataset(elements: [valueTypeElement("CONTAINER"), contentSequenceElement([child])]))
+
+        #expect(item.children.first?.value == .uidRef("1.2.3.4.5"))
+    }
+
+    @Test func personNameValueDecodesWithItemCharacterSet() throws {
+        let child = wrapAsChild(valueType: "PNAME", elements: [
+            DICOMElement(tag: DICOMTag(group: 0x0040, element: 0xA123), vr: .PN, value: Data("Yamada^Taro".utf8))
+        ])
+        let item = try parse(DICOMDataset(elements: [valueTypeElement("CONTAINER"), contentSequenceElement([child])]))
+
+        #expect(item.children.first?.value == .personName(DICOMPersonName("Yamada^Taro")))
+    }
+
+    @Test func imageValueParsesReferenceAndFrameNumbers() throws {
+        let child = wrapAsChild(valueType: "IMAGE", elements: [
+            referencedSOPSequenceElement(
+                sopClassUID: "1.2.840.10008.5.1.4.1.1.7",
+                sopInstanceUID: "1.2.3.100",
+                extra: [DICOMElement(tag: DICOMTag(group: 0x0008, element: 0x1160), vr: .IS, value: Data("1\\3".utf8))]
+            )
+        ])
+        let item = try parse(DICOMDataset(elements: [valueTypeElement("CONTAINER"), contentSequenceElement([child])]))
+
+        guard case let .image(reference, frameNumbers, segmentNumbers) = item.children.first?.value else {
+            Issue.record("expected .image")
+            return
+        }
+        #expect(reference == DICOMSOPReference(sopClassUID: "1.2.840.10008.5.1.4.1.1.7", sopInstanceUID: "1.2.3.100"))
+        #expect(frameNumbers == [1, 3])
+        #expect(segmentNumbers == nil)
+    }
+
+    @Test func waveformValueParsesReferenceAndChannels() throws {
+        let child = wrapAsChild(valueType: "WAVEFORM", elements: [
+            referencedSOPSequenceElement(
+                sopClassUID: "1.2.840.10008.5.1.4.1.1.9.1.1",
+                sopInstanceUID: "1.2.3.200",
+                extra: [DICOMElement(tag: DICOMTag(group: 0x0040, element: 0xA0B0), vr: .US, value: uint16(1) + uint16(2) + uint16(3))]
+            )
+        ])
+        let item = try parse(DICOMDataset(elements: [valueTypeElement("CONTAINER"), contentSequenceElement([child])]))
+
+        guard case let .waveform(reference, channels) = item.children.first?.value else {
+            Issue.record("expected .waveform")
+            return
+        }
+        #expect(reference == DICOMSOPReference(sopClassUID: "1.2.840.10008.5.1.4.1.1.9.1.1", sopInstanceUID: "1.2.3.200"))
+        #expect(channels == [1, 2, 3])
+    }
+
+    @Test func compositeValueParsesReference() throws {
+        let child = wrapAsChild(valueType: "COMPOSITE", elements: [
+            referencedSOPSequenceElement(sopClassUID: "1.2.840.10008.5.1.4.1.1.104.1", sopInstanceUID: "1.2.3.300")
+        ])
+        let item = try parse(DICOMDataset(elements: [valueTypeElement("CONTAINER"), contentSequenceElement([child])]))
+
+        #expect(item.children.first?.value == .composite(DICOMSOPReference(sopClassUID: "1.2.840.10008.5.1.4.1.1.104.1", sopInstanceUID: "1.2.3.300")))
+    }
+
+    @Test func spatialCoordinatesParsesPolylineWithFourPoints() throws {
+        let points: [Float] = [0, 0, 10, 0, 10, 10, 0, 10]
+        let data = points.reduce(into: Data()) { $0.append(float32($1)) }
+        let child = wrapAsChild(valueType: "SCOORD", elements: [
+            DICOMElement(tag: DICOMTag(group: 0x0070, element: 0x0023), vr: .CS, value: Data("POLYLINE".utf8)),
+            DICOMElement(tag: DICOMTag(group: 0x0070, element: 0x0022), vr: .FL, value: data)
+        ])
+        let item = try parse(DICOMDataset(elements: [valueTypeElement("CONTAINER"), contentSequenceElement([child])]))
+
+        guard case let .spatialCoordinates(graphicType, coordinateData) = item.children.first?.value else {
+            Issue.record("expected .spatialCoordinates")
+            return
+        }
+        #expect(graphicType == "POLYLINE")
+        #expect(coordinateData == points.map(Double.init))
+    }
+
+    @Test func spatialCoordinates3DParsesPointsAndFrameOfReference() throws {
+        let points: [Float] = [1, 2, 3]
+        let data = points.reduce(into: Data()) { $0.append(float32($1)) }
+        let child = wrapAsChild(valueType: "SCOORD3D", elements: [
+            DICOMElement(tag: DICOMTag(group: 0x0070, element: 0x0023), vr: .CS, value: Data("POINT".utf8)),
+            DICOMElement(tag: DICOMTag(group: 0x0070, element: 0x0022), vr: .FL, value: data),
+            DICOMElement(tag: DICOMTag(group: 0x3006, element: 0x0024), vr: .UI, value: Data("1.2.3.999".utf8))
+        ])
+        let item = try parse(DICOMDataset(elements: [valueTypeElement("CONTAINER"), contentSequenceElement([child])]))
+
+        guard case let .spatialCoordinates3D(graphicType, coordinateData, frameOfReferenceUID) = item.children.first?.value else {
+            Issue.record("expected .spatialCoordinates3D")
+            return
+        }
+        #expect(graphicType == "POINT")
+        #expect(coordinateData == points.map(Double.init))
+        #expect(frameOfReferenceUID == "1.2.3.999")
+    }
+
+    @Test func temporalCoordinatesParsesSamplePositions() throws {
+        let child = wrapAsChild(valueType: "TCOORD", elements: [
+            DICOMElement(tag: DICOMTag(group: 0x0040, element: 0xA130), vr: .CS, value: Data("MULTIPOINT".utf8)),
+            DICOMElement(tag: DICOMTag(group: 0x0040, element: 0xA132), vr: .UL, value: uint32(10) + uint32(20))
+        ])
+        let item = try parse(DICOMDataset(elements: [valueTypeElement("CONTAINER"), contentSequenceElement([child])]))
+
+        guard case let .temporalCoordinates(rangeType, samplePositions, timeOffsets, dateTimes) = item.children.first?.value else {
+            Issue.record("expected .temporalCoordinates")
+            return
+        }
+        #expect(rangeType == "MULTIPOINT")
+        #expect(samplePositions == [10, 20])
+        #expect(timeOffsets == nil)
+        #expect(dateTimes == nil)
+    }
 }
