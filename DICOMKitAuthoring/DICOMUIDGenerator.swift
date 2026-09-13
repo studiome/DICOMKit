@@ -1,3 +1,4 @@
+import DICOMKit
 import Foundation
 
 /// Generates numeric DICOM UIDs below an organization-controlled root.

@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 @testable import DICOMKit
+import DICOMKitAuthoring
 
 /// Pixel spacing precedence: which attribute a measurement should use, and
 /// whether it is already spacing in the patient or needs correction

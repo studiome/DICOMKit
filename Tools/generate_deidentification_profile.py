@@ -3,7 +3,7 @@
 (Table E.1-1) from an official PS3.15 DocBook XML file.
 
 Usage:
-  python3 Tools/generate_deidentification_profile.py part15.xml DICOMKit/DICOMDeidentification.generated.swift
+  python3 Tools/generate_deidentification_profile.py part15.xml DICOMKitAuthoring/DICOMDeidentification.generated.swift
 
 Table E.1-1 has 15 columns: Attribute Name, Tag, Retd., In Std. Comp. IOD,
 Basic Prof., and ten confidentiality-option columns (Rtn. Safe Priv. Opt.,
@@ -129,6 +129,8 @@ def main(source, destination):
     ]
     output.extend(f"//   - {name}" for name in dropped)
     output.extend([
+        "import DICOMKit",
+        "",
         "enum DICOMDeidentificationTable {",
         "    /// One row of PS3.15 Table E.1-1: the raw Basic Profile action code",
         "    /// (e.g. \"Z\", \"X/Z/D\") plus each selected option's override code,",

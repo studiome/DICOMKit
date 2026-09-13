@@ -1,3 +1,4 @@
+import DICOMKit
 import Foundation
 
 /// Determines how a DICOM SCP responds to an inbound A-ASSOCIATE-RQ.

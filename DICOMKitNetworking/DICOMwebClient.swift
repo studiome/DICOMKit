@@ -1,3 +1,4 @@
+import DICOMKit
 import Foundation
 
 /// The transport used by ``DICOMwebClient``.

@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 @testable import DICOMKit
+import DICOMKitAuthoring
 
 /// `DICOMFile.measurementSpacing(atColumn:row:)`: resolving the scale to
 /// measure at a specific point, honoring per-region ultrasound calibration

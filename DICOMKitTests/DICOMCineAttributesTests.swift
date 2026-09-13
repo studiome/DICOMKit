@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 @testable import DICOMKit
+import DICOMKitAuthoring
 
 /// The Cine module (PS3.3 C.7.6.5), which gives multi-frame Pixel Data a
 /// playback timebase.

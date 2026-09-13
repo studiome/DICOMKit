@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 @testable import DICOMKit
+import DICOMKitAuthoring
 
 /// The 16-bit monochrome path, where stored samples are masked, sign-extended,
 /// rescaled, and windowed before they become 8-bit gray.

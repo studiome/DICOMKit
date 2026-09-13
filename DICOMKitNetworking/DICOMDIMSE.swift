@@ -1,3 +1,4 @@
+import DICOMKit
 import Foundation
 
 /// Errors raised while handling DIMSE command sets.

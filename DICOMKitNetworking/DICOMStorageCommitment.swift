@@ -1,3 +1,4 @@
+import DICOMKit
 import Foundation
 
 // DICOMSOPReference lives in DICOMSOPClass.swift (core): DICOMStructuredReport

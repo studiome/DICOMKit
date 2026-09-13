@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 @testable import DICOMKit
+import DICOMKitAuthoring
 
 /// Enhanced Multi-frame functional group resolution (PS3.3 C.7.6.16):
 /// Shared Functional Groups Sequence `(5200,9229)` supplies per-file

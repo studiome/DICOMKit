@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 @testable import DICOMKit
+import DICOMKitAuthoring
 
 /// Grayscale Softcopy Presentation State (PS3.3 A.33.2, SOP Class
 /// `1.2.840.10008.5.1.4.1.1.11.1`) parsing: how a sender prescribes the

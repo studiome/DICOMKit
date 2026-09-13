@@ -1,6 +1,8 @@
 import Foundation
 import Testing
 @testable import DICOMKit
+import DICOMKitNetworking
+import DICOMKitAuthoring
 
 struct DICOMULTests {
     @Test func encodesAndDecodesAssociationRequest() throws {

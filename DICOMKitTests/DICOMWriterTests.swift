@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 @testable import DICOMKit
+import DICOMKitAuthoring
 
 struct DICOMWriterTests {
     @Test func writesExplicitVRLittleEndianPart10File() throws {

@@ -1,3 +1,4 @@
+import DICOMKit
 import Foundation
 
 /// Retrieves a DICOM JSON `BulkDataURI` under the caller's authentication and

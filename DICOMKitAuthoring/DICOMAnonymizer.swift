@@ -1,3 +1,4 @@
+import DICOMKit
 import Foundation
 
 /// A deterministic, caller-configured DICOM dataset de-identifier.

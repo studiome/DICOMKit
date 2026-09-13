@@ -9,6 +9,8 @@
 // a concrete or maskable tag and were dropped (see the generator's
 // module docstring for why this is safe):
 //   - Private Attributes (gggg,eeee) where gggg is odd
+import DICOMKit
+
 enum DICOMDeidentificationTable {
     /// One row of PS3.15 Table E.1-1: the raw Basic Profile action code
     /// (e.g. "Z", "X/Z/D") plus each selected option's override code,

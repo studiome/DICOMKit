@@ -1,3 +1,4 @@
+import DICOMKit
 import Foundation
 
 /// An asynchronous byte-transport for complete DICOM Upper Layer PDUs.

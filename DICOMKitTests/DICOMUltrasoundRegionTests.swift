@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 @testable import DICOMKit
+import DICOMKitAuthoring
 
 /// Ultrasound Region Calibration `(0018,6011)` (PS3.3 C.8.5.5.1.15): each
 /// region of an ultrasound image can carry its own physical scale,

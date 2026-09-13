@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 @testable import DICOMKit
+import DICOMKitAuthoring
 
 /// DICOM Specific Character Set `(0008,0005)` decoding (PS3.5 6.1.2.5).
 ///

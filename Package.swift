@@ -11,6 +11,14 @@ let package = Package(
         .library(
             name: "DICOMKit",
             targets: ["DICOMKit"]
+        ),
+        .library(
+            name: "DICOMKitAuthoring",
+            targets: ["DICOMKitAuthoring"]
+        ),
+        .library(
+            name: "DICOMKitNetworking",
+            targets: ["DICOMKitNetworking"]
         )
     ],
     targets: [
@@ -65,9 +73,25 @@ let package = Package(
                 .swiftLanguageMode(.v6)
             ]
         ),
+        .target(
+            name: "DICOMKitAuthoring",
+            dependencies: ["DICOMKit"],
+            path: "DICOMKitAuthoring",
+            swiftSettings: [
+                .swiftLanguageMode(.v6)
+            ]
+        ),
+        .target(
+            name: "DICOMKitNetworking",
+            dependencies: ["DICOMKit"],
+            path: "DICOMKitNetworking",
+            swiftSettings: [
+                .swiftLanguageMode(.v6)
+            ]
+        ),
         .testTarget(
             name: "DICOMKitTests",
-            dependencies: ["DICOMKit"],
+            dependencies: ["DICOMKit", "DICOMKitAuthoring", "DICOMKitNetworking"],
             path: "DICOMKitTests",
             // Copied as a directory so fixtures resolve from the test bundle
             // rather than from a source-tree path, which CI checkouts don't

@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 @testable import DICOMKit
+import DICOMKitAuthoring
 
 /// Real World Value Mapping Sequence `(0040,9096)`: the transform a PET
 /// viewer uses to convert a stored pixel value to a Standardized Uptake

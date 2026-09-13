@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 @testable import DICOMKit
+@testable import DICOMKitAuthoring
 
 /// Tests for the PS3.15 Table E.1-1 generated confidentiality table.
 ///

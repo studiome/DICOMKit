@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 @testable import DICOMKit
+import DICOMKitAuthoring
 
 /// Applying a Grayscale Softcopy Presentation State to rendered pixel data:
 /// `DICOMPixelData/presentationLUTShape` composes with `MONOCHROME1`

@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 @testable import DICOMKit
+import DICOMKitAuthoring
 
 /// Frame Content macro `(0020,9111)` parsing and ``DICOMFile/frameOrder()``.
 struct DICOMFrameOrderTests {

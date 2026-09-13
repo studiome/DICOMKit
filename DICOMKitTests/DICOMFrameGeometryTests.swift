@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 @testable import DICOMKit
+import DICOMKitAuthoring
 
 /// Per-frame Pixel Measures `(0028,9110)`, Plane Position (Patient)
 /// `(0020,9113)`, and Plane Orientation (Patient) `(0020,9116)` functional

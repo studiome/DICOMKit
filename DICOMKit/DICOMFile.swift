@@ -1008,11 +1008,6 @@ public struct DICOMFile: Sendable {
         }
     }
 
-    /// Serializes this file as a DICOM Part 10 byte stream.
-    public func encodedData(sequenceLengthEncoding: DICOMWriter.SequenceLengthEncoding = .defined) throws -> Data {
-        try DICOMWriter.write(metaInformation: metaInformation, dataset: dataset, transferSyntax: transferSyntax, sequenceLengthEncoding: sequenceLengthEncoding)
-    }
-
     /// Serializes just this file's dataset, without Part 10 framing — the
     /// payload a DIMSE service such as C-STORE transfers.
     ///

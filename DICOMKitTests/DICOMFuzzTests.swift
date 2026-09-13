@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 @testable import DICOMKit
+import DICOMKitNetworking
 
 /// Fuzz coverage for DICOMKit's parsers of untrusted input.
 ///

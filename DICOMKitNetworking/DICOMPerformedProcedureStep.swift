@@ -1,3 +1,4 @@
+import DICOMKit
 import Foundation
 
 /// Performed Procedure Step Status `(0040,0252)` — the three states an MPPS

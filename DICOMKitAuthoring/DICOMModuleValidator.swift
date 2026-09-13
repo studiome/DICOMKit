@@ -1,3 +1,4 @@
+import DICOMKit
 /// A validation problem found while applying a set of DICOM module requirements.
 public struct DICOMValidationIssue: Sendable, Equatable {
     /// The kind of requirement violation.

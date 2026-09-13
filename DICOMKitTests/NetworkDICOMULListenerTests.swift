@@ -2,6 +2,7 @@ import Foundation
 import Network
 import Testing
 @testable import DICOMKit
+import DICOMKitNetworking
 
 /// Exercises ``NetworkDICOMULListener`` together with ``NetworkDICOMULTransport`` over a real
 /// loopback TCP connection. If the sandbox refuses to bind or connect a loopback socket this

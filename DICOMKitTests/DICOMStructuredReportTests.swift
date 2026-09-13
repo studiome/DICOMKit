@@ -1,6 +1,8 @@
 import Foundation
 import Testing
 @testable import DICOMKit
+import DICOMKitNetworking
+import DICOMKitAuthoring
 
 /// Structured Report Content Item parsing (PS3.3 C.17.3): the recursive
 /// Content Sequence tree that carries an SR's actual payload.

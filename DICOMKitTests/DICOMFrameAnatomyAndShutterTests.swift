@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 @testable import DICOMKit
+import DICOMKitAuthoring
 
 /// Frame Anatomy macro `(0020,9071)` parsing and per-frame Frame Display
 /// Shutter macro `(0018,9472)` wiring into rendering.

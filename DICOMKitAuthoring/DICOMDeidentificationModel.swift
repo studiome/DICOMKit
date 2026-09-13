@@ -1,3 +1,4 @@
+import DICOMKit
 import Foundation
 
 /// A single PS3.15 Table E.1-1 action, as resolved for one attribute.

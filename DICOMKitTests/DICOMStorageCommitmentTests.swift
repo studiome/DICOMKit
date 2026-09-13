@@ -1,6 +1,7 @@
 import Testing
 import Foundation
 @testable import DICOMKit
+import DICOMKitNetworking
 
 struct DICOMStorageCommitmentTests {
     @Test func actionInformationRoundTripsTransactionUIDAndReferences() throws {

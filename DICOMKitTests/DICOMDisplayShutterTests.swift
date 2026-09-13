@@ -2,6 +2,7 @@ import CoreGraphics
 import Foundation
 import Testing
 @testable import DICOMKit
+import DICOMKitAuthoring
 
 /// The Display Shutter module (PS3.3 C.7.6.11): rectangular, circular, and
 /// polygonal shutters obscure irrelevant image periphery.

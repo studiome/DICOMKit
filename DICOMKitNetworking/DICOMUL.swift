@@ -1,3 +1,4 @@
+import DICOMKit
 import Foundation
 
 /// Errors raised while encoding or decoding DICOM Upper Layer (PS3.8) PDUs.

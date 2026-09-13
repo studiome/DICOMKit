@@ -1,6 +1,7 @@
 import Testing
 import Foundation
 @testable import DICOMKit
+import DICOMKitNetworking
 
 struct DICOMPerformedProcedureStepTests {
     private func acceptedAssociation(transport: DICOMULMPPSMockTransport) async throws -> DICOMAssociation {

@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 @testable import DICOMKit
+import DICOMKitAuthoring
 
 struct DICOMFileReaderTests {
     @Test func readsFileURLUsingMappedData() throws {
