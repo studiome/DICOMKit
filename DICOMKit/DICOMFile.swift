@@ -65,12 +65,26 @@ public struct DICOMFile: Sendable {
         }
         let imagePosition = dataset[.imagePositionPatient]?.doubleValues
         let imageOrientation = dataset[.imageOrientationPatient]?.doubleValues
-        guard pixelSpacing != nil || pixelAspectRatio != nil || imagePosition != nil || imageOrientation != nil else { return nil }
+        // Imager Pixel Spacing `(0018,1164)`: spacing at the detector plane,
+        // used by projection radiography (CR/DX/MG/XA/RF) when `(0028,0030)`
+        // is absent or was calibrated to some other plane.
+        let imagerPixelSpacing = dataset[DICOMTag(group: 0x0018, element: 0x1164)]?.doubleValues
+        // Nominal Scanned Pixel Spacing `(0018,2010)`.
+        let nominalScannedPixelSpacing = dataset[DICOMTag(group: 0x0018, element: 0x2010)]?.doubleValues
+        // Pixel Spacing Calibration Type `(0028,0A02)` and Description `(0028,0A04)`.
+        let pixelSpacingCalibrationType = dataset[DICOMTag(group: 0x0028, element: 0x0A02)]?.stringValue
+        let pixelSpacingCalibrationDescription = dataset[DICOMTag(group: 0x0028, element: 0x0A04)]?.stringValue
+        guard pixelSpacing != nil || pixelAspectRatio != nil || imagePosition != nil || imageOrientation != nil
+            || imagerPixelSpacing != nil || nominalScannedPixelSpacing != nil else { return nil }
         return DICOMImageGeometry(
             pixelSpacing: pixelSpacing?.count == 2 ? pixelSpacing : nil,
             pixelAspectRatio: pixelAspectRatio?.count == 2 ? pixelAspectRatio : nil,
             imagePositionPatient: imagePosition?.count == 3 ? imagePosition : nil,
-            imageOrientationPatient: imageOrientation?.count == 6 ? imageOrientation : nil
+            imageOrientationPatient: imageOrientation?.count == 6 ? imageOrientation : nil,
+            imagerPixelSpacing: imagerPixelSpacing?.count == 2 ? imagerPixelSpacing : nil,
+            nominalScannedPixelSpacing: nominalScannedPixelSpacing?.count == 2 ? nominalScannedPixelSpacing : nil,
+            pixelSpacingCalibrationType: pixelSpacingCalibrationType,
+            pixelSpacingCalibrationDescription: pixelSpacingCalibrationDescription
         )
     }
 
