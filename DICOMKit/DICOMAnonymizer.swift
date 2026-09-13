@@ -12,6 +12,16 @@ public struct DICOMAnonymizer: Sendable {
         /// Replaces a UI using a stable, non-reversible `2.25` pseudonymous UID.
         case remapUID
         case keep
+        /// PS3.15's `Z`: the element is retained with its original VR and a
+        /// zero-length value, rather than removed.
+        ///
+        /// Table E.1-1 codes `Z` almost exclusively for attributes that are
+        /// Type 2 in their IOD — the IOD requires the element to be present
+        /// even when its value is unknown — so dropping it, as `.remove`
+        /// does, would make the output non-conformant DICOM rather than
+        /// merely conservative. For a sequence element this produces an
+        /// empty sequence (present, zero items), not an absent one.
+        case emptyValue
     }
 
     public let actions: [DICOMTag: Action]
@@ -36,6 +46,11 @@ public struct DICOMAnonymizer: Sendable {
         case .remapUID:
             guard element.vr == .UI, let uid = element.stringValue, !uid.isEmpty else { return nil }
             return DICOMElement(tag: element.tag, vr: .UI, value: Data(Self.pseudonymousUID(for: uid).utf8))
+        case .emptyValue:
+            if element.sequenceItems != nil {
+                return DICOMElement(tag: element.tag, vr: element.vr, value: Data(), sequenceItems: [])
+            }
+            return DICOMElement(tag: element.tag, vr: element.vr, value: Data())
         case .keep:
             guard let items = element.sequenceItems else { return element }
             return DICOMElement(tag: element.tag, vr: element.vr, value: Data(), sequenceItems: items.map(anonymize), sequenceItemOffsets: element.sequenceItemOffsets)
@@ -63,31 +78,20 @@ public struct DICOMAnonymizer: Sendable {
 /// image content must handle that separately (see
 /// ``DICOMConfidentialityProfile/deidentify(_:replacement:)``).
 public enum DICOMDeidentificationProfile {
-    /// Patient's Name `(0010,0010)` and Patient ID `(0010,0020)`: Table
-    /// E.1-1 codes both `Z` (Patient's Name) or `Z/D` (Patient ID) — replace
-    /// with a zero-length value. This preset instead replaces them with a
-    /// visible, non-empty `replacement` value, preserved from this preset's
-    /// original (pre-generated-table) behavior so existing callers keep
-    /// getting a legible placeholder here instead of an empty string.
-    private static let directPatientIdentifierOverrides: [DICOMTag] = [
-        .patientName, DICOMTag(group: 0x0010, element: 0x0020)
-    ]
-
     /// Returns a conservative Basic Application Level Confidentiality preset.
     ///
     /// Built from ``DICOMConfidentialityProfile/makeAnonymizer(replacement:)``
     /// with no options selected, so every one of Table E.1-1's 627 exact
-    /// tags gets its real Basic Profile action — not a hand-picked subset —
-    /// except Patient's Name and Patient ID, which keep this preset's
-    /// original dummy-replacement behavior (see
-    /// ``directPatientIdentifierOverrides``). Study, series, SOP, and
-    /// referenced SOP UIDs are deterministically remapped to `2.25` UIDs so
-    /// internal references remain consistent.
+    /// tags gets its real Basic Profile action — not a hand-picked subset,
+    /// and with no per-tag special-casing. Patient's Name `(0010,0010)` and
+    /// Patient ID `(0010,0020)`, in particular, get exactly the action Table
+    /// E.1-1 prescribes (`Z` and `Z/D` respectively, both resolving to
+    /// present-but-zero-length) rather than a visible dummy value — an
+    /// earlier version of this preset overrode them with `replacement` text
+    /// purely to keep a pre-existing test passing, which this no longer
+    /// does. Study, series, SOP, and referenced SOP UIDs are deterministically
+    /// remapped to `2.25` UIDs so internal references remain consistent.
     public static func basicApplicationLevelConfidentiality(replacement: String = "Anonymous") -> DICOMAnonymizer {
-        var actions = DICOMConfidentialityProfile().makeAnonymizer(replacement: replacement).actions
-        for tag in directPatientIdentifierOverrides {
-            actions[tag] = .replace(replacement)
-        }
-        return DICOMAnonymizer(actions: actions)
+        DICOMConfidentialityProfile().makeAnonymizer(replacement: replacement)
     }
 }

@@ -1936,12 +1936,15 @@ struct DICOMDatasetTests {
 
         let result = DICOMDeidentificationProfile.basicApplicationLevelConfidentiality().anonymize(dataset)
 
-        #expect(result[.patientName]?.stringValue == "Anonymous")
-        #expect(result[DICOMTag(group: 0x0010, element: 0x0020)]?.stringValue == "Anonymous")
+        // Patient's Name, Patient ID, Accession Number, and Patient's Birth
+        // Date are all Table E.1-1 `Z`-coded: present and zero-length, not
+        // removed and not replaced with dummy text.
+        #expect(result[.patientName] == DICOMElement(tag: .patientName, vr: .PN, value: Data()))
+        #expect(result[DICOMTag(group: 0x0010, element: 0x0020)] == DICOMElement(tag: DICOMTag(group: 0x0010, element: 0x0020), vr: .LO, value: Data()))
         #expect(result[.studyInstanceUID]?.stringValue == result[.seriesInstanceUID]?.stringValue)
         #expect(result[.studyInstanceUID]?.stringValue?.hasPrefix("2.25.") == true)
-        #expect(result[DICOMTag(group: 0x0008, element: 0x0050)] == nil)
-        #expect(result[DICOMTag(group: 0x0010, element: 0x0030)] == nil)
+        #expect(result[DICOMTag(group: 0x0008, element: 0x0050)] == DICOMElement(tag: DICOMTag(group: 0x0008, element: 0x0050), vr: .SH, value: Data()))
+        #expect(result[DICOMTag(group: 0x0010, element: 0x0030)] == DICOMElement(tag: DICOMTag(group: 0x0010, element: 0x0030), vr: .DA, value: Data()))
     }
 
     @Test func validatesCommonCTImageIODRequirements() {

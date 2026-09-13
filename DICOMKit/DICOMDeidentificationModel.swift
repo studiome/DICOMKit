@@ -214,14 +214,19 @@ public struct DICOMConfidentialityProfile: Sendable {
     /// tags too.
     ///
     /// PS3.15's six action codes are compressed onto `DICOMAnonymizer.Action`'s
-    /// four cases as follows:
+    /// five cases as follows:
     /// - `D` (replace with dummy) maps to `.replace(replacement)`.
-    /// - `Z` (replace with zero-length) maps to `.remove`.
-    ///   `DICOMAnonymizer` has no primitive for "present but forced empty"
-    ///   that is distinguishable, in what it reveals to a reader of the
-    ///   output, from "absent" — both disclose nothing about the original
-    ///   value — so this drops the tag entirely instead of leaving a
-    ///   zero-length placeholder behind.
+    /// - `Z` (replace with zero-length) maps to `.emptyValue`: the element
+    ///   stays present, with its original VR and a zero-length value (an
+    ///   empty sequence, for a `Z`-coded sequence attribute), instead of
+    ///   being dropped. This is not about disclosure — a present-but-empty
+    ///   element and an absent one both disclose nothing about the original
+    ///   value — it is about conformance: Table E.1-1 codes `Z` almost
+    ///   exclusively for attributes that are Type 2 in their IOD, meaning
+    ///   the IOD requires the element to be present even when its value is
+    ///   unknown. Mapping `Z` to `.remove` would make the output invalid
+    ///   DICOM for those IODs, which is not an acceptable trade for
+    ///   conservatism.
     /// - `X` (remove) maps to `.remove`.
     /// - `K` (keep) maps to `.keep`.
     /// - `C` (clean) maps to `.remove`, the most conservative action
@@ -248,8 +253,10 @@ public struct DICOMConfidentialityProfile: Sendable {
 
     private static func anonymizerAction(for action: DICOMDeidentificationAction, replacement: String) -> DICOMAnonymizer.Action {
         switch action {
-        case .remove, .replaceWithZeroLength, .clean:
+        case .remove, .clean:
             .remove
+        case .replaceWithZeroLength:
+            .emptyValue
         case .replaceWithDummy:
             .replace(replacement)
         case .keep:

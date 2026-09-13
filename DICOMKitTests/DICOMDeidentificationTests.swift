@@ -75,15 +75,17 @@ struct DICOMConfidentialityProfileTests {
     private let rows = DICOMTag(group: 0x0028, element: 0x0010)
     private let columns = DICOMTag(group: 0x0028, element: 0x0011)
 
-    @Test func basicProfileAloneResolvesRepresentativeAttributesToRemoveOrBlank() {
+    @Test func basicProfileMapsZCodedAttributesToPresentZeroLengthAndXCodedAttributesToRemoval() {
         let profile = DICOMConfidentialityProfile()
 
         #expect(profile.action(for: .patientName) == .replaceWithZeroLength)
         #expect(profile.action(for: accessionNumber) == .replaceWithZeroLength)
         #expect(profile.action(for: acquisitionComments) == .remove)
 
-        // makeAnonymizer collapses both Z and X down to an actual removal,
-        // since DICOMAnonymizer has no "present but forced empty" primitive.
+        // `Z` (replaceWithZeroLength) keeps the element present with an
+        // empty value — Table E.1-1 codes `Z` for attributes that are
+        // typically Type 2 in their IOD, so removing them would make the
+        // output non-conformant. `X` (remove) actually drops the element.
         let dataset = DICOMDataset(elements: [
             DICOMElement(tag: .patientName, vr: .PN, value: Data("Doe^Jane".utf8)),
             DICOMElement(tag: accessionNumber, vr: .SH, value: Data("ACC-1".utf8)),
@@ -91,9 +93,37 @@ struct DICOMConfidentialityProfileTests {
         ])
         let result = profile.makeAnonymizer(replacement: "Anonymous").anonymize(dataset)
 
-        #expect(result[.patientName] == nil)
-        #expect(result[accessionNumber] == nil)
+        #expect(result[.patientName] == DICOMElement(tag: .patientName, vr: .PN, value: Data()))
+        #expect(result[accessionNumber] == DICOMElement(tag: accessionNumber, vr: .SH, value: Data()))
         #expect(result[acquisitionComments] == nil)
+    }
+
+    @Test func patientNameUnderBareBasicProfileIsPresentAndZeroLength() {
+        let profile = DICOMConfidentialityProfile()
+        let dataset = DICOMDataset(elements: [DICOMElement(tag: .patientName, vr: .PN, value: Data("Doe^Jane".utf8))])
+
+        let result = profile.makeAnonymizer(replacement: "Anonymous").anonymize(dataset)
+
+        #expect(result[.patientName] != nil)
+        #expect(result[.patientName]?.stringValue == "")
+        #expect(result[.patientName]?.vr == .PN)
+    }
+
+    @Test func sequenceCodedZBecomesAnEmptySequenceRatherThanBeingRemoved() {
+        // Verifying Observer Identification Code Sequence (0040,A088) is a
+        // real Table E.1-1 row coded bare `Z` whose VR is SQ.
+        let tag = DICOMTag(group: 0x0040, element: 0xA088)
+        let profile = DICOMConfidentialityProfile()
+        let nestedCodeValue = DICOMTag(group: 0x0008, element: 0x0100)
+        let nested = DICOMDataset(elements: [DICOMElement(tag: nestedCodeValue, vr: .SH, value: Data("121008".utf8))])
+        let dataset = DICOMDataset(elements: [DICOMElement(tag: tag, vr: .SQ, value: Data(), sequenceItems: [nested])])
+
+        #expect(profile.action(for: tag) == .replaceWithZeroLength)
+
+        let result = profile.makeAnonymizer(replacement: "Anonymous").anonymize(dataset)
+
+        #expect(result[tag]?.vr == .SQ)
+        #expect(result[tag]?.sequenceItems == [])
     }
 
     @Test func retainUIDsOptionKeepsStudyInstanceUIDWhereBareProfileRemaps() {
@@ -140,7 +170,15 @@ struct DICOMConfidentialityProfileTests {
         #expect(result[attributeModificationDateTime]?.stringValue == "REDACTED")
     }
 
-    @Test func basicApplicationLevelConfidentialityStillReplacesDirectPatientIdentifiersWithDummyText() {
+    @Test func basicApplicationLevelConfidentialityLeavesZCodedPatientIdentifiersPresentAndZeroLength() {
+        // Table E.1-1 codes Patient's Name, Patient ID, Accession Number, and
+        // Patient's Birth Date all `Z` (or `Z/D`, whose first alternative is
+        // `Z`). This preset used to special-case Patient's Name and Patient
+        // ID to a visible "Anonymous" dummy value purely to keep an older
+        // version of this test passing, even though DICOMAnonymizer had no
+        // "present but empty" primitive at the time. Now that it does, all
+        // four attributes get the same, standards-correct treatment: present
+        // and zero-length, not removed and not replaced with dummy text.
         let dataset = DICOMDataset(elements: [
             DICOMElement(tag: .patientName, vr: .PN, value: Data("Doe^Jane".utf8)),
             DICOMElement(tag: patientID, vr: .LO, value: Data("PAT-42".utf8)),
@@ -150,10 +188,10 @@ struct DICOMConfidentialityProfileTests {
 
         let result = DICOMDeidentificationProfile.basicApplicationLevelConfidentiality().anonymize(dataset)
 
-        #expect(result[.patientName]?.stringValue == "Anonymous")
-        #expect(result[patientID]?.stringValue == "Anonymous")
-        #expect(result[accessionNumber] == nil)
-        #expect(result[patientBirthDate] == nil)
+        #expect(result[.patientName] == DICOMElement(tag: .patientName, vr: .PN, value: Data()))
+        #expect(result[patientID] == DICOMElement(tag: patientID, vr: .LO, value: Data()))
+        #expect(result[accessionNumber] == DICOMElement(tag: accessionNumber, vr: .SH, value: Data()))
+        #expect(result[patientBirthDate] == DICOMElement(tag: patientBirthDate, vr: .DA, value: Data()))
     }
 }
 
