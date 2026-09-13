@@ -211,6 +211,48 @@ All notable changes to DICOMKit are documented here.
   relationships (Referenced Content Item Identifier `(0040,DB73)`) are
   exposed raw rather than resolved into `children`, since that would turn a
   tree into a graph the `children` model cannot represent.
+- Added `DICOMConfidentialityProfile`, resolving PS3.15's Basic Application
+  Level Confidentiality Profile from Table E.1-1 in full — 627 exact tags
+  plus the table's 3 repeating-group ("xx") tags, matched by group/element
+  mask — generated from the official DICOM PS3.15 DocBook XML by the new
+  `Tools/generate_deidentification_profile.py`, instead of the roughly
+  twenty tags `DICOMDeidentificationProfile` previously hand-listed.
+  `action(for:)` resolves the Basic Profile action for a tag and applies any
+  of the ten Retain/Clean options selected via `DICOMDeidentificationOption`;
+  when two selected options both override the same attribute, the one whose
+  column comes later in Table E.1-1 wins, which is also always the more
+  conservative of the two. `makeAnonymizer(replacement:)` builds a
+  `DICOMAnonymizer` from a profile, mapping PS3.15's six action codes onto
+  `DICOMAnonymizer.Action`; `Clean` — which would require understanding free
+  text, structured content, or graphics well enough to redact only the
+  identifying parts — is mapped to outright removal, the most conservative
+  option available, since DICOMKit does not implement true cleaning.
+  `DICOMDeidentificationProfile.basicApplicationLevelConfidentiality` is now
+  built on this same generated table rather than being a separate
+  hand-maintained list; it keeps replacing Patient's Name and Patient ID
+  with a visible dummy value rather than PS3.15's literal zero-length `Z`,
+  preserving this preset's existing behavior for callers who already depend
+  on it. Added `DICOMConfidentialityProfile.deidentify(_:replacement:)`,
+  which de-identifies a whole `DICOMFile` (including the 3 repeating-group
+  tags, which `makeAnonymizer` cannot represent in its plain tag-keyed
+  dictionary) and refuses — throwing the new
+  `DICOMError.burnedInAnnotationPresent` — when Burned In Annotation
+  `(0028,0301)` declares `YES`, since a dataset whose pixels carry rendered
+  identifying text is not de-identified no matter what happens to its
+  attributes, and DICOMKit never modifies pixel data. When `(0028,0301)` is
+  altogether absent rather than explicitly `NO`, `deidentify` proceeds but
+  returns a `DeidentificationResult` whose `warnings` says so, rather than a
+  bare `DICOMDataset` that would let a caller miss the weaker claim.
+  `deidentify` also now stamps Patient Identity Removed `(0012,0062)` to
+  `YES`, a human-readable De-identification Method `(0012,0063)`, and a
+  De-identification Method Code Sequence `(0012,0064)` populated from PS3.16
+  CID 7050 (`113100` Basic Application Confidentiality Profile, plus one
+  code per selected option that has one — CID 7050 has no code for PS3.15's
+  Retain Institution Identity Option, a gap in the standard itself, not here)
+  — a profile claim is only meaningful if the output records what was
+  applied (PS3.15 Section E.1.1). Added `DICOMFile.burnedInAnnotation` and
+  `DICOMBurnedInAnnotationStatus`. `DICOMAnonymizer` itself, and the
+  transformation primitives it offers callers, are unchanged.
 
 ## v0.4 — Complete
 

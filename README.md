@@ -42,10 +42,21 @@ See the [changelog](CHANGELOG.md) for the current implementation status.
   record type and referenced file/SOP identifiers, and rebuilds the
   patient/study/series/instance tree from the standard offset links
 - Provides a caller-configured recursive `DICOMAnonymizer` for removing or
-  replacing attributes, including private tags; it is not a PS3.15 profile
-  conformance claim. `DICOMDeidentificationProfile` also provides a
-  conservative Basic Application Level Confidentiality preset with stable UID
-  remapping for common direct identifiers
+  replacing attributes, including private tags, plus `DICOMConfidentialityProfile`,
+  which resolves PS3.15's full Basic Application Level Confidentiality Profile
+  attribute table (Table E.1-1, generated from the standard: 627 exact tags
+  plus 3 repeating-group tags) together with any of its ten Retain/Clean
+  options; `deidentify(_:replacement:)` also refuses to proceed when Burned In
+  Annotation `(0028,0301)` declares identifying pixel content, and records
+  what was applied in Patient Identity Removed, De-identification Method, and
+  De-identification Method Code Sequence. This is real attribute-table
+  coverage, not an end-to-end conformance claim: DICOMKit does not clean free
+  text, structured content, or graphics (a selected Clean option is applied
+  conservatively, as a removal) and never modifies pixel data, so an object
+  with burned-in identifiers, or identifying free text in an attribute this
+  profile keeps, is not de-identified just because this ran.
+  `DICOMDeidentificationProfile.basicApplicationLevelConfidentiality` remains
+  as a convenience preset built on the same generated table
 - Validates caller-supplied DICOM module Type 1 and Type 2 requirements,
   including missing attributes, empty Type 1 values, and unexpected VRs; this
   is a reusable building block rather than complete IOD conformance validation;
@@ -365,9 +376,8 @@ pull request:
 
 ## Roadmap
 
-1. PS3.15 profile options — the Basic Application Level Confidentiality
-   Profile's options (Retain Longitudinal Temporal Information, Retain UIDs,
-   Clean Pixel Data, …), not just a conservative preset
+No outstanding high-impact (B-rated) gaps. See [Docs/roadmap.md](Docs/roadmap.md)
+for lower-priority (C-rated) items and how they are prioritized.
 
 ## License
 
