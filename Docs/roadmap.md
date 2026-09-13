@@ -50,7 +50,7 @@ Impact ratings below mean:
 
 | Gap | Impact | Note |
 | --- | :---: | --- |
-| DIMSE N-services | **B** | N-CREATE/N-SET/N-GET/N-ACTION/N-DELETE/N-EVENT-REPORT are all absent, so MPPS, Storage Commitment, Print and UPS are impossible. This is the standing README roadmap item. |
+| ~~DIMSE N-services~~ | **B** | ~~N-CREATE/N-SET/N-GET/N-ACTION/N-DELETE/N-EVENT-REPORT are all absent, so MPPS, Storage Commitment, Print and UPS are impossible. This is the standing README roadmap item.~~ **Done** — see Phase 4, items 7–8. MPPS and Storage Commitment are implemented; Print and UPS are not, since neither has a consumer yet and both would need their own SOP-Class-specific attribute modeling on top of the N-services themselves. |
 | WADO-URI | **B** | Legacy but still widely deployed. |
 | Extended negotiation `0x56` / SOP Class Common Extended `0x57` | **C** | Announcing relational-query support to a Q/R SCP. |
 | Asynchronous operations | **C** | The window is negotiated but `DICOMAssociation` is still strictly serial. |
@@ -139,19 +139,21 @@ functional hole for a viewer.
    - Add `TransferSyntax.hasPixelDataDecoder` (true for every syntax DICOMKit attempts to decode, false only for `.unknown`) so a caller can distinguish "DICOMKit doesn't know this compression" from "this particular stream failed to decode". Route HTJ2K Pixel Data through the same ImageIO `CGImageSource` path as JPEG 2000 Lossless/JPEG 2000, since PS3.5 Annex A.4.4 describes HTJ2K as the same codestream structure with a different (FBCOT) block coder — an undecodable stream still surfaces as `nil` frames rather than a thrown error, the same contract the other codecs already follow. — `9d2fa6c` "Route HTJ2K through the JPEG 2000 decoder"
    - **Not done, deliberately: verification against a real HTJ2K reference stream.** Unlike JPEG-LS's CharLS-generated fixtures, DICOMKit has no HTJ2K encoder and no way to author a genuine HT-coded codestream, so there is no fixture to decode and no way to *prove* ImageIO decodes real HTJ2K on any given platform. `HTJ2KTests.reportsImageIOJPEG2000CapabilityAsHTJ2KProxy` records what `CGImageSourceCopyTypeIdentifiers()` reports for `public.jpeg-2000` as a diagnostic (not an assertion, since platform capability shouldn't turn the suite red) — on the machine this shipped from, ImageIO advertises JPEG 2000 container support, but that says nothing about whether it accepts HT-coded blocks specifically. A future reader with a real HTJ2K sample should add it as a fixture and turn that diagnostic into a real decode assertion.
 
-### Phase 4 — DIMSE N-services (impact B)
+### Phase 4 — DIMSE N-services (impact B) — **Done**
 
 The standing README roadmap item. Design notes are already written up in the
 previous session's analysis; the key structural change comes first.
 
-7. **N-service foundation** (~4 commits)
-   - Generalize `hasDataset` from a per-case constant to the decoded Command Data Set Type, because unlike the C-services, an N-service's data set is conditional.
-   - Add the six request/response pairs with their distinct command elements: Requested vs Affected SOP Class/Instance UID, Event Type ID, Action Type ID, Attribute Identifier List.
-   - Extend `DICOMDIMSEStatus` with the N-service codes (`0x0110`, `0x0112`, `0x0119`, `0x0121`, `0x0213`).
+7. **N-service foundation** — **Done** (4 commits: `ab4e162`, `e010694`, `8307369`, `6bf3784`)
+   - Generalize `hasDataset` from a per-case constant to the decoded Command Data Set Type, because unlike the C-services, an N-service's data set is conditional. — `ab4e162` "Carry the command data set type on N-services"
+   - Add the six request/response pairs with their distinct command elements: Requested vs Affected SOP Class/Instance UID, Event Type ID, Action Type ID, Attribute Identifier List. — `e010694` "Add N-GET and N-SET commands", `8307369` "Add N-ACTION, N-CREATE and N-DELETE commands"
+   - Extend `DICOMDIMSEStatus` with the N-service codes (`0x0105`–`0x0213`). — `6bf3784` "Add N-service status codes"
 
-8. **Storage Commitment and MPPS** (~4 commits)
-   - Storage Commitment Push Model: N-ACTION request, Transaction UID handling, and N-EVENT-REPORT receipt both on the same association (via the already-implemented role selection) and on a separate inbound association (via the already-implemented listener).
-   - MPPS: N-CREATE `IN PROGRESS` and N-SET `COMPLETED`/`DISCONTINUED`, with the required attribute set.
+8. **Storage Commitment and MPPS** — **Done** (4 commits: `76aadf5`, `ff1847b`, `355ba31`, and this section's own "Add modality performed procedure step support")
+   - Wire the six N-services into `DICOMAssociation` as SCU operations (`nCreate`/`nSet`/`nGet`/`nAction`/`nDelete`/`nEventReport`, each with a SOP-Class convenience overload) returning a new `DICOMNServiceResult`. — `76aadf5` "Add N-service SCU operations"
+   - Add the matching SCP responders (`respondToNCreate`/`NSet`/`NGet`/`NAction`/`NDelete`/`NEventReport`); `receiveRequest()` needed no change, since its `hasDataset`-driven reassembly already covered the N-services generically. — `ff1847b` "Add N-service SCP responses"
+   - Storage Commitment Push Model: `DICOMStorageCommitmentRequest`/`Result` model the N-ACTION Action Information and N-EVENT-REPORT Event Information, and `requestStorageCommitment(messageID:contextID:_:)` sends N-ACTION with Action Type ID 1 against the well-known SOP Instance. The result arrives later via N-EVENT-REPORT — on the same association (via the already-implemented role selection) or a fresh inbound one (via the already-implemented `NetworkDICOMULListener`) — not in the N-ACTION response, which the doc comment calls out explicitly. — `355ba31` "Add storage commitment support"
+   - MPPS: `createPerformedProcedureStep` sends N-CREATE forcing Performed Procedure Step Status `(0040,0252)` to `IN PROGRESS`; `updatePerformedProcedureStep` sends N-SET to `COMPLETED`/`DISCONTINUED` and throws `DICOMAssociationError.invalidProcedureStepTransition` for `.inProgress`. Neither method assembles the rest of the required MPPS attribute set — that stays the caller's responsibility, checked with `DICOMModuleValidator` — since the set is long and modality-specific. — "Add modality performed procedure step support" (a commit can't record its own final hash; see `git log` for it)
 
 ### Phase 5 — Reporting and conformance (impact B)
 

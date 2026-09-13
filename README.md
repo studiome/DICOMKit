@@ -149,6 +149,13 @@ See the [changelog](CHANGELOG.md) for the current implementation status.
   - SCP services: association acceptance and presentation-context negotiation
     driven by a `DICOMAssociationPolicy`, `receiveRequest()`, and C-ECHO,
     C-STORE, C-FIND, C-MOVE, and C-GET responses
+  - DIMSE-N (Normalized) services on both sides: N-CREATE, N-SET, N-GET,
+    N-ACTION, N-DELETE, and N-EVENT-REPORT, returning/accepting a
+    `DICOMNServiceResult`; Storage Commitment Push Model
+    (`requestStorageCommitment(messageID:contextID:_:)`,
+    `DICOMStorageCommitmentRequest`/`Result`) and Modality Performed
+    Procedure Step (`createPerformedProcedureStep`,
+    `updatePerformedProcedureStep`) are built on top
   - `DICOMSOPClass` well-known SOP Class UIDs, and file-based C-STORE through
     `DICOMFile.encodedDatasetData(transferSyntax:)`
   - This is a protocol foundation, not a PACS conformance claim
@@ -347,7 +354,11 @@ pull request:
 
 ## Roadmap
 
-1. DIMSE N-services (Modality Performed Procedure Step, Storage Commitment)
+1. Structured Report content tree — SR objects are stored but not modeled,
+   so they cannot be shown at all
+2. PS3.15 profile options — the Basic Application Level Confidentiality
+   Profile's options (Retain Longitudinal Temporal Information, Retain UIDs,
+   Clean Pixel Data, …), not just a conservative preset
 
 ## License
 

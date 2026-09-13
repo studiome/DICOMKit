@@ -29,6 +29,10 @@ public enum DICOMAssociationError: Error, Sendable, Equatable {
     /// A dataset passed to ``DICOMAssociation/cStore(messageID:file:)`` is missing
     /// SOP Class UID `(0008,0016)` or SOP Instance UID `(0008,0018)`.
     case missingSOPInstanceIdentification
+    /// `updatePerformedProcedureStep(messageID:contextID:sopInstanceUID:status:attributes:transferSyntax:)`
+    /// was asked to move a Modality Performed Procedure Step to `.inProgress`,
+    /// which N-SET may never do — a step only enters `IN PROGRESS` once, via N-CREATE.
+    case invalidProcedureStepTransition
 }
 
 /// The final status and identifier datasets returned by a C-FIND operation.

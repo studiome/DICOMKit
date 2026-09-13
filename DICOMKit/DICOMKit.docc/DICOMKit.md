@@ -190,6 +190,27 @@ Class — ``DICOMSOPClass`` lists the common UIDs — and can use the SOP Class
 convenience overloads instead of passing context identifiers. This is a
 protocol foundation, not a clinical interoperability or PACS conformance claim.
 
+``DICOMAssociation`` also performs the DIMSE-N (Normalized) services —
+N-CREATE, N-SET, N-GET, N-ACTION, N-DELETE, and N-EVENT-REPORT — as both SCU
+(returning a classified ``DICOMNServiceResult``) and SCP (the matching
+`respondToN…` responders). Unlike the DIMSE-C services, whether an N-service
+message carries a data set is conditional rather than fixed by the command
+kind, which ``receiveRequest()`` already handles generically through
+``DICOMDIMSECommand/hasDataset``. Two Normalized workflows are built on top:
+Storage Commitment Push Model, through
+``DICOMAssociation/requestStorageCommitment(messageID:contextID:_:)`` and
+``DICOMStorageCommitmentRequest``/``DICOMStorageCommitmentResult`` — note that
+the commitment result is *not* the N-ACTION response, but arrives later as an
+N-EVENT-REPORT, either on the same association (via SCP/SCU role selection)
+or a fresh inbound one (via ``NetworkDICOMULListener``); and Modality
+Performed Procedure Step, through
+``DICOMAssociation/createPerformedProcedureStep(messageID:contextID:sopInstanceUID:attributes:transferSyntax:)``
+and
+``DICOMAssociation/updatePerformedProcedureStep(messageID:contextID:sopInstanceUID:status:attributes:transferSyntax:)``,
+which set Performed Procedure Step Status `(0040,0252)` but leave the rest of
+the MPPS attribute set — long and modality-specific — to the caller, checked
+with ``DICOMModuleValidator``.
+
 ## Topics
 
 ### File reading
@@ -247,7 +268,14 @@ protocol foundation, not a clinical interoperability or PACS conformance claim.
 - ``DICOMCMoveResult``
 - ``DICOMCGetResult``
 - ``DICOMCStoreRequest``
+- ``DICOMNServiceResult``
 - ``DICOMSOPClass``
+- ``DICOMSOPReference``
+- ``DICOMStorageCommitmentRequest``
+- ``DICOMStorageCommitmentResult``
+- ``DICOMStorageCommitmentFailure``
+- ``DICOMStorageCommitmentError``
+- ``DICOMPerformedProcedureStepStatus``
 - ``DICOMULPDU``
 - ``DICOMPDataValue``
 - ``DICOMULTransport``

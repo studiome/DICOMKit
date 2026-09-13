@@ -155,6 +155,38 @@ All notable changes to DICOMKit are documented here.
   into a referenced file's rendered pixel data, and
   `DICOMPixelData.presentationLUTShape`, which composes with `MONOCHROME1`
   polarity as an exclusive-or rather than replacing it.
+- Added the DIMSE-N (Normalized) services to `DICOMAssociation`: N-CREATE,
+  N-SET, N-GET, N-ACTION, N-DELETE, and N-EVENT-REPORT, as both SCU
+  (`nCreate`/`nSet`/`nGet`/`nAction`/`nDelete`/`nEventReport`, each with a
+  SOP-Class convenience overload, returning a new `DICOMNServiceResult`) and
+  SCP (`respondToNCreate`/`NSet`/`NGet`/`NAction`/`NDelete`/`NEventReport`).
+  `receiveRequest()` needed no change, since its `DICOMDIMSECommand.hasDataset`-
+  driven reassembly already generalizes to the N-services, whose data set is
+  conditional rather than fixed by command kind. Built on top:
+  - Storage Commitment Push Model (`1.2.840.10008.1.20.1`):
+    `DICOMStorageCommitmentRequest.actionInformation(transferSyntax:)` builds
+    the N-ACTION Action Information (Transaction UID and Referenced SOP
+    Sequence), `DICOMStorageCommitmentResult.init(eventInformation:transferSyntax:)`
+    parses the eventual N-EVENT-REPORT's Event Information (committed and
+    failed SOP references, with failure reasons), and
+    `DICOMAssociation.requestStorageCommitment(messageID:contextID:_:)` sends
+    the N-ACTION against the well-known SOP Instance
+    (`DICOMSOPClass.storageCommitmentPushModelInstance`, also added). Its doc
+    comment calls out explicitly that the commitment result is *not* the
+    N-ACTION response — it arrives later as an N-EVENT-REPORT, either on the
+    same association via SCP/SCU role selection or a fresh inbound one via
+    `NetworkDICOMULListener`, both already supported.
+  - Modality Performed Procedure Step (`1.2.840.10008.3.1.2.3.3`):
+    `createPerformedProcedureStep` sends N-CREATE, forcing Performed
+    Procedure Step Status `(0040,0252)` to `IN PROGRESS` regardless of what
+    the caller's dataset carried; `updatePerformedProcedureStep` sends
+    N-SET to move the status to `.completed` or `.discontinued`, throwing
+    the new `DICOMAssociationError.invalidProcedureStepTransition` for
+    `.inProgress`, since a step only ever enters `IN PROGRESS` through
+    N-CREATE. Neither method assembles the rest of the required MPPS
+    attribute set — that stays the caller's responsibility, checked with
+    `DICOMModuleValidator` — since the set is long and modality-specific and
+    guessing at it would produce data that looks conformant without being so.
 
 ## v0.4 — Complete
 
