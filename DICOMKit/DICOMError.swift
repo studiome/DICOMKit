@@ -30,4 +30,7 @@ public enum DICOMError: Error, Sendable, Equatable {
     /// A dataset's SOP Class UID `(0008,0016)` is present but is not
     /// Grayscale Softcopy Presentation State Storage.
     case invalidPresentationState
+    /// A ``DICOMPrivateTagEntry`` declares an even group; private attributes
+    /// live only in odd groups.
+    case invalidPrivateDictionary
 }

@@ -11,9 +11,17 @@ public struct DICOMReadOptions: Sendable {
     /// tagged `UN` even though the attribute has a well-defined VR.
     public var reinterpretsUnknownVR: Bool
 
+    /// Vendor-specific VRs for private attributes, supplied by the caller.
+    ///
+    /// `nil` (the default) means private elements decode using only the
+    /// standard `UN`/`SQ` Implicit VR convention: DICOMKit ships no private
+    /// dictionary of its own. See ``DICOMPrivateDictionary`` for why.
+    public var privateDictionary: DICOMPrivateDictionary?
+
     /// Creates a set of read options.
-    public init(reinterpretsUnknownVR: Bool = true) {
+    public init(reinterpretsUnknownVR: Bool = true, privateDictionary: DICOMPrivateDictionary? = nil) {
         self.reinterpretsUnknownVR = reinterpretsUnknownVR
+        self.privateDictionary = privateDictionary
     }
 
     /// The default options: `UN` re-interpretation enabled, no private
