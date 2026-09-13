@@ -408,6 +408,22 @@ xcodebuild test \
   -destination 'platform=iOS Simulator,name=iPhone 17 Pro'
 ```
 
+### Performance benchmarks
+
+`DICOMKitBenchmark`, an executable target depending on `DICOMKit` alone,
+measures dataset parse, series open, metadata-only open, per-frame decode,
+and render. It is a developer tool, not a `swift test` gate — see
+[Docs/benchmarks.md](Docs/benchmarks.md) for why timing assertions don't
+belong in the test suite, and for the recorded baseline. Always build
+release; a debug build's numbers are dominated by unoptimized bounds
+checking and are not representative:
+
+```bash
+swift build -c release
+swift run -c release DICOMKitBenchmark            # default iteration count
+swift run -c release DICOMKitBenchmark 50         # override: 50 iterations
+```
+
 ### Continuous integration
 
 GitHub Actions runs the same commands on every push to `main` and on every
