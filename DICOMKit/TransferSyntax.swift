@@ -77,7 +77,11 @@ public enum TransferSyntax: Sendable, Equatable {
     }
 
     /// Whether ``DICOMWriter`` can serialize datasets using this syntax.
-    var isWritable: Bool {
+    ///
+    /// `package` rather than `internal`: `DICOMWriter.write(...)`, which
+    /// checks this before assembling a Part 10 file, lives in
+    /// `DICOMKitAuthoring` and needs it from across the module boundary.
+    package var isWritable: Bool {
         switch self {
         case .implicitVRLittleEndian, .explicitVRLittleEndian, .explicitVRBigEndian, .deflatedExplicitVRLittleEndian, .rleLossless,
              .jpegBaseline, .jpegLossless, .jpegLosslessSV1, .jpegLSLossless,
@@ -125,7 +129,11 @@ public enum TransferSyntax: Sendable, Equatable {
         }
     }
 
-    init(uid: String) {
+    /// `package` rather than `internal`: `DICOMAssociation` (in
+    /// `DICOMKitNetworking`) resolves a negotiated transfer syntax UID back
+    /// into a `TransferSyntax` with this initializer across the module
+    /// boundary.
+    package init(uid: String) {
         switch uid {
         case Self.implicitVRLittleEndian.uid: self = .implicitVRLittleEndian
         case Self.explicitVRLittleEndian.uid: self = .explicitVRLittleEndian

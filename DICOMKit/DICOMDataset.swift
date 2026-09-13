@@ -102,3 +102,30 @@ public struct DICOMDataset: Sendable, Sequence, Equatable {
         storage.values.sorted { $0.tag < $1.tag }.makeIterator()
     }
 }
+
+/// Whether Burned In Annotation `(0028,0301)` declares that pixel data
+/// carries rendered identifying text (PS3.3 C.7.6.16.1.1).
+///
+/// Lives in core (rather than alongside ``DICOMConfidentialityProfile`` in
+/// `DICOMKitAuthoring`, which resolves it) because ``DICOMFile/burnedInAnnotation``
+/// exposes it as a plain reading concern independent of de-identification.
+public enum DICOMBurnedInAnnotationStatus: Sendable, Equatable {
+    /// `(0028,0301)` is `NO`: pixel data does not carry burned-in text.
+    case declaredAbsent
+    /// `(0028,0301)` is `YES`: pixel data carries burned-in text.
+    case declaredPresent
+    /// `(0028,0301)` is absent, so nothing was declared either way.
+    case undeclared
+}
+
+extension DICOMDataset {
+    /// The Burned In Annotation status `(0028,0301)` declares. Shared by
+    /// ``DICOMFile/burnedInAnnotation``.
+    var burnedInAnnotation: DICOMBurnedInAnnotationStatus {
+        switch self[DICOMTag(group: 0x0028, element: 0x0301)]?.stringValue?.uppercased() {
+        case "YES": .declaredPresent
+        case "NO": .declaredAbsent
+        default: .undeclared
+        }
+    }
+}

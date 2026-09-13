@@ -43,7 +43,10 @@ extension DICOMCodeSequenceItem {
     /// `(0008,0102)`, and Code Meaning `(0008,0104)`. The inverse of
     /// ``DICOMDataset/codeSequenceItem(inheriting:)``; only non-`nil`
     /// fields are written.
-    func makeDataset() -> DICOMDataset {
+    /// `package` rather than `internal`: `DICOMConfidentialityProfile` (in
+    /// `DICOMKitAuthoring`) calls this to build De-identification Method
+    /// Code Sequence `(0012,0064)` items across the module boundary.
+    package func makeDataset() -> DICOMDataset {
         var elements: [DICOMElement] = []
         if let codeValue {
             elements.append(DICOMElement(tag: DICOMTag(group: 0x0008, element: 0x0100), vr: .SH, value: Data(codeValue.utf8)))

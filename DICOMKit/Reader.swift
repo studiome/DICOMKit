@@ -417,7 +417,10 @@ struct Reader {
     }
 }
 
-enum ByteOrder: Equatable {
+/// `package` rather than `internal`: it appears in the parameter list of
+/// `DICOMWriter.append(...)`, which is `package` so the Part 10 assembly
+/// extension in `DICOMKitAuthoring` can call it across the module boundary.
+package enum ByteOrder: Equatable {
     case littleEndian
     case bigEndian
 

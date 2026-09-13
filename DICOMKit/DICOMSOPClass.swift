@@ -110,3 +110,18 @@ public enum DICOMSOPClass {
         comprehensiveSRStorage
     ]
 }
+
+/// A single referenced SOP Instance: SOP Class UID `(0008,1150)` and SOP
+/// Instance UID `(0008,1155)`. Storage Commitment (and several other
+/// Normalized services) name instances with this pair rather than a bare
+/// UID; ``DICOMContentItem`` also uses it for IMAGE, WAVEFORM, and COMPOSITE
+/// content items, which is why this lives in core rather than in
+/// `DICOMKitNetworking` alongside Storage Commitment.
+public struct DICOMSOPReference: Sendable, Equatable {
+    public let sopClassUID: String
+    public let sopInstanceUID: String
+    public init(sopClassUID: String, sopInstanceUID: String) {
+        self.sopClassUID = sopClassUID
+        self.sopInstanceUID = sopInstanceUID
+    }
+}

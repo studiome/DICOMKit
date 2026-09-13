@@ -404,25 +404,6 @@ public struct DICOMConfidentialityProfile: Sendable {
     }
 }
 
-/// Whether Burned In Annotation `(0028,0301)` declares that pixel data
-/// carries rendered identifying text (PS3.3 C.7.6.16.1.1).
-public enum DICOMBurnedInAnnotationStatus: Sendable, Equatable {
-    /// `(0028,0301)` is `NO`: pixel data does not carry burned-in text.
-    case declaredAbsent
-    /// `(0028,0301)` is `YES`: pixel data carries burned-in text.
-    case declaredPresent
-    /// `(0028,0301)` is absent, so nothing was declared either way.
-    case undeclared
-}
-
-extension DICOMDataset {
-    /// The Burned In Annotation status `(0028,0301)` declares. Shared by
-    /// ``DICOMFile/burnedInAnnotation``.
-    var burnedInAnnotation: DICOMBurnedInAnnotationStatus {
-        switch self[DICOMTag(group: 0x0028, element: 0x0301)]?.stringValue?.uppercased() {
-        case "YES": .declaredPresent
-        case "NO": .declaredAbsent
-        default: .undeclared
-        }
-    }
-}
+// DICOMBurnedInAnnotationStatus and DICOMDataset.burnedInAnnotation live in
+// DICOMDataset.swift: DICOMFile.burnedInAnnotation (core) depends on both,
+// and core cannot depend on this file once it moves to DICOMKitAuthoring.

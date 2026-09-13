@@ -1,16 +1,8 @@
 import Foundation
 
-/// A single referenced SOP Instance: SOP Class UID `(0008,1150)` and SOP
-/// Instance UID `(0008,1155)`. Storage Commitment (and several other
-/// Normalized services) name instances with this pair rather than a bare UID.
-public struct DICOMSOPReference: Sendable, Equatable {
-    public let sopClassUID: String
-    public let sopInstanceUID: String
-    public init(sopClassUID: String, sopInstanceUID: String) {
-        self.sopClassUID = sopClassUID
-        self.sopInstanceUID = sopInstanceUID
-    }
-}
+// DICOMSOPReference lives in DICOMSOPClass.swift (core): DICOMStructuredReport
+// (core) references it for IMAGE/WAVEFORM/COMPOSITE content items, and core
+// cannot depend on this file once it moves to DICOMKitNetworking.
 
 /// Errors raised while building or parsing Storage Commitment data sets.
 public enum DICOMStorageCommitmentError: Error, Sendable, Equatable {

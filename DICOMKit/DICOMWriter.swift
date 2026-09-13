@@ -90,7 +90,13 @@ public enum DICOMWriter {
         return transferSyntax == .deflatedExplicitVRLittleEndian ? try DeflateCodec.deflateRaw(encodedDataset) : encodedDataset
     }
 
-    private static func append(_ element: DICOMElement, to output: inout Data, explicitVR: Bool, sequenceLengthEncoding: SequenceLengthEncoding, byteOrder: ByteOrder = .littleEndian) throws {
+    /// `package` rather than `private`: `DICOMWriter.write(...)`, which
+    /// assembles File Meta Information elements outside of a dataset, lives
+    /// in `DICOMKitAuthoring` and calls this directly across the module
+    /// boundary. Everything else in this file that only `append` itself
+    /// calls stays `private`, since it remains co-located with `append`
+    /// here.
+    package static func append(_ element: DICOMElement, to output: inout Data, explicitVR: Bool, sequenceLengthEncoding: SequenceLengthEncoding, byteOrder: ByteOrder = .littleEndian) throws {
         if element.tag == .pixelData, let fragments = element.encapsulatedFragments {
             guard explicitVR, let basicOffsetTable = element.basicOffsetTable else { throw DICOMError.invalidEncapsulatedPixelData }
             appendUInt16(element.tag.group, to: &output, byteOrder: byteOrder)
