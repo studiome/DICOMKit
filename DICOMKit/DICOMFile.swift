@@ -15,13 +15,6 @@ private struct DecodedPixelDataFrame {
     let planarConfiguration: Int
 }
 
-private struct FrameRenderingAttributes {
-    var rescaleSlope: Double?
-    var rescaleIntercept: Double?
-    var windowCenter: Double?
-    var windowWidth: Double?
-}
-
 /// Rescale and VOI window attributes resolved for one image frame.
 public struct DICOMFrameAttributes: Sendable, Equatable {
     public let rescaleSlope: Double?
@@ -135,9 +128,32 @@ public struct DICOMFile: Sendable {
     /// a positive Number of Frames is available.
     public var frameAttributes: [DICOMFrameAttributes] {
         guard let frameCount = Int(dataset[.numberOfFrames]?.stringValue ?? ""), frameCount > 0 else { return [] }
-        return renderingAttributes(frameCount: frameCount).map {
+        return resolvedFunctionalGroups(frameCount: frameCount).map {
             DICOMFrameAttributes(rescaleSlope: $0.rescaleSlope, rescaleIntercept: $0.rescaleIntercept, windowCenter: $0.windowCenter, windowWidth: $0.windowWidth)
         }
+    }
+
+    /// Every macro DICOMKit resolves (PS3.3 C.7.6.16), one entry per frame,
+    /// resolved shared-then-per-frame exactly as ``frameAttributes`` and
+    /// ``pixelDataFrames`` do.
+    ///
+    /// The frame count comes from Number of Frames `(0028,0008)`, defaulting
+    /// to `1` — the same rule ``pixelDataFrames`` uses — so a classic
+    /// single-frame dataset (no Number of Frames at all) still yields one
+    /// entry. Returns an empty array only when Number of Frames is present
+    /// but not a positive integer.
+    public var frameFunctionalGroups: [DICOMFrameFunctionalGroups] {
+        guard let frameCount = defaultedFrameCount else { return [] }
+        return resolvedFunctionalGroups(frameCount: frameCount)
+    }
+
+    /// Number of Frames `(0028,0008)`, defaulting to `1` when absent —
+    /// shared by ``pixelDataFrames`` and ``frameFunctionalGroups`` so they
+    /// agree on how many frames a dataset has. `nil` when the attribute is
+    /// present but not a positive integer.
+    private var defaultedFrameCount: Int? {
+        guard let frameCount = Int(dataset[.numberOfFrames]?.stringValue ?? "1"), frameCount > 0 else { return nil }
+        return frameCount
     }
 
     /// Cine module attributes (PS3.3 C.7.6.5), when the dataset carries any.
@@ -273,7 +289,7 @@ public struct DICOMFile: Sendable {
               let photometricInterpretation = dataset[.photometricInterpretation]?.stringValue else {
             return nil
         }
-        guard let frameCount = Int(dataset[.numberOfFrames]?.stringValue ?? "1"), frameCount > 0 else { return nil }
+        guard let frameCount = defaultedFrameCount else { return nil }
         let pixelCount = Int(rows) * Int(columns)
         let sourceSamplesPerPixel = Int(samplesPerPixel)
         let sourceBitsAllocated = Int(bitsAllocated)
@@ -284,7 +300,7 @@ public struct DICOMFile: Sendable {
         let voiLUTs = dataset.makeVOILUTs()
         let modalityLUT = makeModalityLUT()
         let shutter = displayShutter
-        let frameAttributes = renderingAttributes(frameCount: frameCount)
+        let frameGroups = resolvedFunctionalGroups(frameCount: frameCount)
         guard sourcePhotometric != .paletteColor || paletteColorLUT != nil else { return nil }
         let frames: [DecodedPixelDataFrame]
         switch transferSyntax {
@@ -520,7 +536,7 @@ public struct DICOMFile: Sendable {
         guard frames.count == frameCount else { return nil }
 
         return frames.enumerated().map { index, frame in
-            let attributes = frameAttributes[index]
+            let attributes = frameGroups[index]
             return DICOMPixelData(
             value: frame.value,
             rows: Int(rows),
@@ -623,27 +639,32 @@ public struct DICOMFile: Sendable {
         return min(Double(stored) * slope + intercept, Double(limit) * slope + intercept)...max(Double(stored) * slope + intercept, Double(limit) * slope + intercept)
     }
 
-    private func renderingAttributes(frameCount: Int) -> [FrameRenderingAttributes] {
+    /// The single implementation of shared-then-per-frame functional group
+    /// resolution (PS3.3 C.7.6.16), backing ``frameAttributes``,
+    /// ``frameFunctionalGroups``, and ``pixelDataFrames``.
+    private func resolvedFunctionalGroups(frameCount: Int) -> [DICOMFrameFunctionalGroups] {
         let shared = dataset[.sharedFunctionalGroupsSequence]?.sequenceItems?.first
         let perFrame = dataset[.perFrameFunctionalGroupsSequence]?.sequenceItems ?? []
         return (0..<frameCount).map { index in
-            var resolved = attributes(in: shared)
+            var resolved = functionalGroups(in: shared)
             if perFrame.indices.contains(index) {
-                let perFrameAttributes = attributes(in: perFrame[index])
-                if let value = perFrameAttributes.rescaleSlope { resolved.rescaleSlope = value }
-                if let value = perFrameAttributes.rescaleIntercept { resolved.rescaleIntercept = value }
-                if let value = perFrameAttributes.windowCenter { resolved.windowCenter = value }
-                if let value = perFrameAttributes.windowWidth { resolved.windowWidth = value }
+                let perFrameGroups = functionalGroups(in: perFrame[index])
+                if let value = perFrameGroups.rescaleSlope { resolved.rescaleSlope = value }
+                if let value = perFrameGroups.rescaleIntercept { resolved.rescaleIntercept = value }
+                if let value = perFrameGroups.windowCenter { resolved.windowCenter = value }
+                if let value = perFrameGroups.windowWidth { resolved.windowWidth = value }
             }
             return resolved
         }
     }
 
-    private func attributes(in functionalGroup: DICOMDataset?) -> FrameRenderingAttributes {
-        guard let functionalGroup else { return FrameRenderingAttributes() }
-        let transformation = functionalGroup[.pixelValueTransformationSequence]?.sequenceItems?.first
-        let voi = functionalGroup[.frameVOILUTSequence]?.sequenceItems?.first
-        return FrameRenderingAttributes(
+    /// Parses the macros DICOMKit understands out of one Shared or
+    /// Per-frame Functional Groups Sequence item.
+    private func functionalGroups(in item: DICOMDataset?) -> DICOMFrameFunctionalGroups {
+        guard let item else { return DICOMFrameFunctionalGroups() }
+        let transformation = item[.pixelValueTransformationSequence]?.sequenceItems?.first
+        let voi = item[.frameVOILUTSequence]?.sequenceItems?.first
+        return DICOMFrameFunctionalGroups(
             rescaleSlope: transformation?[.rescaleSlope]?.doubleValue,
             rescaleIntercept: transformation?[.rescaleIntercept]?.doubleValue,
             windowCenter: voi?[.windowCenter]?.doubleValue,
