@@ -54,44 +54,40 @@ public struct DICOMAnonymizer: Sendable {
 
 /// Conservative, profile-inspired de-identification presets.
 ///
-/// These presets map the most common direct identifiers in PS3.15's Basic
-/// Application Level Confidentiality Profile to DICOMKit actions. They do not
-/// constitute a PS3.15 conformance claim: applications must still account for
-/// burned-in annotations, private semantics, dates, and local policy.
+/// These presets apply PS3.15's Basic Application Level Confidentiality
+/// Profile (Table E.1-1, all 631 attribute rows — see
+/// ``DICOMConfidentialityProfile``) to DICOMKit's action model. They still do
+/// not constitute a full PS3.15 conformance claim on their own: DICOMKit does
+/// not clean free text, structured content, graphics, or pixel data (see
+/// ``DICOMDeidentificationAction/clean``), and a caller working from burned-in
+/// image content must handle that separately (see
+/// ``DICOMConfidentialityProfile/deidentify(_:replacement:)``).
 public enum DICOMDeidentificationProfile {
+    /// Patient's Name `(0010,0010)` and Patient ID `(0010,0020)`: Table
+    /// E.1-1 codes both `Z` (Patient's Name) or `Z/D` (Patient ID) — replace
+    /// with a zero-length value. This preset instead replaces them with a
+    /// visible, non-empty `replacement` value, preserved from this preset's
+    /// original (pre-generated-table) behavior so existing callers keep
+    /// getting a legible placeholder here instead of an empty string.
+    private static let directPatientIdentifierOverrides: [DICOMTag] = [
+        .patientName, DICOMTag(group: 0x0010, element: 0x0020)
+    ]
+
     /// Returns a conservative Basic Application Level Confidentiality preset.
     ///
-    /// Direct patient identifiers are replaced or removed. Study, series, SOP,
-    /// and referenced SOP UIDs are deterministically remapped to `2.25` UIDs
-    /// so internal references remain consistent.
+    /// Built from ``DICOMConfidentialityProfile/makeAnonymizer(replacement:)``
+    /// with no options selected, so every one of Table E.1-1's 627 exact
+    /// tags gets its real Basic Profile action — not a hand-picked subset —
+    /// except Patient's Name and Patient ID, which keep this preset's
+    /// original dummy-replacement behavior (see
+    /// ``directPatientIdentifierOverrides``). Study, series, SOP, and
+    /// referenced SOP UIDs are deterministically remapped to `2.25` UIDs so
+    /// internal references remain consistent.
     public static func basicApplicationLevelConfidentiality(replacement: String = "Anonymous") -> DICOMAnonymizer {
-        let remove = DICOMAnonymizer.Action.remove
-        let replace = DICOMAnonymizer.Action.replace(replacement)
-        let remap = DICOMAnonymizer.Action.remapUID
-        return DICOMAnonymizer(actions: [
-            .patientName: replace,
-            DICOMTag(group: 0x0010, element: 0x0020): replace,
-            DICOMTag(group: 0x0010, element: 0x0030): remove,
-            DICOMTag(group: 0x0010, element: 0x0032): remove,
-            DICOMTag(group: 0x0010, element: 0x1000): remove,
-            DICOMTag(group: 0x0010, element: 0x1001): remove,
-            DICOMTag(group: 0x0010, element: 0x1040): remove,
-            DICOMTag(group: 0x0010, element: 0x2154): remove,
-            DICOMTag(group: 0x0008, element: 0x0050): remove,
-            DICOMTag(group: 0x0008, element: 0x0080): remove,
-            DICOMTag(group: 0x0008, element: 0x0090): remove,
-            DICOMTag(group: 0x0008, element: 0x1048): remove,
-            DICOMTag(group: 0x0008, element: 0x1050): remove,
-            DICOMTag(group: 0x0008, element: 0x1060): remove,
-            DICOMTag(group: 0x0008, element: 0x1070): remove,
-            DICOMTag(group: 0x0032, element: 0x1032): remove,
-            DICOMTag(group: 0x0038, element: 0x0010): remove,
-            DICOMTag(group: 0x0040, element: 0x0006): remove,
-            .studyInstanceUID: remap,
-            .seriesInstanceUID: remap,
-            .sopInstanceUID: remap,
-            .referencedSOPInstanceUID: remap,
-            .mediaStorageSOPInstanceUID: remap
-        ])
+        var actions = DICOMConfidentialityProfile().makeAnonymizer(replacement: replacement).actions
+        for tag in directPatientIdentifierOverrides {
+            actions[tag] = .replace(replacement)
+        }
+        return DICOMAnonymizer(actions: actions)
     }
 }

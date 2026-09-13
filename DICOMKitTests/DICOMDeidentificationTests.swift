@@ -61,3 +61,98 @@ struct DICOMDeidentificationTableTests {
         #expect(DICOMDeidentificationTable.maskedEntries.contains { $0.matches(DICOMTag(group: 0x6010, element: 0x0010)) } == false)
     }
 }
+
+/// Tests for the public `DICOMConfidentialityProfile` model built on top of
+/// `DICOMDeidentificationTable`.
+struct DICOMConfidentialityProfileTests {
+    private let accessionNumber = DICOMTag(group: 0x0008, element: 0x0050)
+    private let acquisitionComments = DICOMTag(group: 0x0018, element: 0x4000)
+    private let patientID = DICOMTag(group: 0x0010, element: 0x0020)
+    private let patientSex = DICOMTag(group: 0x0010, element: 0x0040)
+    private let patientBirthDate = DICOMTag(group: 0x0010, element: 0x0030)
+    private let contentDate = DICOMTag(group: 0x0008, element: 0x0023)
+    private let attributeModificationDateTime = DICOMTag(group: 0x0400, element: 0x0562)
+    private let rows = DICOMTag(group: 0x0028, element: 0x0010)
+    private let columns = DICOMTag(group: 0x0028, element: 0x0011)
+
+    @Test func basicProfileAloneResolvesRepresentativeAttributesToRemoveOrBlank() {
+        let profile = DICOMConfidentialityProfile()
+
+        #expect(profile.action(for: .patientName) == .replaceWithZeroLength)
+        #expect(profile.action(for: accessionNumber) == .replaceWithZeroLength)
+        #expect(profile.action(for: acquisitionComments) == .remove)
+
+        // makeAnonymizer collapses both Z and X down to an actual removal,
+        // since DICOMAnonymizer has no "present but forced empty" primitive.
+        let dataset = DICOMDataset(elements: [
+            DICOMElement(tag: .patientName, vr: .PN, value: Data("Doe^Jane".utf8)),
+            DICOMElement(tag: accessionNumber, vr: .SH, value: Data("ACC-1".utf8)),
+            DICOMElement(tag: acquisitionComments, vr: .LT, value: Data("comment".utf8))
+        ])
+        let result = profile.makeAnonymizer(replacement: "Anonymous").anonymize(dataset)
+
+        #expect(result[.patientName] == nil)
+        #expect(result[accessionNumber] == nil)
+        #expect(result[acquisitionComments] == nil)
+    }
+
+    @Test func retainUIDsOptionKeepsStudyInstanceUIDWhereBareProfileRemaps() {
+        let bare = DICOMConfidentialityProfile()
+        let retainUIDs = DICOMConfidentialityProfile(options: [.retainUIDs])
+
+        #expect(bare.action(for: .studyInstanceUID) == .replaceUID)
+        #expect(retainUIDs.action(for: .studyInstanceUID) == .keep)
+    }
+
+    @Test func retainPatientCharacteristicsOptionKeepsPatientSex() {
+        let bare = DICOMConfidentialityProfile()
+        let retainCharacteristics = DICOMConfidentialityProfile(options: [.retainPatientCharacteristics])
+
+        #expect(bare.action(for: patientSex) == .replaceWithZeroLength)
+        #expect(retainCharacteristics.action(for: patientSex) == .keep)
+    }
+
+    @Test func attributeAbsentFromTableReturnsNilSoCallerKeepsIt() {
+        let profile = DICOMConfidentialityProfile()
+
+        #expect(profile.action(for: rows) == nil)
+        #expect(profile.action(for: columns) == nil)
+    }
+
+    @Test func laterOptionColumnWinsWhenTwoSelectedOptionsOverrideTheSameAttribute() {
+        // Content Date has both a Retain Longitudinal Full Dates override
+        // (K) and a Retain Longitudinal Modified Dates override (C).
+        // Selecting both is documented to resolve to the later column,
+        // i.e. Clean (C), not Keep (K).
+        let both = DICOMConfidentialityProfile(options: [.retainLongitudinalFullDates, .retainLongitudinalModifiedDates])
+
+        #expect(both.action(for: contentDate) == .clean)
+    }
+
+    @Test func makeAnonymizerReplacesDummyCodedAttributesWithTheReplacementText() {
+        let profile = DICOMConfidentialityProfile()
+        let dataset = DICOMDataset(elements: [
+            DICOMElement(tag: attributeModificationDateTime, vr: .DT, value: Data("20240101".utf8))
+        ])
+
+        let result = profile.makeAnonymizer(replacement: "REDACTED").anonymize(dataset)
+
+        #expect(result[attributeModificationDateTime]?.stringValue == "REDACTED")
+    }
+
+    @Test func basicApplicationLevelConfidentialityStillReplacesDirectPatientIdentifiersWithDummyText() {
+        let dataset = DICOMDataset(elements: [
+            DICOMElement(tag: .patientName, vr: .PN, value: Data("Doe^Jane".utf8)),
+            DICOMElement(tag: patientID, vr: .LO, value: Data("PAT-42".utf8)),
+            DICOMElement(tag: accessionNumber, vr: .SH, value: Data("ACC-9".utf8)),
+            DICOMElement(tag: patientBirthDate, vr: .DA, value: Data("19700101".utf8))
+        ])
+
+        let result = DICOMDeidentificationProfile.basicApplicationLevelConfidentiality().anonymize(dataset)
+
+        #expect(result[.patientName]?.stringValue == "Anonymous")
+        #expect(result[patientID]?.stringValue == "Anonymous")
+        #expect(result[accessionNumber] == nil)
+        #expect(result[patientBirthDate] == nil)
+    }
+}
