@@ -1003,6 +1003,96 @@ struct DICOMULTests {
     }
 }
 
+/// Tests for the DIMSE-N (Normalized) services: N-EVENT-REPORT, N-GET, N-SET,
+/// N-ACTION, N-CREATE, N-DELETE.
+struct DICOMDIMSENServiceTests {
+    @Test func nEventReportRequestRoundTripsAndHasDatasetFollowsDatasetFollowsFlag() throws {
+        let withDataset = DICOMDIMSECommand.nEventReportRequest(
+            messageID: 1,
+            affectedSOPClassUID: DICOMSOPClass.modalityPerformedProcedureStep,
+            affectedSOPInstanceUID: "1.2.3.4",
+            eventTypeID: 1,
+            datasetFollows: true
+        )
+        #expect(try DICOMDIMSECommand.decodeCommandSet(withDataset.encodedCommandSet()) == withDataset)
+        #expect(withDataset.hasDataset)
+
+        let withoutDataset = DICOMDIMSECommand.nEventReportRequest(
+            messageID: 2,
+            affectedSOPClassUID: DICOMSOPClass.modalityPerformedProcedureStep,
+            affectedSOPInstanceUID: "1.2.3.5",
+            eventTypeID: 2,
+            datasetFollows: false
+        )
+        #expect(try DICOMDIMSECommand.decodeCommandSet(withoutDataset.encodedCommandSet()) == withoutDataset)
+        #expect(!withoutDataset.hasDataset)
+    }
+
+    @Test func nEventReportResponseRoundTripsWithAndWithoutOptionalFields() throws {
+        let full = DICOMDIMSECommand.nEventReportResponse(
+            messageIDBeingRespondedTo: 3,
+            affectedSOPClassUID: DICOMSOPClass.modalityPerformedProcedureStep,
+            affectedSOPInstanceUID: "1.2.3.6",
+            eventTypeID: 1,
+            status: .success,
+            datasetFollows: false
+        )
+        #expect(try DICOMDIMSECommand.decodeCommandSet(full.encodedCommandSet()) == full)
+        #expect(!full.hasDataset)
+
+        let withDataset = DICOMDIMSECommand.nEventReportResponse(
+            messageIDBeingRespondedTo: 4,
+            affectedSOPClassUID: nil,
+            affectedSOPInstanceUID: nil,
+            eventTypeID: nil,
+            status: .success,
+            datasetFollows: true
+        )
+        let encoded = try withDataset.encodedCommandSet()
+        #expect(try DICOMDIMSECommand.decodeCommandSet(encoded) == withDataset)
+        #expect(withDataset.hasDataset)
+        // The nil UIDs and event type must actually be omitted from the wire form,
+        // not merely decode back to nil by coincidence.
+        #expect(commandSetElementValue(tag: 0x00020000, in: encoded) == nil)
+        #expect(commandSetElementValue(tag: 0x10000000, in: encoded) == nil)
+        #expect(commandSetElementValue(tag: 0x10020000, in: encoded) == nil)
+    }
+
+    /// Hand-builds a command set to prove the wire tag key used for Event Type ID
+    /// (0000,1002), independent of the codec that also writes it.
+    @Test func eventTypeIDUsesTag00001002() throws {
+        let request = DICOMDIMSECommand.nEventReportRequest(
+            messageID: 5,
+            affectedSOPClassUID: DICOMSOPClass.modalityPerformedProcedureStep,
+            affectedSOPInstanceUID: "1.2.3.7",
+            eventTypeID: 0x00CD,
+            datasetFollows: false
+        )
+        let encoded = try request.encodedCommandSet()
+        #expect(commandSetUInt16(tag: 0x10020000, in: encoded) == 0x00CD)
+    }
+
+    @Test func nEventReportRequestMissingCommandDataSetTypeThrowsMalformed() throws {
+        func element(group: UInt16, element: UInt16, value: Data) -> Data {
+            var data = Data([UInt8(group & 0xFF), UInt8(group >> 8), UInt8(element & 0xFF), UInt8(element >> 8)])
+            data.append(UInt8(value.count & 0xFF)); data.append(UInt8((value.count >> 8) & 0xFF)); data.append(UInt8((value.count >> 16) & 0xFF)); data.append(UInt8(value.count >> 24))
+            data.append(value)
+            return data
+        }
+        func uint16(_ value: UInt16) -> Data { Data([UInt8(value & 0xFF), UInt8(value >> 8)]) }
+        func ui(_ value: String) -> Data { var bytes = Data(value.utf8); if bytes.count % 2 != 0 { bytes.append(0) }; return bytes }
+        var raw = Data()
+        raw.append(element(group: 0x0000, element: 0x0002, value: ui(DICOMSOPClass.modalityPerformedProcedureStep)))
+        raw.append(element(group: 0x0000, element: 0x0100, value: uint16(0x0100))) // Command Field: N-EVENT-REPORT-RQ
+        raw.append(element(group: 0x0000, element: 0x0110, value: uint16(6))) // Message ID
+        // Command Data Set Type (0000,0800) deliberately omitted.
+        raw.append(element(group: 0x0000, element: 0x1000, value: ui("1.2.3.8")))
+        raw.append(element(group: 0x0000, element: 0x1002, value: uint16(1)))
+
+        #expect(throws: DICOMDIMSEError.malformedCommandSet) { try DICOMDIMSECommand.decodeCommandSet(raw) }
+    }
+}
+
 /// Reads a single element's value from an encoded DIMSE command set by tag, to assert exact
 /// wire bytes independent of the codec under test.
 private func commandSetElementValue(tag: UInt32, in data: Data) -> Data? {

@@ -66,6 +66,15 @@ public struct DICOMSubOperationCounts: Sendable, Equatable {
 ///
 /// C-ECHO is deliberately available without a dataset, making it a useful
 /// verification operation before applications add storage or query services.
+///
+/// The DIMSE-N (Normalized) services operate on Normalized SOP Classes (MPPS,
+/// Storage Commitment, Print, UPS) rather than the Composite SOP Classes the
+/// DIMSE-C services above operate on. PS3.7 fixes the Requested-in-request,
+/// Affected-in-response asymmetry for N-GET/N-SET/N-ACTION: encoding the
+/// wrong one of the two is the single most common source of N-service
+/// interoperability bugs, which is why the request and response cases below
+/// deliberately use different element names for what is conceptually "the
+/// SOP instance this operates on."
 public enum DICOMDIMSECommand: Sendable, Equatable {
     case cEchoRequest(messageID: UInt16)
     case cEchoResponse(messageIDBeingRespondedTo: UInt16, status: DICOMDIMSEStatus)
@@ -79,9 +88,25 @@ public enum DICOMDIMSECommand: Sendable, Equatable {
     case cGetResponse(messageIDBeingRespondedTo: UInt16, status: DICOMDIMSEStatus, identifierFollows: Bool, subOperations: DICOMSubOperationCounts?, errorComment: String?)
     case cCancelRequest(messageIDBeingRespondedTo: UInt16)
 
+    /// N-EVENT-REPORT: an SCU notifies an SCP's peer of an event on a Normalized SOP
+    /// Instance (e.g. an MPPS state transition). Unlike the C-services, the
+    /// standard does not fix whether a data set follows an N-service message, so
+    /// every N-service case below carries its own `datasetFollows`.
+    case nEventReportRequest(messageID: UInt16, affectedSOPClassUID: String, affectedSOPInstanceUID: String, eventTypeID: UInt16, datasetFollows: Bool)
+    /// The affected SOP class/instance and event type are conditional in a
+    /// response (PS3.7): present on success, and may be omitted on failure.
+    case nEventReportResponse(messageIDBeingRespondedTo: UInt16, affectedSOPClassUID: String?, affectedSOPInstanceUID: String?, eventTypeID: UInt16?, status: DICOMDIMSEStatus, datasetFollows: Bool)
+
     /// `true` when a data set follows this command's PDVs, per the Command Data Set
     /// Type element (0000,0800): fixed by command kind for requests, and by
     /// `identifierFollows` for the C-FIND/C-MOVE/C-GET responses.
+    ///
+    /// The DIMSE-C services above fix, per PS3.7, whether each message carries a
+    /// data set, so `hasDataset` is a constant (or driven by `identifierFollows`)
+    /// for every C-service case. Every DIMSE-N service's data set is conditional
+    /// instead: N-EVENT-REPORT, N-ACTION, N-CREATE, and the N-GET/N-SET responses
+    /// may or may not carry one, so those N-service cases carry their own
+    /// `datasetFollows` and `hasDataset` simply reflects it.
     public var hasDataset: Bool {
         switch self {
         case .cEchoRequest, .cEchoResponse, .cStoreResponse, .cCancelRequest: return false
@@ -89,6 +114,8 @@ public enum DICOMDIMSECommand: Sendable, Equatable {
         case .cFindResponse(_, _, let identifierFollows, _): return identifierFollows
         case .cMoveResponse(_, _, let identifierFollows, _, _): return identifierFollows
         case .cGetResponse(_, _, let identifierFollows, _, _): return identifierFollows
+        case .nEventReportRequest(_, _, _, _, let datasetFollows): return datasetFollows
+        case .nEventReportResponse(_, _, _, _, _, let datasetFollows): return datasetFollows
         }
     }
 
@@ -161,6 +188,21 @@ public enum DICOMDIMSECommand: Sendable, Equatable {
             Self.appendElement(tag: 0x01000000, value: Self.uint16(0x0FFF), to: &content)
             Self.appendElement(tag: 0x01200000, value: Self.uint16(messageID), to: &content)
             Self.appendElement(tag: 0x08000000, value: Self.uint16(0x0101), to: &content)
+        case .nEventReportRequest(let messageID, let sopClassUID, let sopInstanceUID, let eventTypeID, let datasetFollows):
+            Self.appendElement(tag: 0x00020000, value: Self.ui(sopClassUID), to: &content)
+            Self.appendElement(tag: 0x01000000, value: Self.uint16(0x0100), to: &content)
+            Self.appendElement(tag: 0x01100000, value: Self.uint16(messageID), to: &content)
+            Self.appendElement(tag: 0x08000000, value: Self.uint16(datasetFollows ? 0x0000 : 0x0101), to: &content)
+            Self.appendElement(tag: 0x10000000, value: Self.ui(sopInstanceUID), to: &content)
+            Self.appendElement(tag: 0x10020000, value: Self.uint16(eventTypeID), to: &content)
+        case .nEventReportResponse(let messageID, let sopClassUID, let sopInstanceUID, let eventTypeID, let status, let datasetFollows):
+            Self.appendElement(tag: 0x01000000, value: Self.uint16(0x8100), to: &content)
+            Self.appendElement(tag: 0x01200000, value: Self.uint16(messageID), to: &content)
+            Self.appendElement(tag: 0x08000000, value: Self.uint16(datasetFollows ? 0x0000 : 0x0101), to: &content)
+            Self.appendElement(tag: 0x09000000, value: Self.uint16(status.rawValue), to: &content)
+            if let sopClassUID { Self.appendElement(tag: 0x00020000, value: Self.ui(sopClassUID), to: &content) }
+            if let sopInstanceUID { Self.appendElement(tag: 0x10000000, value: Self.ui(sopInstanceUID), to: &content) }
+            if let eventTypeID { Self.appendElement(tag: 0x10020000, value: Self.uint16(eventTypeID), to: &content) }
         }
         var result = Data()
         Self.appendElement(tag: 0x00000000, value: Self.uint32(UInt32(content.count)), to: &result)
@@ -221,6 +263,25 @@ public enum DICOMDIMSECommand: Sendable, Equatable {
         case 0x0FFF:
             guard values[0x08000000].flatMap(readUInt16) == 0x0101, let messageID = values[0x01200000].flatMap(readUInt16) else { throw DICOMDIMSEError.malformedCommandSet }
             return .cCancelRequest(messageIDBeingRespondedTo: messageID)
+        case 0x0100:
+            guard let messageID = values[0x01100000].flatMap(readUInt16),
+                  let dataSetType = values[0x08000000].flatMap(readUInt16),
+                  let sopClassUID = values[0x00020000].flatMap(readUI),
+                  let sopInstanceUID = values[0x10000000].flatMap(readUI),
+                  let eventTypeID = values[0x10020000].flatMap(readUInt16) else { throw DICOMDIMSEError.malformedCommandSet }
+            return .nEventReportRequest(messageID: messageID, affectedSOPClassUID: sopClassUID, affectedSOPInstanceUID: sopInstanceUID, eventTypeID: eventTypeID, datasetFollows: dataSetType != 0x0101)
+        case 0x8100:
+            guard let messageID = values[0x01200000].flatMap(readUInt16),
+                  let dataSetType = values[0x08000000].flatMap(readUInt16),
+                  let status = values[0x09000000].flatMap(readUInt16) else { throw DICOMDIMSEError.malformedCommandSet }
+            return .nEventReportResponse(
+                messageIDBeingRespondedTo: messageID,
+                affectedSOPClassUID: values[0x00020000].flatMap(readUI),
+                affectedSOPInstanceUID: values[0x10000000].flatMap(readUI),
+                eventTypeID: values[0x10020000].flatMap(readUInt16),
+                status: DICOMDIMSEStatus(rawValue: status),
+                datasetFollows: dataSetType != 0x0101
+            )
         default: throw DICOMDIMSEError.unsupportedCommand(field)
         }
     }

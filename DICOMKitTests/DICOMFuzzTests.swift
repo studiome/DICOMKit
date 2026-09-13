@@ -494,6 +494,21 @@ func dimseFuzzCorpus() throws -> [Data] {
             subOperations: nil,
             errorComment: "out of resources"
         ),
-        .cCancelRequest(messageIDBeingRespondedTo: 1)
+        .cCancelRequest(messageIDBeingRespondedTo: 1),
+        .nEventReportRequest(
+            messageID: 1,
+            affectedSOPClassUID: DICOMSOPClass.modalityPerformedProcedureStep,
+            affectedSOPInstanceUID: "1.2.3.4.5.6",
+            eventTypeID: 1,
+            datasetFollows: true
+        ),
+        .nEventReportResponse(
+            messageIDBeingRespondedTo: 1,
+            affectedSOPClassUID: DICOMSOPClass.modalityPerformedProcedureStep,
+            affectedSOPInstanceUID: "1.2.3.4.5.6",
+            eventTypeID: 1,
+            status: .success,
+            datasetFollows: false
+        )
     ].map { try $0.encodedCommandSet() }
 }
