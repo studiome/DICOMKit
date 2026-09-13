@@ -626,7 +626,7 @@ public struct DICOMFile: Sendable {
             paletteColorLUT: paletteColorLUT
             , pixelPaddingRange: pixelPaddingRange()
             , modalityLUT: modalityLUT
-            , displayShutter: shutter
+            , displayShutter: attributes.displayShutter ?? shutter
             )
         }
     }
@@ -727,6 +727,8 @@ public struct DICOMFile: Sendable {
                 if let value = perFrameGroups.planePosition { resolved.planePosition = value }
                 if let value = perFrameGroups.planeOrientation { resolved.planeOrientation = value }
                 if let value = perFrameGroups.frameContent { resolved.frameContent = value }
+                if let value = perFrameGroups.frameAnatomy { resolved.frameAnatomy = value }
+                if let value = perFrameGroups.displayShutter { resolved.displayShutter = value }
             }
             return resolved
         }
@@ -763,6 +765,25 @@ public struct DICOMFile: Sendable {
                 frameAcquisitionDuration: contentItem[DICOMTag(group: 0x0018, element: 0x9220)]?.float64Values?.first
             )
         }
+        // Frame Anatomy Sequence `(0020,9071)`. Code Meaning inside the
+        // nested Anatomic Region Sequence item is `LO`, so its Specific
+        // Character Set is resolved by cascading through each enclosing
+        // item: the main dataset, then this functional group item, then the
+        // Frame Anatomy item itself (PS3.5 7.5.3).
+        let itemCharacterSet = item.characterSet(inheriting: dataset.characterSet)
+        let frameAnatomyItem = item[DICOMTag(group: 0x0020, element: 0x9071)]?.sequenceItems?.first
+        let frameAnatomy = frameAnatomyItem.map { anatomyItem -> DICOMFrameAnatomy in
+            let anatomyCharacterSet = anatomyItem.characterSet(inheriting: itemCharacterSet)
+            let anatomicRegionItem = anatomyItem[DICOMTag(group: 0x0008, element: 0x2218)]?.sequenceItems?.first
+            return DICOMFrameAnatomy(
+                laterality: anatomyItem[DICOMTag(group: 0x0020, element: 0x9072)]?.stringValue,
+                anatomicRegion: anatomicRegionItem?.codeSequenceItem(inheriting: anatomyCharacterSet)
+            )
+        }
+        // Frame Display Shutter Sequence `(0018,9472)`, carrying the same
+        // Display Shutter attributes ``displayShutter`` parses at the
+        // dataset level.
+        let frameShutterItem = item[DICOMTag(group: 0x0018, element: 0x9472)]?.sequenceItems?.first
         return DICOMFrameFunctionalGroups(
             rescaleSlope: transformation?[.rescaleSlope]?.doubleValue,
             rescaleIntercept: transformation?[.rescaleIntercept]?.doubleValue,
@@ -771,7 +792,9 @@ public struct DICOMFile: Sendable {
             pixelMeasures: pixelMeasures,
             planePosition: planePositionItem?[.imagePositionPatient]?.doubleValues,
             planeOrientation: planeOrientationItem?[.imageOrientationPatient]?.doubleValues,
-            frameContent: frameContent
+            frameContent: frameContent,
+            frameAnatomy: frameAnatomy,
+            displayShutter: frameShutterItem?.displayShutter
         )
     }
 

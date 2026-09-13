@@ -26,6 +26,11 @@ public struct DICOMFrameFunctionalGroups: Sendable, Equatable {
     public var planeOrientation: [Double]?
     /// The Frame Content macro `(0020,9111)`.
     public var frameContent: DICOMFrameContent?
+    /// The Frame Anatomy macro `(0020,9071)`.
+    public var frameAnatomy: DICOMFrameAnatomy?
+    /// The Frame Display Shutter macro `(0018,9472)`, carrying the same
+    /// Display Shutter attributes as ``DICOMFile/displayShutter``.
+    public var displayShutter: DICOMDisplayShutter?
 
     public init(
         rescaleSlope: Double? = nil,
@@ -35,7 +40,9 @@ public struct DICOMFrameFunctionalGroups: Sendable, Equatable {
         pixelMeasures: DICOMPixelMeasures? = nil,
         planePosition: [Double]? = nil,
         planeOrientation: [Double]? = nil,
-        frameContent: DICOMFrameContent? = nil
+        frameContent: DICOMFrameContent? = nil,
+        frameAnatomy: DICOMFrameAnatomy? = nil,
+        displayShutter: DICOMDisplayShutter? = nil
     ) {
         self.rescaleSlope = rescaleSlope
         self.rescaleIntercept = rescaleIntercept
@@ -45,6 +52,21 @@ public struct DICOMFrameFunctionalGroups: Sendable, Equatable {
         self.planePosition = planePosition
         self.planeOrientation = planeOrientation
         self.frameContent = frameContent
+        self.frameAnatomy = frameAnatomy
+        self.displayShutter = displayShutter
+    }
+}
+
+/// The Frame Anatomy macro `(0020,9071)`.
+public struct DICOMFrameAnatomy: Sendable, Equatable {
+    /// Frame Laterality `(0020,9072)`.
+    public let laterality: String?
+    /// Anatomic Region Sequence `(0008,2218)`.
+    public let anatomicRegion: DICOMCodeSequenceItem?
+
+    public init(laterality: String? = nil, anatomicRegion: DICOMCodeSequenceItem? = nil) {
+        self.laterality = laterality
+        self.anatomicRegion = anatomicRegion
     }
 }
 
