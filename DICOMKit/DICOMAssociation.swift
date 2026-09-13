@@ -456,6 +456,44 @@ public actor DICOMAssociation {
         return try await nAction(messageID: messageID, contextID: contextID, sopClassUID: sopClassUID, sopInstanceUID: sopInstanceUID, actionTypeID: actionTypeID, actionInformation: actionInformation)
     }
 
+    /// Requests Storage Commitment for the instances named in `request`, sending
+    /// N-ACTION with Action Type ID 1 against the well-known Storage Commitment
+    /// Push Model SOP Instance (``DICOMSOPClass/storageCommitmentPushModelInstance``),
+    /// encoding the Action Information in `contextID`'s negotiated transfer syntax.
+    ///
+    /// The part that trips people up: the *result* of the commitment does
+    /// **not** come back in the N-ACTION response this method returns — that
+    /// response only confirms the SCP accepted the request. The SCP decides
+    /// success or failure asynchronously (it may need to actually fetch the
+    /// instances from storage) and reports it later as an N-EVENT-REPORT —
+    /// Event Type ID 1 when every instance was committed, 2 when some failed —
+    /// whose Event Information ``DICOMStorageCommitmentResult`` parses. That
+    /// N-EVENT-REPORT can arrive two ways, both already supported elsewhere in
+    /// DICOMKit and neither handled by this method:
+    /// - On this same association, if the SCU negotiated an SCP role for the
+    ///   Storage Commitment Push Model SOP Class via SCP/SCU role selection
+    ///   (``DICOMRoleSelection``, checked with ``negotiatedRoles(for:)``), so
+    ///   this actor's own ``receiveRequest()`` and ``respondToNEventReport(messageIDBeingRespondedTo:contextID:affectedSOPClassUID:affectedSOPInstanceUID:eventTypeID:status:attributes:)``
+    ///   can receive and answer it.
+    /// - On a fresh inbound association the SCU accepts separately, typically
+    ///   through ``NetworkDICOMULListener``, since many SCPs prefer a new
+    ///   connection over negotiating a role reversal.
+    public func requestStorageCommitment(messageID: UInt16, contextID: UInt8, _ request: DICOMStorageCommitmentRequest) async throws -> DICOMDIMSEStatus {
+        guard let acceptance, let context = acceptance.presentationContexts.first(where: { $0.id == contextID && $0.result == .acceptance }) else {
+            throw DICOMAssociationError.notAssociated
+        }
+        let actionInformation = try request.actionInformation(transferSyntax: TransferSyntax(uid: context.transferSyntaxUID))
+        let result = try await nAction(
+            messageID: messageID,
+            contextID: contextID,
+            sopClassUID: DICOMSOPClass.storageCommitmentPushModel,
+            sopInstanceUID: DICOMSOPClass.storageCommitmentPushModelInstance,
+            actionTypeID: 1,
+            actionInformation: actionInformation
+        )
+        return result.status
+    }
+
     /// Sends N-DELETE, asking the peer to delete a Normalized SOP Instance.
     /// Neither N-DELETE-RQ nor N-DELETE-RSP ever carries a data set.
     public func nDelete(messageID: UInt16, contextID: UInt8, sopClassUID: String, sopInstanceUID: String) async throws -> DICOMNServiceResult {

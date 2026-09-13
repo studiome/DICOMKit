@@ -36,6 +36,7 @@ struct DICOMSOPClassTests {
             (DICOMSOPClass.petImageStorage, "1.2.840.10008.5.1.4.1.1.128"),
             (DICOMSOPClass.rtImageStorage, "1.2.840.10008.5.1.4.1.1.481.1"),
             (DICOMSOPClass.storageCommitmentPushModel, "1.2.840.10008.1.20.1"),
+            (DICOMSOPClass.storageCommitmentPushModelInstance, "1.2.840.10008.1.20.1.1"),
             (DICOMSOPClass.modalityPerformedProcedureStep, "1.2.840.10008.3.1.2.3.3")
         ]
         for (actual, expectedUID) in expected {

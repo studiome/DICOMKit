@@ -67,6 +67,10 @@ public enum DICOMSOPClass {
     public static let rtImageStorage = "1.2.840.10008.5.1.4.1.1.481.1"
     /// Storage Commitment Push Model SOP Class.
     public static let storageCommitmentPushModel = "1.2.840.10008.1.20.1"
+    /// The well-known Storage Commitment Push Model SOP Instance — N-ACTION
+    /// and N-EVENT-REPORT for this service always name this single instance,
+    /// never one created through N-CREATE.
+    public static let storageCommitmentPushModelInstance = "1.2.840.10008.1.20.1.1"
     /// Modality Performed Procedure Step SOP Class.
     public static let modalityPerformedProcedureStep = "1.2.840.10008.3.1.2.3.3"
 
