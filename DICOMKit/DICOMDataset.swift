@@ -22,14 +22,10 @@ public struct DICOMDataset: Sendable, Sequence, Equatable {
     /// Whether the dataset contains no elements.
     public var isEmpty: Bool { storage.isEmpty }
 
-    /// The character set declared by `(0008,0005)`, or UTF-8 when absent.
+    /// The character set declared by `(0008,0005)`, or the DICOM default
+    /// repertoire (ASCII) when absent.
     public var characterSet: DICOMCharacterSet {
-        guard let declaration = storage[.specificCharacterSet]?.stringValue,
-              let first = declaration.split(separator: "\\", maxSplits: 1).first,
-              let characterSet = DICOMCharacterSet(dicomName: String(first)) else {
-            return .utf8
-        }
-        return characterSet
+        DICOMCharacterSet(declaration: storage[.specificCharacterSet]?.stringValue)
     }
 
     /// Decodes a text value using this dataset's Specific Character Set.
