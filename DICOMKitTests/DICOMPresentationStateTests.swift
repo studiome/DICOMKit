@@ -249,4 +249,94 @@ struct DICOMPresentationStateTests {
         let state = try DICOMPresentationState(file: file)
         #expect(state.sopInstanceUID == "1.2.3.1")
     }
+
+    // MARK: - Specific Character Set
+
+    /// Content Description `(0070,0081)` (`LO`) and the Unformatted Text
+    /// Value `(0070,0006)` (`ST`) nested two levels down inside the Graphic
+    /// Annotation Sequence must both be decoded with the presentation
+    /// state's own Specific Character Set — not the UTF-8-only default,
+    /// which would produce mojibake for a Japanese declaration.
+    @Test func decodesContentDescriptionAndNestedUnformattedTextWithDatasetCharacterSet() throws {
+        // "田中" (JIS X 0208-escaped; see DICOMCharacterSetTests.tanakaKanjiBytes).
+        var contentDescription = Data()
+        contentDescription.append(contentsOf: [0x1B, 0x24, 0x42]) // ESC $ B: G0 = JIS X 0208 Kanji
+        contentDescription.append(contentsOf: [0x45, 0x44, 0x43, 0x66]) // 田中
+        contentDescription.append(contentsOf: [0x1B, 0x28, 0x42]) // ESC ( B: back to ASCII
+
+        // "山田" (JIS X 0208-escaped), same encoding verified independently
+        // in DICOMCharacterSetTests.
+        var unformattedText = Data()
+        unformattedText.append(contentsOf: [0x1B, 0x24, 0x42])
+        unformattedText.append(contentsOf: [0x3B, 0x33, 0x45, 0x44]) // 山田
+        unformattedText.append(contentsOf: [0x1B, 0x28, 0x42])
+
+        let textObject = DICOMDataset(elements: [
+            DICOMElement(tag: DICOMTag(group: 0x0070, element: 0x0006), vr: .ST, value: unformattedText)
+        ])
+        let annotation = DICOMDataset(elements: [
+            DICOMElement(tag: DICOMTag(group: 0x0070, element: 0x0008), vr: .SQ, value: Data(), sequenceItems: [textObject])
+        ])
+        let dataset = DICOMDataset(elements: [
+            DICOMElement(tag: .specificCharacterSet, vr: .CS, value: Data("ISO 2022 IR 6\\ISO 2022 IR 87".utf8)),
+            DICOMElement(tag: .sopClassUID, vr: .UI, value: Data(DICOMSOPClass.grayscaleSoftcopyPresentationStateStorage.utf8)),
+            DICOMElement(tag: DICOMTag(group: 0x0070, element: 0x0081), vr: .LO, value: contentDescription),
+            DICOMElement(tag: DICOMTag(group: 0x0070, element: 0x0001), vr: .SQ, value: Data(), sequenceItems: [annotation])
+        ])
+
+        let state = try DICOMPresentationState(file: DICOMFile(data: DICOMWriter.write(dataset: dataset)))
+
+        #expect(state.contentDescription == "田中")
+        #expect(state.graphicAnnotations.first?.textObjects.first?.text == "山田")
+    }
+
+    /// Graphic Layer Description `(0070,0068)` (`LO`) is decoded with the
+    /// dataset's character set, while Graphic Layer `(0070,0002)` (`CS`) —
+    /// restricted to the Default Character Repertoire — must be unaffected.
+    @Test func decodesGraphicLayerDescriptionWithCharacterSetLeavingLayerNameUnaffected() throws {
+        // "田中" (JIS X 0208-escaped).
+        var description = Data()
+        description.append(contentsOf: [0x1B, 0x24, 0x42])
+        description.append(contentsOf: [0x45, 0x44, 0x43, 0x66])
+        description.append(contentsOf: [0x1B, 0x28, 0x42])
+
+        let layer = DICOMDataset(elements: [
+            DICOMElement(tag: DICOMTag(group: 0x0070, element: 0x0002), vr: .CS, value: Data("LAYER1".utf8)),
+            DICOMElement(tag: DICOMTag(group: 0x0070, element: 0x0062), vr: .IS, value: Data("1".utf8)),
+            DICOMElement(tag: DICOMTag(group: 0x0070, element: 0x0068), vr: .LO, value: description)
+        ])
+        let dataset = DICOMDataset(elements: [
+            DICOMElement(tag: .specificCharacterSet, vr: .CS, value: Data("ISO 2022 IR 6\\ISO 2022 IR 87".utf8)),
+            DICOMElement(tag: .sopClassUID, vr: .UI, value: Data(DICOMSOPClass.grayscaleSoftcopyPresentationStateStorage.utf8)),
+            DICOMElement(tag: DICOMTag(group: 0x0070, element: 0x0060), vr: .SQ, value: Data(), sequenceItems: [layer])
+        ])
+
+        let state = try DICOMPresentationState(file: DICOMFile(data: DICOMWriter.write(dataset: dataset)))
+
+        #expect(state.graphicLayers.first?.name == "LAYER1")
+        #expect(state.graphicLayers.first?.description == "田中")
+    }
+
+    /// A Text Object item that declares its own `(0008,0005)` overrides the
+    /// enclosing presentation state's declaration (PS3.5 7.5.3), even when
+    /// the state declares something else entirely.
+    @Test func nestedTextObjectWithOwnCharacterSetOverridesEnclosingState() throws {
+        let utf8Text = "Motörhead"
+        let textObject = DICOMDataset(elements: [
+            DICOMElement(tag: .specificCharacterSet, vr: .CS, value: Data("ISO_IR 192".utf8)),
+            DICOMElement(tag: DICOMTag(group: 0x0070, element: 0x0006), vr: .ST, value: Data(utf8Text.utf8))
+        ])
+        let annotation = DICOMDataset(elements: [
+            DICOMElement(tag: DICOMTag(group: 0x0070, element: 0x0008), vr: .SQ, value: Data(), sequenceItems: [textObject])
+        ])
+        let dataset = DICOMDataset(elements: [
+            DICOMElement(tag: .specificCharacterSet, vr: .CS, value: Data("ISO 2022 IR 6\\ISO 2022 IR 87".utf8)),
+            DICOMElement(tag: .sopClassUID, vr: .UI, value: Data(DICOMSOPClass.grayscaleSoftcopyPresentationStateStorage.utf8)),
+            DICOMElement(tag: DICOMTag(group: 0x0070, element: 0x0001), vr: .SQ, value: Data(), sequenceItems: [annotation])
+        ])
+
+        let state = try DICOMPresentationState(file: DICOMFile(data: DICOMWriter.write(dataset: dataset)))
+
+        #expect(state.graphicAnnotations.first?.textObjects.first?.text == utf8Text)
+    }
 }

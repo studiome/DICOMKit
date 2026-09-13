@@ -239,8 +239,11 @@ public struct DICOMPresentationState: Sendable, Equatable {
         }
 
         sopInstanceUID = dataset[.sopInstanceUID]?.stringValue
+        // Content Label is `CS` (Default Character Repertoire only); Content
+        // Description is `LO`, free text governed by Specific Character Set
+        // (PS3.5 6.1.2.3), so it's decoded with the dataset's declaration.
         contentLabel = dataset[DICOMTag(group: 0x0070, element: 0x0080)]?.stringValue
-        contentDescription = dataset[DICOMTag(group: 0x0070, element: 0x0081)]?.stringValue
+        contentDescription = dataset.stringValue(for: DICOMTag(group: 0x0070, element: 0x0081))
 
         var references: [DICOMPresentationStateReference] = []
         for seriesItem in dataset[DICOMTag(group: 0x0008, element: 0x1115)]?.sequenceItems ?? [] {
@@ -301,22 +304,36 @@ public struct DICOMPresentationState: Sendable, Equatable {
         }
 
         graphicLayers = (dataset[DICOMTag(group: 0x0070, element: 0x0060)]?.sequenceItems ?? []).compactMap { item in
+            // Graphic Layer `(0070,0002)` is `CS` (Default Character
+            // Repertoire only); Graphic Layer Description `(0070,0068)` is
+            // `LO`, so it's decoded with the item's own Specific Character
+            // Set, inheriting the enclosing dataset's when it declares none
+            // (PS3.5 7.5.3).
             guard let name = item[DICOMTag(group: 0x0070, element: 0x0002)]?.stringValue,
                   let order = item[DICOMTag(group: 0x0070, element: 0x0062)]?.stringValue.flatMap(Int.init) else { return nil }
             return DICOMGraphicLayer(
                 name: name,
                 order: order,
                 recommendedDisplayGrayscaleValue: item[DICOMTag(group: 0x0070, element: 0x0066)]?.uint16Value,
-                description: item[DICOMTag(group: 0x0070, element: 0x0068)]?.stringValue
+                description: item.stringValue(for: DICOMTag(group: 0x0070, element: 0x0068), inheriting: dataset.characterSet)
             )
         }
 
         graphicAnnotations = (dataset[DICOMTag(group: 0x0070, element: 0x0001)]?.sequenceItems ?? []).map { item in
-            DICOMGraphicAnnotation(
+            // The Graphic Annotation item may declare its own Specific
+            // Character Set (or inherit the enclosing dataset's); a nested
+            // Text Object item then inherits *that* effective declaration
+            // unless it names its own (PS3.5 7.5.3), which is why this is
+            // resolved once per annotation rather than re-deriving it from
+            // `dataset.characterSet` for each text object.
+            let annotationCharacterSet = item.characterSet(inheriting: dataset.characterSet)
+            return DICOMGraphicAnnotation(
                 layer: item[DICOMTag(group: 0x0070, element: 0x0002)]?.stringValue,
                 referencedSOPInstanceUIDs: Self.referencedSOPInstanceUIDs(in: item),
                 textObjects: (item[DICOMTag(group: 0x0070, element: 0x0008)]?.sequenceItems ?? []).compactMap { textItem in
-                    guard let text = textItem[DICOMTag(group: 0x0070, element: 0x0006)]?.stringValue else { return nil }
+                    // Unformatted Text Value `(0070,0006)` is `ST`, free text
+                    // governed by Specific Character Set.
+                    guard let text = textItem.stringValue(for: DICOMTag(group: 0x0070, element: 0x0006), inheriting: annotationCharacterSet) else { return nil }
                     return DICOMTextObject(
                         text: text,
                         boundingBoxTopLeft: textItem[DICOMTag(group: 0x0070, element: 0x0010)]?.float32Values?.map(Double.init),
