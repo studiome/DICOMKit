@@ -113,6 +113,16 @@ See the [changelog](CHANGELOG.md) for the current implementation status.
   `YBR_FULL_422`) or single-sample
   `MONOCHROME1` / `MONOCHROME2`; multiple frames use a Basic Offset Table,
   Extended Offset Table, or one-fragment-per-frame empty Basic Offset Table
+- Recognises and opens the three High-Throughput JPEG 2000 (HTJ2K) transfer
+  syntaxes (`.201`, `.202`, `.203`), exposing their encapsulated fragments
+  like any other transfer syntax. Pixel Data is routed through the same
+  ImageIO path as JPEG 2000, since HTJ2K is a JPEG 2000 codestream with a
+  different block coder — but DICOMKit bundles no HTJ2K codec of its own, so
+  whether a given HTJ2K stream actually decodes depends entirely on the
+  host platform's ImageIO. `TransferSyntax.hasPixelDataDecoder` reports
+  `true` for HTJ2K (DICOMKit will attempt a decode) without promising that
+  attempt succeeds; `DICOMFile.pixelDataFrames` is `nil` for a stream
+  ImageIO can't decode, the same as any other unsupported Pixel Data
 - Writes DICOM Part 10 files using Explicit VR Little Endian, Explicit VR Big
   Endian, Deflated Explicit VR Little Endian, or Implicit VR Little Endian,
   including defined- or undefined-length Sequences and native Pixel Data;
@@ -153,6 +163,7 @@ See the [changelog](CHANGELOG.md) for the current implementation status.
 | JPEG Lossless `.57`, `.70` | libjpeg-turbo 3.1.3 (TurboJPEG API) | 2–16-bit monochrome and single-scan, 1:1:1 interleaved `RGB`; `.70` requires Selection Value 1. |
 | JPEG-LS `.80`, `.81` | CharLS Git submodule | Lossless and Near-Lossless; supported interleave modes are listed above. |
 | JPEG 2000 `.90`, `.91` | ImageIO | 8-bit `RGB` or monochrome output. |
+| HTJ2K `.201`, `.202`, `.203` | ImageIO (same path as JPEG 2000) | Recognised, opened, and routed to ImageIO; decoding depends on the host platform's ImageIO supporting HTJ2K's block coder — DICOMKit ships no HTJ2K codec and has no HTJ2K fixture to verify decode against. `pixelDataFrames` is `nil` when ImageIO rejects the stream. |
 
 libjpeg-turbo is the primary decoder for JPEG Baseline and JPEG Lossless
 Process 14. DICOMKit retains responsibility for fragment reassembly, transfer

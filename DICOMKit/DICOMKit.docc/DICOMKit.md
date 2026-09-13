@@ -110,6 +110,23 @@ are available through ``DICOMFile/pixelDataFrames``. libjpeg-turbo is pinned as 
 SwiftPM binary target. The previous Process 14 decoder remains as a temporary
 fallback while fixture-output comparisons are accumulated.
 
+The three High-Throughput JPEG 2000 (HTJ2K) transfer syntaxes — HTJ2K Lossless
+Only (`.201`), HTJ2K with RPCL Options Lossless Only (`.202`), and HTJ2K
+(`.203`) — are recognized and open normally: their File Meta Information
+parses, and their encapsulated Pixel Data fragments are reachable through
+``DICOMElement/encapsulatedFragments`` like any other encapsulated transfer
+syntax. Because HTJ2K (PS3.5 Annex A.4.4) is a JPEG 2000 codestream that only
+swaps in a different block coder, its Pixel Data is routed through the same
+ImageIO `CGImageSource` path as JPEG 2000 Lossless / JPEG 2000, on the
+assumption that any platform support for HTJ2K goes through that same API.
+DICOMKit does not bundle an HTJ2K codec and has no HTJ2K fixture to verify
+against, so whether a given HTJ2K stream actually decodes depends entirely on
+the host platform's ImageIO; a stream ImageIO rejects surfaces as `nil` from
+``DICOMFile/pixelDataFrames`` — the same as any other undecodable frame —
+rather than as a parsing failure. ``TransferSyntax/hasPixelDataDecoder``
+reports `true` for HTJ2K to say DICOMKit will attempt a decode, without
+promising any particular stream succeeds.
+
 Pixel Padding Value `(0028,0120)`
 and Pixel Padding Range Limit `(0028,0121)` are excluded from automatically
 computed windows.

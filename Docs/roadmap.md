@@ -40,7 +40,7 @@ Impact ratings below mean:
 
 | Gap | Impact | Note |
 | --- | :---: | --- |
-| HTJ2K `.201`/`.202`/`.203` | **B** | Increasingly the default in DICOMweb delivery. |
+| ~~HTJ2K `.201`/`.202`/`.203`~~ | **B** | ~~Increasingly the default in DICOMweb delivery.~~ **Done** — see Phase 3, item 6. `cdd81f6` "Recognise HTJ2K transfer syntaxes", `9d2fa6c` "Route HTJ2K through the JPEG 2000 decoder". Decoding depends on the host platform's ImageIO; DICOMKit has no HTJ2K encoder or fixture to verify decode against, so "done" here means recognized/opened/routed, not verified-to-render. |
 | MPEG-4 / H.264 / H.265 `.100`–`.107` | **B** | Endoscopy and ultrasound cine. |
 | JPEG Extended (Process 2 & 4) `.51` | **C** | 12-bit baseline. |
 | JPEG 2000 Part 2 `.92`/`.93` | **C** | Rare. |
@@ -134,10 +134,10 @@ functional hole for a viewer.
    - Add `DICOMPrivateDictionary`/`DICOMPrivateTagEntry`: a mechanism for an application to supply its *own* vendor-documented private VRs. DICOMKit ships none itself — a table built from reverse engineering risks reading a vendor's bytes as the wrong type, and staying `UN` is safer than that. — `cd06c82` "Add a caller-supplied private dictionary"
    - Resolve a private element's VR under Implicit VR from `options.privateDictionary`, tracking Private Creator blocks in one forward pass per PS3.5 7.8.1 and resetting them at each sequence item boundary per PS3.5 7.5.3; `DICOMDataset.privateCreator(for:)` and `privateElement(creator:group:element:)` needed no change since they already existed. — `1fe604c` "Resolve private VRs from the dictionary"
 
-6. **HTJ2K** (~4 commits)
-   - Add `.201`/`.202`/`.203` to `TransferSyntax`.
-   - Decode through ImageIO where the OS supports it, and otherwise report the frames as undecodable rather than failing the parse — the same contract the other codecs already follow.
-   - Verify against reference streams the way the JPEG-LS coverage is verified against CharLS output.
+6. **HTJ2K** — **Done** (2 commits: `cdd81f6`, `9d2fa6c`)
+   - Add `.201`/`.202`/`.203` to `TransferSyntax`, including `uid`, `init(uid:)`, `isSupported`, `isWritable`, and `usesEncapsulatedPixelData` — a dataset declaring one of these now opens and its encapsulated fragments are reachable, where before it failed `DICOMFile(data:)` outright. — `cdd81f6` "Recognise HTJ2K transfer syntaxes"
+   - Add `TransferSyntax.hasPixelDataDecoder` (true for every syntax DICOMKit attempts to decode, false only for `.unknown`) so a caller can distinguish "DICOMKit doesn't know this compression" from "this particular stream failed to decode". Route HTJ2K Pixel Data through the same ImageIO `CGImageSource` path as JPEG 2000 Lossless/JPEG 2000, since PS3.5 Annex A.4.4 describes HTJ2K as the same codestream structure with a different (FBCOT) block coder — an undecodable stream still surfaces as `nil` frames rather than a thrown error, the same contract the other codecs already follow. — `9d2fa6c` "Route HTJ2K through the JPEG 2000 decoder"
+   - **Not done, deliberately: verification against a real HTJ2K reference stream.** Unlike JPEG-LS's CharLS-generated fixtures, DICOMKit has no HTJ2K encoder and no way to author a genuine HT-coded codestream, so there is no fixture to decode and no way to *prove* ImageIO decodes real HTJ2K on any given platform. `HTJ2KTests.reportsImageIOJPEG2000CapabilityAsHTJ2KProxy` records what `CGImageSourceCopyTypeIdentifiers()` reports for `public.jpeg-2000` as a diagnostic (not an assertion, since platform capability shouldn't turn the suite red) — on the machine this shipped from, ImageIO advertises JPEG 2000 container support, but that says nothing about whether it accepts HT-coded blocks specifically. A future reader with a real HTJ2K sample should add it as a fixture and turn that diagnostic into a real decode assertion.
 
 ### Phase 4 — DIMSE N-services (impact B)
 

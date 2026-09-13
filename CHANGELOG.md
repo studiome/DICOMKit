@@ -4,6 +4,18 @@ All notable changes to DICOMKit are documented here.
 
 ## v0.5 — Unreleased
 
+- Added the three High-Throughput JPEG 2000 (HTJ2K) transfer syntaxes —
+  `.201` (Lossless Only), `.202` (RPCL Options, Lossless Only), and `.203` —
+  to `TransferSyntax`. A dataset declaring any of these now opens and its
+  encapsulated Pixel Data fragments are reachable; previously such a file
+  failed to open at all. Pixel Data is routed through the same
+  ImageIO-backed decoder as JPEG 2000 Lossless / JPEG 2000, since HTJ2K is a
+  JPEG 2000 codestream that only changes the block coder — but DICOMKit
+  bundles no HTJ2K codec, so whether a given stream actually decodes depends
+  on the host platform's ImageIO. Added `TransferSyntax.hasPixelDataDecoder`
+  so callers can tell "DICOMKit cannot show this kind of image" (`false`)
+  from "DICOMKit could not show this particular image"
+  (`true`, but `DICOMFile.pixelDataFrames` is `nil`).
 - Added `DICOMReadOptions`, passed as a trailing parameter to `DICOMFile` and
   `DICOMMetadataFile` (existing call sites are unaffected by the default).
   `reinterpretsUnknownVR` (on by default) re-derives a defined-length `UN`
