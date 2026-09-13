@@ -25,6 +25,14 @@ public enum TransferSyntax: Sendable, Equatable {
     case jpeg2000Lossless
     /// JPEG 2000 Image Compression (`1.2.840.10008.1.2.4.91`).
     case jpeg2000
+    /// High-Throughput JPEG 2000 Image Compression (Lossless Only)
+    /// (`1.2.840.10008.1.2.4.201`).
+    case htj2kLossless
+    /// High-Throughput JPEG 2000 with RPCL Options Image Compression
+    /// (Lossless Only) (`1.2.840.10008.1.2.4.202`).
+    case htj2kLosslessRPCL
+    /// High-Throughput JPEG 2000 Image Compression (`1.2.840.10008.1.2.4.203`).
+    case htj2k
     /// A transfer syntax not modelled by DICOMKit.
     case unknown(String)
 
@@ -43,6 +51,9 @@ public enum TransferSyntax: Sendable, Equatable {
         case .jpegLSNearLossless: "1.2.840.10008.1.2.4.81"
         case .jpeg2000Lossless: "1.2.840.10008.1.2.4.90"
         case .jpeg2000: "1.2.840.10008.1.2.4.91"
+        case .htj2kLossless: "1.2.840.10008.1.2.4.201"
+        case .htj2kLosslessRPCL: "1.2.840.10008.1.2.4.202"
+        case .htj2k: "1.2.840.10008.1.2.4.203"
         case .unknown(let uid): uid
         }
     }
@@ -57,7 +68,8 @@ public enum TransferSyntax: Sendable, Equatable {
         switch self {
         case .implicitVRLittleEndian, .explicitVRLittleEndian, .explicitVRBigEndian, .deflatedExplicitVRLittleEndian, .rleLossless,
              .jpegBaseline, .jpegLossless, .jpegLosslessSV1, .jpegLSLossless,
-             .jpegLSNearLossless, .jpeg2000Lossless, .jpeg2000:
+             .jpegLSNearLossless, .jpeg2000Lossless, .jpeg2000,
+             .htj2kLossless, .htj2kLosslessRPCL, .htj2k:
             true
         case .unknown:
             false
@@ -69,7 +81,8 @@ public enum TransferSyntax: Sendable, Equatable {
         switch self {
         case .implicitVRLittleEndian, .explicitVRLittleEndian, .explicitVRBigEndian, .deflatedExplicitVRLittleEndian, .rleLossless,
              .jpegBaseline, .jpegLossless, .jpegLosslessSV1, .jpegLSLossless,
-             .jpegLSNearLossless, .jpeg2000Lossless, .jpeg2000:
+             .jpegLSNearLossless, .jpeg2000Lossless, .jpeg2000,
+             .htj2kLossless, .htj2kLosslessRPCL, .htj2k:
             true
         case .unknown:
             false
@@ -79,7 +92,8 @@ public enum TransferSyntax: Sendable, Equatable {
     var usesEncapsulatedPixelData: Bool {
         switch self {
         case .rleLossless, .jpegBaseline, .jpegLossless, .jpegLosslessSV1,
-             .jpegLSLossless, .jpegLSNearLossless, .jpeg2000Lossless, .jpeg2000:
+             .jpegLSLossless, .jpegLSNearLossless, .jpeg2000Lossless, .jpeg2000,
+             .htj2kLossless, .htj2kLosslessRPCL, .htj2k:
             true
         default:
             false
@@ -100,6 +114,9 @@ public enum TransferSyntax: Sendable, Equatable {
         case Self.jpegLSNearLossless.uid: self = .jpegLSNearLossless
         case Self.jpeg2000Lossless.uid: self = .jpeg2000Lossless
         case Self.jpeg2000.uid: self = .jpeg2000
+        case Self.htj2kLossless.uid: self = .htj2kLossless
+        case Self.htj2kLosslessRPCL.uid: self = .htj2kLosslessRPCL
+        case Self.htj2k.uid: self = .htj2k
         default: self = .unknown(uid)
         }
     }

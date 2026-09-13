@@ -55,7 +55,8 @@ struct Reader {
         switch transferSyntax {
         case .explicitVRLittleEndian, .explicitVRBigEndian, .deflatedExplicitVRLittleEndian, .rleLossless, .jpegBaseline,
              .jpegLossless, .jpegLosslessSV1, .jpegLSLossless,
-             .jpegLSNearLossless, .jpeg2000Lossless, .jpeg2000:
+             .jpegLSNearLossless, .jpeg2000Lossless, .jpeg2000,
+             .htj2kLossless, .htj2kLosslessRPCL, .htj2k:
             isExplicitVRWireFormat = true
             let vrText = String(bytes: try readData(count: 2), encoding: .ascii) ?? ""
             guard let parsedVR = DICOMVR(rawValue: vrText) else { throw DICOMError.invalidVR(vrText) }
