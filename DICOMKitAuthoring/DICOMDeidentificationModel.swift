@@ -8,7 +8,7 @@ import Foundation
 /// `X/Z/D`), which the standard defines as "apply the first, unless the
 /// IOD in use requires a later alternative" (PS3.15 Section E.1). DICOMKit
 /// has no notion of "the IOD in use" when resolving a bare tag, so
-/// anything that must collapse ``alternatives`` to one concrete choice
+/// anything that must collapse ``alternatives(_:)`` to one concrete choice
 /// (``DICOMConfidentialityProfile/makeAnonymizer(replacement:)``) always
 /// takes the first alternative.
 public enum DICOMDeidentificationAction: Sendable, Equatable {
@@ -301,17 +301,16 @@ public struct DICOMConfidentialityProfile: Sendable {
     /// understanding, not attribute manipulation. So:
     ///
     /// - When Burned In Annotation `(0028,0301)` is `YES`
-    ///   (``DICOMBurnedInAnnotationStatus/declaredPresent``), this throws
-    ///   ``DICOMError/burnedInAnnotationPresent`` instead of producing
-    ///   output that would misrepresent the result as de-identified.
-    /// - When `(0028,0301)` is absent
-    ///   (``DICOMBurnedInAnnotationStatus/undeclared``), this proceeds —
+    ///   (`DICOMBurnedInAnnotationStatus.declaredPresent` in `DICOMKit`),
+    ///   this throws `DICOMError.burnedInAnnotationPresent` (also in
+    ///   `DICOMKit`) instead of producing output that would misrepresent
+    ///   the result as de-identified.
+    /// - When `(0028,0301)` is absent (`.undeclared`), this proceeds —
     ///   refusing outright would reject the enormous number of real-world
     ///   files that simply never populated this optional attribute — but
     ///   the returned ``DeidentificationResult/warnings`` says so, because
     ///   the resulting claim is weaker than when `(0028,0301)` is `NO`.
-    /// - When `(0028,0301)` is `NO`
-    ///   (``DICOMBurnedInAnnotationStatus/declaredAbsent``), this proceeds
+    /// - When `(0028,0301)` is `NO` (`.declaredAbsent`), this proceeds
     ///   with no warning.
     ///
     /// Unlike ``makeAnonymizer(replacement:)``, this also applies Table

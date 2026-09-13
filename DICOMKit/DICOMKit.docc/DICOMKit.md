@@ -2,6 +2,15 @@
 
 Swift-first utilities for reading DICOM Part 10 files on iPadOS and macOS.
 
+This module — parsing, rendering, navigation, and dataset serialization — is
+the one product a viewer needs; it has no networking and no file-writing code
+path. Two sibling products build on top of it in the same package:
+`DICOMKitAuthoring` (Part 10 file writing, the anonymizer, the PS3.15
+confidentiality profile, module validation, and UID generation) and
+`DICOMKitNetworking` (DIMSE association services and DICOMweb/DICOM JSON).
+Both depend only on `DICOMKit`; `DICOMKitNetworking` does not depend on
+`DICOMKitAuthoring`. See each product's own documentation for what it adds.
+
 ## Overview
 
 DICOMKit provides a small, type-safe DICOM object model and a reader for
@@ -59,14 +68,6 @@ if let pixelData = file.pixelData {
 - ``DICOMReadOptions`` — Control `UN` re-interpretation and private VR resolution while parsing.
 - ``DICOMDataset`` — Look up and iterate over data elements.
 - ``DICOMStudy`` — Group and order instances by study and series.
-- ``DICOMAnonymizer`` — Apply caller-defined recursive de-identification rules.
-- ``DICOMConfidentialityProfile`` — Resolve PS3.15's full Basic Application
-  Level Confidentiality Profile attribute table plus its Retain/Clean
-  options, and de-identify a ``DICOMFile`` with burned-in-annotation and
-  method-recording handling.
-- ``DICOMDeidentificationProfile`` — Use a conservative preset built on the
-  same generated table.
-- ``DICOMJSONDataset`` — Convert supported values to and from typed DICOM JSON.
 - ``DICOMPixelData`` — Render supported uncompressed Pixel Data.
 - ``DICOMFloatingPixelData`` — Access native Float and Double Float Pixel Data.
 - ``DICOMFrameAttributes`` — Inspect Enhanced Multi-frame display attributes.
@@ -83,8 +84,6 @@ if let pixelData = file.pixelData {
   Presentation State.
 - ``DICOMLazyPixelData`` — Defer Pixel Data frame decoding until it is needed.
 - ``DICOMMetadataFile`` — Retain metadata and reopen local Pixel Data on demand.
-- ``DICOMAssociation`` — Perform DIMSE association and service operations.
-- ``NetworkDICOMULTransport`` — Connect a DIMSE association over TCP or TLS.
 
 The library supports defined-length and undefined-length sequences, a focused
 set of uncompressed image formats and 8-bit/16-bit monochrome plus 8-bit RGB
@@ -159,62 +158,18 @@ Use ``DICOMFile/makeLazyPixelData()`` when image frames may not be displayed
 immediately. It defers and memoizes frame decoding; the parsed file's encoded
 Pixel Data remains retained, so it is not a streaming file-I/O API.
 
-DICOMKit also writes Part 10 files through ``DICOMWriter`` and
-``DICOMFile/encodedData(sequenceLengthEncoding:)``. The writer supports
+DICOMKit serializes a dataset alone through
+``DICOMWriter/encodeDataset(_:transferSyntax:sequenceLengthEncoding:)`` —
 Explicit VR Little Endian, Explicit VR Big Endian, Deflated Explicit VR Little
 Endian, and Implicit VR Little Endian, defined- and undefined-length
-sequences, and native Pixel Data. It can also serialize
-caller-supplied compressed fragments through
+sequences, and native Pixel Data — without a 128-byte preamble, `DICM` magic,
+or File Meta Information; this is the payload a DIMSE service such as C-STORE
+transfers. It can also serialize caller-supplied compressed fragments through
 ``DICOMElement/init(encapsulatedPixelDataFrames:vr:)`` with a generated Basic
-Offset Table; it does not compress samples itself.
-
-``DICOMwebClient`` provides an async HTTP foundation for QIDO-RS study,
-series, and instance searches; WADO-RS instance, metadata, rendered image,
-thumbnail, frame, and BulkData retrieval; and STOW-RS multipart storage.
-Inject a ``DICOMwebTransport`` to add application-specific authentication or
-to test requests without a network connection.
-
-``DICOMAssociation`` is a transport-independent DIMSE actor backed by a
-caller-supplied ``DICOMULTransport``. ``NetworkDICOMULTransport`` implements TCP
-or explicitly configured TLS with Network.framework, and
-``NetworkDICOMULListener`` accepts inbound connections. Association negotiation
-covers Implementation Class UID and Version Name, SCP/SCU Role Selection,
-Asynchronous Operations Window, and User Identity, and the actor reports a peer
-A-ABORT or A-RELEASE-RQ rather than treating it as an unexpected PDU.
-
-As an SCU, ``DICOMAssociation`` performs C-ECHO, C-STORE, C-FIND, C-MOVE,
-C-GET, and C-CANCEL, returning a classified ``DICOMDIMSEStatus`` and, for
-C-MOVE and C-GET, ``DICOMSubOperationCounts``. C-GET takes an `onStore`
-handler: the peer returns each matching instance as a C-STORE sub-operation on
-a storage presentation context, and the handler's returned status is sent back
-in the C-STORE-RSP. As an SCP, it accepts an
-association against a ``DICOMAssociationPolicy``, receives requests through
-``DICOMAssociation/receiveRequest()``, and answers them with the matching
-`respondTo…` method. Applications negotiate one presentation context per SOP
-Class — ``DICOMSOPClass`` lists the common UIDs — and can use the SOP Class
-convenience overloads instead of passing context identifiers. This is a
-protocol foundation, not a clinical interoperability or PACS conformance claim.
-
-``DICOMAssociation`` also performs the DIMSE-N (Normalized) services —
-N-CREATE, N-SET, N-GET, N-ACTION, N-DELETE, and N-EVENT-REPORT — as both SCU
-(returning a classified ``DICOMNServiceResult``) and SCP (the matching
-`respondToN…` responders). Unlike the DIMSE-C services, whether an N-service
-message carries a data set is conditional rather than fixed by the command
-kind, which ``receiveRequest()`` already handles generically through
-``DICOMDIMSECommand/hasDataset``. Two Normalized workflows are built on top:
-Storage Commitment Push Model, through
-``DICOMAssociation/requestStorageCommitment(messageID:contextID:_:)`` and
-``DICOMStorageCommitmentRequest``/``DICOMStorageCommitmentResult`` — note that
-the commitment result is *not* the N-ACTION response, but arrives later as an
-N-EVENT-REPORT, either on the same association (via SCP/SCU role selection)
-or a fresh inbound one (via ``NetworkDICOMULListener``); and Modality
-Performed Procedure Step, through
-``DICOMAssociation/createPerformedProcedureStep(messageID:contextID:sopInstanceUID:attributes:transferSyntax:)``
-and
-``DICOMAssociation/updatePerformedProcedureStep(messageID:contextID:sopInstanceUID:status:attributes:transferSyntax:)``,
-which set Performed Procedure Step Status `(0040,0252)` but leave the rest of
-the MPPS attribute set — long and modality-specific — to the caller, checked
-with ``DICOMModuleValidator``.
+Offset Table, without compressing samples itself. Assembling a complete Part
+10 file — preamble, File Meta Information, and all — is `DICOMWriter.write`
+and `DICOMFile.encodedData(sequenceLengthEncoding:)`, both added by
+`DICOMKitAuthoring`.
 
 ``DICOMStructuredReport/init(file:)`` parses a Structured Report's Content
 Tree (PS3.3 C.17.3): the dataset itself is the root ``DICOMContentItem``, and
@@ -261,61 +216,11 @@ tree into a graph the `children` model cannot represent.
 - ``DICOMError``
 - ``DICOMFileMetaInformation``
 - ``DICOMFileMetaValidationError``
-- ``DICOMModuleValidator``
-- ``DICOMIODValidator``
-- ``DICOMModuleRequirement``
-- ``DICOMValidationIssue``
 
-### DICOMweb
+### SOP identification
 
-- ``DICOMwebClient``
-- ``DICOMQIDOPagination``
-- ``DICOMwebRetryPolicy``
-- ``DICOMwebTransport``
-- ``DICOMwebError``
-- ``DICOMJSONDataset``
-- ``DICOMJSONBulkDataResolver``
-
-### DIMSE networking
-
-- ``DICOMAssociation``
-- ``DICOMAssociationPolicy``
-- ``DICOMAssociationNegotiation``
-- ``DICOMAssociationRequest``
-- ``DICOMAssociationAcceptance``
-- ``DICOMAssociationRejection``
-- ``DICOMPresentationContext``
-- ``DICOMPresentationContextAcceptance``
-- ``DICOMRoleSelection``
-- ``DICOMUserIdentity``
-- ``DICOMUserIdentityNegotiation``
-- ``DICOMImplementationIdentification``
-- ``DICOMAsynchronousOperationsWindow``
-- ``DICOMDIMSECommand``
-- ``DICOMDIMSEStatus``
-- ``DICOMDIMSERequest``
-- ``DICOMSubOperationCounts``
-- ``DICOMCFindResult``
-- ``DICOMCMoveResult``
-- ``DICOMCGetResult``
-- ``DICOMCStoreRequest``
-- ``DICOMNServiceResult``
 - ``DICOMSOPClass``
 - ``DICOMSOPReference``
-- ``DICOMStorageCommitmentRequest``
-- ``DICOMStorageCommitmentResult``
-- ``DICOMStorageCommitmentFailure``
-- ``DICOMStorageCommitmentError``
-- ``DICOMPerformedProcedureStepStatus``
-- ``DICOMULPDU``
-- ``DICOMPDataValue``
-- ``DICOMULTransport``
-- ``NetworkDICOMULTransport``
-- ``NetworkDICOMULListener``
-- ``DICOMAssociationError``
-- ``DICOMDIMSEError``
-- ``DICOMULError``
-- ``DICOMNetworkError``
 
 ### Image rendering
 

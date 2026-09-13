@@ -463,7 +463,8 @@ public actor DICOMAssociation {
 
     /// Requests Storage Commitment for the instances named in `request`, sending
     /// N-ACTION with Action Type ID 1 against the well-known Storage Commitment
-    /// Push Model SOP Instance (``DICOMSOPClass/storageCommitmentPushModelInstance``),
+    /// Push Model SOP Instance (`DICOMSOPClass.storageCommitmentPushModelInstance`,
+    /// in `DICOMKit`),
     /// encoding the Action Information in `contextID`'s negotiated transfer syntax.
     ///
     /// The part that trips people up: the *result* of the commitment does

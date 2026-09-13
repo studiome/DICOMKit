@@ -106,7 +106,7 @@ public struct DICOMDataset: Sendable, Sequence, Equatable {
 /// Whether Burned In Annotation `(0028,0301)` declares that pixel data
 /// carries rendered identifying text (PS3.3 C.7.6.16.1.1).
 ///
-/// Lives in core (rather than alongside ``DICOMConfidentialityProfile`` in
+/// Lives in core (rather than alongside `DICOMConfidentialityProfile` in
 /// `DICOMKitAuthoring`, which resolves it) because ``DICOMFile/burnedInAnnotation``
 /// exposes it as a plain reading concern independent of de-identification.
 public enum DICOMBurnedInAnnotationStatus: Sendable, Equatable {

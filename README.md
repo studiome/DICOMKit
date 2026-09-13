@@ -4,7 +4,10 @@
 
 Swift-first utilities for reading DICOM Part 10 files on iPadOS and macOS.
 
-[Read the API documentation](https://studiome.github.io/DICOMKit/documentation/dicomkit/)
+Read the API documentation for
+[DICOMKit](https://studiome.github.io/DICOMKit/documentation/dicomkit/),
+[DICOMKitAuthoring](https://studiome.github.io/DICOMKit/documentation/dicomkitauthoring/),
+and [DICOMKitNetworking](https://studiome.github.io/DICOMKit/documentation/dicomkitnetworking/).
 
 > **Status: early development.** DICOMKit is not yet suitable for clinical use.
 
@@ -297,6 +300,21 @@ try await association.respond(to: store, status: .success)
 
 ## Installation
 
+The package ships three products, so a consumer links only what it needs:
+
+| Product | Adds | Depends on | Needed by |
+| --- | --- | --- | --- |
+| `DICOMKit` | Parsing, rendering, navigation, dataset serialization | — | Every consumer, including a read-only viewer |
+| `DICOMKitAuthoring` | Part 10 file writing, the anonymizer, the PS3.15 confidentiality profile, module validation, UID generation | `DICOMKit` | An app that writes files, de-identifies datasets, or validates against module requirements |
+| `DICOMKitNetworking` | DIMSE association services (C-ECHO/C-STORE/C-FIND/C-MOVE/C-GET, N-service SCU/SCP), DICOMweb, DICOM JSON | `DICOMKit` | An app that talks to a PACS or a DICOMweb server |
+
+`DICOMKitNetworking` does not depend on `DICOMKitAuthoring`: a DIMSE service
+that needs to encode a dataset (C-STORE) uses `DICOMKit`'s own
+`DICOMFile.encodedDatasetData(transferSyntax:sequenceLengthEncoding:)`, not a
+Part 10 file writer. A viewer that only opens local files needs `DICOMKit`
+alone; an app that also retrieves from a PACS and exports de-identified
+studies links all three.
+
 ### Swift Package Manager
 
 Add DICOMKit as a dependency in `Package.swift`:
@@ -308,19 +326,45 @@ dependencies: [
 ]
 ```
 
-Then add `"DICOMKit"` to your target's `dependencies`.
+Then add the products your target actually needs to its `dependencies` — for
+example, a viewer:
+
+```swift
+.target(
+    name: "MyViewer",
+    dependencies: [.product(name: "DICOMKit", package: "DICOMKit")]
+)
+```
+
+or an app that also writes files and talks to a PACS:
+
+```swift
+.target(
+    name: "MyApp",
+    dependencies: [
+        .product(name: "DICOMKit", package: "DICOMKit"),
+        .product(name: "DICOMKitAuthoring", package: "DICOMKit"),
+        .product(name: "DICOMKitNetworking", package: "DICOMKit")
+    ]
+)
+```
 
 ### Xcode
 
 Alternatively, add `https://github.com/studiome/DICOMKit` via
-**File > Add Package Dependencies…** in Xcode.
+**File > Add Package Dependencies…** in Xcode, then check the products your
+target needs (`DICOMKit`, `DICOMKitAuthoring`, `DICOMKitNetworking`) in the
+package's product picker.
 
 ## Development
 
-DICOMKit is defined exclusively by `Package.swift`: it owns the library and
-test targets, platform versions, resources, dependencies, and CI build inputs.
-Open `Package.swift` directly in Xcode for normal development, or run the test
-suite from the command line:
+DICOMKit is defined exclusively by `Package.swift`: it owns the three library
+targets and the test target, platform versions, resources, dependencies, and
+CI build inputs. The library targets live in `DICOMKit/`, `DICOMKitAuthoring/`,
+and `DICOMKitNetworking/` at the repository root, each with its own DocC
+catalog; the single `DICOMKitTests` target covers all three, importing
+whichever products each test file exercises. Open `Package.swift` directly in
+Xcode for normal development, or run the test suite from the command line:
 
 ```bash
 swift test
@@ -371,8 +415,9 @@ pull request:
 
 - `.github/workflows/tests.yml` builds and tests the package on macOS, builds
   it for iOS and iPadOS, and runs `DICOMKitTests` on the iOS Simulator.
-- `.github/workflows/publish-docs.yml` builds the DocC catalog and publishes
-  it to GitHub Pages on every push to `main`.
+- `.github/workflows/publish-docs.yml` builds all three products' DocC
+  catalogs, merges them into one documentation archive with a combined
+  landing page, and publishes it to GitHub Pages on every push to `main`.
 
 ## Roadmap
 

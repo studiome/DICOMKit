@@ -3,7 +3,9 @@
 A scoping note for using DICOMKit as a **viewer-only** library: what a viewer
 actually needs, what it does not, and how to separate the two without forking.
 
-Status: proposal. Nothing here is implemented yet.
+Status: implemented. See [Implementation notes](#implementation-notes) at the
+end of this document for what was actually built and how it differs from the
+proposal below.
 
 ## Why separate at all
 
@@ -173,3 +175,80 @@ above, roughly in order of how often they bite:
 
 Items 1–4 are small and high-value; they are the natural first work on this
 branch.
+
+## Implementation notes
+
+The split above is implemented as proposed, in three commits: raising
+internal declarations shared across the future module boundary to `package`
+access (and relocating two declarations that turned out to be misplaced,
+below), the physical `git mv` and `Package.swift` changes, and this
+documentation. `Package.swift` declares three library products —
+`DICOMKit`, `DICOMKitAuthoring`, `DICOMKitNetworking` — each also a target at
+the repository root (`DICOMKit/`, `DICOMKitAuthoring/`, `DICOMKitNetworking/`),
+matching the existing `path:` convention. `CharLS`, `CTurboJPEG`, and `CZlib`
+stay attached to `DICOMKit`, as this document originally said they should.
+
+### The `DICOMWriter` seam, as actually cut
+
+The clean split held: `DICOMWriter.encodeDataset(_:transferSyntax:sequenceLengthEncoding:)`,
+`DICOMWriter.SequenceLengthEncoding`, and the private `append`/
+`encodedSequence`/`paddedValue`/`bigEndianValue`/`appendItem` machinery it
+needs all stayed in `DICOMKit`. `DICOMWriter.write(metaInformation:dataset:transferSyntax:requiredMetaInformation:sequenceLengthEncoding:)`
+and `DICOMFile.encodedData(sequenceLengthEncoding:)` moved to
+`DICOMKitAuthoring`, each as an extension in a new file
+(`DICOMWriter+Part10.swift`, `DICOMFile+Authoring.swift`) — cross-module
+extensions on public core types, exactly as this document predicted, needed
+no fallback to keeping the whole of `DICOMWriter` in core. The only addition
+needed inside core: `DICOMWriter.append` and `TransferSyntax.isWritable` (both
+used by the Part 10 assembly code that moved out) went from `private`/
+`internal` to `package`, since a same-file `private` no longer works once the
+caller is in a different file *and* a different module.
+
+### Where this document's assumption about networking was wrong
+
+This document assumed, in "Seams to cut" above, that `DICOMAssociation.cStore(messageID:file:)`
+would force a choice between `DICOMKitNetworking` depending on
+`DICOMKitAuthoring` or moving the encoding step to the caller, and recommended
+the latter. That choice turned out to already be made: `cStore(messageID:file:)`
+was already calling `DICOMFile.encodedDatasetData(transferSyntax:sequenceLengthEncoding:)`
+— the core-only, non-Part-10 encoder — rather than `DICOMFile.encodedData(sequenceLengthEncoding:)`.
+So `DICOMKitNetworking` needed no change at this seam and has no dependency on
+`DICOMKitAuthoring`, as required.
+
+### Two reverse dependencies this document didn't anticipate
+
+Mapping every file to a target surfaced two core types that had been living
+in what was about to become a sibling module, each because a core file used
+them:
+
+- `DICOMSOPReference` (SOP Class UID + SOP Instance UID pair) was declared in
+  `DICOMStorageCommitment.swift`, but `DICOMStructuredReport.swift` — core —
+  uses it for IMAGE, WAVEFORM, and COMPOSITE content items. It moved to
+  `DICOMSOPClass.swift`, staying in core.
+- `DICOMBurnedInAnnotationStatus` and the `DICOMDataset.burnedInAnnotation`
+  extension were declared in `DICOMDeidentificationModel.swift`, but
+  `DICOMFile.burnedInAnnotation` — core, and itself part of the viewer's
+  necessary-for-a-viewer surface — exposes them directly. Both moved to
+  `DICOMDataset.swift`, staying in core; `DICOMConfidentialityProfile.deidentify(_:replacement:)`
+  in `DICOMKitAuthoring` now just consumes `DICOMFile.burnedInAnnotation` as
+  public core API rather than owning its type.
+
+Neither move changed any public API's module in a way existing call sites
+would notice differently from the rest of the split — both symbols were
+already `public`; only the file (and now the module) they live in changed.
+
+### Documentation
+
+Each product has its own DocC catalog (`DICOMKit/DICOMKit.docc`,
+`DICOMKitAuthoring/DICOMKitAuthoring.docc`, `DICOMKitNetworking/DICOMKitNetworking.docc`),
+rather than one catalog covering all three. This was necessary, not stylistic:
+DocC's `--additional-symbol-graph-dir` resolves a `` ``Symbol`` `` doc-link
+only within the primary module a catalog documents, so a single catalog fed
+all three modules' symbol graphs left every cross-module doc-comment link
+unresolved in both directions, including a module's own doc comments
+referencing its own sibling declarations. Each catalog now documents exactly
+its own module's symbols, with all remaining cross-module mentions in doc
+comments written as plain text rather than doc-links; `.github/workflows/publish-docs.yml`
+builds all three, merges them with `docc merge` into one archive with a
+synthesized landing page, and publishes that with
+`docc process-archive transform-for-static-hosting`.

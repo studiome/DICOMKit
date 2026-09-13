@@ -13,8 +13,8 @@ public enum DICOMWriter {
     /// or File Meta Information.
     ///
     /// This is the payload a DIMSE service such as C-STORE transfers — it is
-    /// NOT a Part 10 file. Use ``write(metaInformation:dataset:transferSyntax:requiredMetaInformation:sequenceLengthEncoding:)``
-    /// to produce a complete file.
+    /// NOT a Part 10 file. Use `DICOMWriter.write(metaInformation:dataset:transferSyntax:requiredMetaInformation:sequenceLengthEncoding:)`,
+    /// added to this type by `DICOMKitAuthoring`, to produce a complete file.
     public static func encodeDataset(
         _ dataset: DICOMDataset,
         transferSyntax: TransferSyntax = .explicitVRLittleEndian,

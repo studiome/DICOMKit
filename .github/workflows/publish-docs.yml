@@ -37,15 +37,62 @@ jobs:
             -Xswiftc -emit-symbol-graph-dir \
             -Xswiftc "$RUNNER_TEMP/symbol-graphs"
 
+      - name: Split symbol graphs per target
+        run: |
+          # `docc convert` picks its primary module by matching the catalog's
+          # display name against the *.symbols.json files in
+          # --additional-symbol-graph-dir. Passing all three targets' graphs
+          # to every convert leaves each target's own doc comments unable to
+          # resolve links to symbols even in the same module, so each target
+          # gets its own directory containing just its own symbol graph plus
+          # any graphs of extensions it makes on other modules' types.
+          mkdir -p "$RUNNER_TEMP/sg-core" "$RUNNER_TEMP/sg-authoring" "$RUNNER_TEMP/sg-networking"
+          cp "$RUNNER_TEMP/symbol-graphs/DICOMKit.symbols.json" "$RUNNER_TEMP/sg-core/"
+          cp "$RUNNER_TEMP/symbol-graphs/DICOMKitAuthoring.symbols.json" "$RUNNER_TEMP/sg-authoring/"
+          cp "$RUNNER_TEMP/symbol-graphs/DICOMKitAuthoring@DICOMKit.symbols.json" "$RUNNER_TEMP/sg-authoring/"
+          cp "$RUNNER_TEMP/symbol-graphs/DICOMKitNetworking.symbols.json" "$RUNNER_TEMP/sg-networking/"
+          cp "$RUNNER_TEMP/symbol-graphs/DICOMKitNetworking@Foundation.symbols.json" "$RUNNER_TEMP/sg-networking/"
+
+      - name: Convert each product's documentation catalog
+        run: |
+          mkdir -p "$RUNNER_TEMP/archives"
+
+          xcrun docc convert DICOMKit/DICOMKit.docc \
+            --additional-symbol-graph-dir "$RUNNER_TEMP/sg-core" \
+            --output-path "$RUNNER_TEMP/archives/DICOMKit.doccarchive" \
+            --fallback-display-name DICOMKit \
+            --fallback-bundle-identifier org.studiome.DICOMKit \
+            --fallback-default-module-kind Framework
+
+          xcrun docc convert DICOMKitAuthoring/DICOMKitAuthoring.docc \
+            --additional-symbol-graph-dir "$RUNNER_TEMP/sg-authoring" \
+            --output-path "$RUNNER_TEMP/archives/DICOMKitAuthoring.doccarchive" \
+            --fallback-display-name DICOMKitAuthoring \
+            --fallback-bundle-identifier org.studiome.DICOMKitAuthoring \
+            --fallback-default-module-kind Framework
+
+          xcrun docc convert DICOMKitNetworking/DICOMKitNetworking.docc \
+            --additional-symbol-graph-dir "$RUNNER_TEMP/sg-networking" \
+            --output-path "$RUNNER_TEMP/archives/DICOMKitNetworking.doccarchive" \
+            --fallback-display-name DICOMKitNetworking \
+            --fallback-bundle-identifier org.studiome.DICOMKitNetworking \
+            --fallback-default-module-kind Framework
+
+      - name: Merge into one documentation archive
+        run: |
+          xcrun docc merge \
+            "$RUNNER_TEMP/archives/DICOMKit.doccarchive" \
+            "$RUNNER_TEMP/archives/DICOMKitAuthoring.doccarchive" \
+            "$RUNNER_TEMP/archives/DICOMKitNetworking.doccarchive" \
+            --synthesized-landing-page-name DICOMKit \
+            --output-path "$RUNNER_TEMP/combined.doccarchive"
+
       - name: Create static documentation site
         run: >-
-          xcrun docc convert DICOMKit/DICOMKit.docc
-          --additional-symbol-graph-dir "$RUNNER_TEMP/symbol-graphs"
-          --output-path "$RUNNER_TEMP/site"
-          --fallback-display-name DICOMKit
-          --fallback-bundle-identifier org.studiome.DICOMKit
-          --fallback-default-module-kind Framework
+          xcrun docc process-archive transform-for-static-hosting
+          "$RUNNER_TEMP/combined.doccarchive"
           --hosting-base-path "${{ steps.pages.outputs.base_path }}"
+          --output-path "$RUNNER_TEMP/site"
 
       - name: Upload GitHub Pages artifact
         uses: actions/upload-pages-artifact@v4

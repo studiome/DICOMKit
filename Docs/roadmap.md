@@ -80,7 +80,7 @@ Impact ratings below mean:
 | Gap | Impact | Note |
 | --- | :---: | --- |
 | ~~Fuzz testing~~ | **A** | ~~DICOMKit parses untrusted files and has no fuzzing. Several trap-on-malformed-input defects have already been found by hand; a fuzzer would find the rest.~~ **Done** — see Phase 1, item 3. A long local campaign (~9M mutations across 15 seeds, including `0` and `UInt64.max`) found nothing further to fix. |
-| Three-product split | **C** | Proposed in [viewer-profile.md](viewer-profile.md), not started. |
+| ~~Three-product split~~ | **C** | ~~Proposed in [viewer-profile.md](viewer-profile.md), not started.~~ **Done** — see Phase 6, item 11. `DICOMKit`/`DICOMKitAuthoring`/`DICOMKitNetworking` are now three SwiftPM products in one package; a viewer links `DICOMKit` alone. |
 | Performance benchmarks | **C** | No measurements, so regressions are invisible. |
 
 ## Plan
@@ -172,7 +172,10 @@ previous session's analysis; the key structural change comes first.
 
 ### Phase 6 — Packaging and the long tail (impact C)
 
-11. **Three-product split** (~3 commits) — as specified in [viewer-profile.md](viewer-profile.md).
+11. **Three-product split** — **Done** (3 commits: `17bd190`, `06c3b3c`, and this section's own "Document the three products") — as specified in [viewer-profile.md](viewer-profile.md), with one adjustment recorded there: `DICOMSOPReference` and `DICOMBurnedInAnnotationStatus` turned out to be reverse dependencies (core types referenced from what was about to become `DICOMKitNetworking`/`DICOMKitAuthoring`) and moved into core alongside the planned `DICOMWriter` split.
+    - Raise the internal declarations core, `DICOMKitAuthoring`, and `DICOMKitNetworking` share to `package` access, and relocate `DICOMSOPReference`/`DICOMBurnedInAnnotationStatus` into core ahead of the physical split, so the split itself is a clean, reviewable move. — `17bd190` "Widen access for cross-target internals"
+    - Move each target's files with `git mv` into `DICOMKit/`, `DICOMKitAuthoring/`, and `DICOMKitNetworking/`; split `DICOMWriter`/`DICOMFile`'s Part 10 file-assembly half into `DICOMKitAuthoring` extensions, keeping dataset serialization in core; declare three library products in `Package.swift`. Verified with `swift build`, `swift test` (485 tests unchanged), an iOS device-triple build, and `swift build --target DICOMKit` alone to confirm core has no dependency on the other two. — `06c3b3c` "Split the package into three products"
+    - Update README, this roadmap, the changelog, and split `DICOMKit.docc` into one DocC catalog per product, publishing all three from a merged documentation archive. — "Document the three products" (a commit can't record its own final hash; see `git log` for it)
 12. **Performance benchmarks** (~2 commits) — measure large-series open time and per-frame decode, so later work has a baseline.
 13. Remaining C-rated items, pulled forward whenever a consumer actually needs one.
 

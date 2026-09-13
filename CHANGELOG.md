@@ -4,6 +4,25 @@ All notable changes to DICOMKit are documented here.
 
 ## v0.5 — Unreleased
 
+- Split the package into three SwiftPM products: `DICOMKit` (parsing,
+  rendering, navigation, dataset serialization), `DICOMKitAuthoring` (Part 10
+  file writing, the anonymizer, the PS3.15 confidentiality profile, module
+  validation, UID generation), and `DICOMKitNetworking` (DIMSE association
+  services, DICOMweb, DICOM JSON). Both `DICOMKitAuthoring` and
+  `DICOMKitNetworking` depend only on `DICOMKit`; `DICOMKitNetworking` does
+  not depend on `DICOMKitAuthoring`. A viewer that only opens local files can
+  now link `DICOMKit` alone instead of also pulling in a DIMSE association
+  state machine, a TCP/TLS listener, and an HTTP client it never calls. See
+  [viewer-profile.md](Docs/viewer-profile.md) for the design and
+  [the README](README.md#installation) for which product a given app needs.
+  No behavior change: existing code that depended on the single `DICOMKit`
+  product and used only `DICOMKit`'s own APIs is unaffected; code using
+  `DICOMWriter.write`, `DICOMFile.encodedData(sequenceLengthEncoding:)`,
+  the anonymizer, `DICOMConfidentialityProfile`, `DICOMModuleValidator`, or
+  `DICOMUIDGenerator` now needs to add `DICOMKitAuthoring`; code using
+  `DICOMAssociation`, `DICOMwebClient`, or DICOM JSON now needs to add
+  `DICOMKitNetworking`.
+
 - Added the three High-Throughput JPEG 2000 (HTJ2K) transfer syntaxes —
   `.201` (Lossless Only), `.202` (RPCL Options, Lossless Only), and `.203` —
   to `TransferSyntax`. A dataset declaring any of these now opens and its

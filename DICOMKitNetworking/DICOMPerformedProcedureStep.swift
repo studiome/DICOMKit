@@ -20,7 +20,7 @@ extension DICOMAssociation {
     /// Step Attributes Sequence, and so on, per PS3.3 C.4.14) is the caller's
     /// responsibility. That set is long and modality-specific; guessing at it
     /// here would produce data sets that look conformant without actually
-    /// being so. Use ``DICOMModuleValidator`` to check `attributes` against
+    /// being so. Use `DICOMModuleValidator` (in `DICOMKitAuthoring`) to check `attributes` against
     /// the module definitions that apply before sending it.
     public func createPerformedProcedureStep(messageID: UInt16, contextID: UInt8, sopInstanceUID: String?, attributes: DICOMDataset, transferSyntax: TransferSyntax) async throws -> DICOMNServiceResult {
         let dataset = DICOMDataset(elements: Array(attributes) + [
@@ -41,7 +41,7 @@ extension DICOMAssociation {
     /// As with ``createPerformedProcedureStep(messageID:contextID:sopInstanceUID:attributes:transferSyntax:)``,
     /// assembling whatever attributes the transition itself requires (for
     /// example Performed Series Sequence on completion) is the caller's
-    /// responsibility; use ``DICOMModuleValidator`` to check them.
+    /// responsibility; use `DICOMModuleValidator` (in `DICOMKitAuthoring`) to check them.
     public func updatePerformedProcedureStep(messageID: UInt16, contextID: UInt8, sopInstanceUID: String, status: DICOMPerformedProcedureStepStatus, attributes: DICOMDataset, transferSyntax: TransferSyntax) async throws -> DICOMNServiceResult {
         guard status != .inProgress else { throw DICOMAssociationError.invalidProcedureStepTransition }
         let dataset = DICOMDataset(elements: Array(attributes) + [

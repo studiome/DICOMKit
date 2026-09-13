@@ -289,8 +289,9 @@ public struct DICOMFile: Sendable {
 
     /// Whether Burned In Annotation `(0028,0301)` declares that pixel data
     /// carries rendered identifying text. See
-    /// ``DICOMConfidentialityProfile/deidentify(_:replacement:)``, which
-    /// consults this before claiming a dataset has been de-identified.
+    /// `DICOMConfidentialityProfile.deidentify(_:replacement:)` in
+    /// `DICOMKitAuthoring`, which consults this before claiming a dataset
+    /// has been de-identified.
     public var burnedInAnnotation: DICOMBurnedInAnnotationStatus {
         dataset.burnedInAnnotation
     }
@@ -990,7 +991,7 @@ public struct DICOMFile: Sendable {
     ///
     /// The caller must supply its transfer syntax because a raw dataset has
     /// no authoritative syntax declaration. For ordinary exchange files use
-    /// ``init(data:)`` instead.
+    /// ``init(data:options:)`` instead.
     public init(datasetData input: Data, transferSyntax: TransferSyntax, options: DICOMReadOptions = .default) throws {
         guard transferSyntax.isSupported else {
             throw DICOMError.unsupportedTransferSyntax(transferSyntax.uid)
