@@ -89,6 +89,14 @@ let package = Package(
                 .swiftLanguageMode(.v6)
             ]
         ),
+        .executableTarget(
+            name: "DICOMKitBenchmark",
+            dependencies: ["DICOMKit"],
+            path: "DICOMKitBenchmark",
+            swiftSettings: [
+                .swiftLanguageMode(.v6)
+            ]
+        ),
         .testTarget(
             name: "DICOMKitTests",
             dependencies: ["DICOMKit", "DICOMKitAuthoring", "DICOMKitNetworking"],
