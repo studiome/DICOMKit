@@ -118,6 +118,27 @@ public enum DICOMDIMSECommand: Sendable, Equatable {
     /// Uses the **Affected** SOP Class/Instance UID, as every N-service response does.
     case nSetResponse(messageIDBeingRespondedTo: UInt16, affectedSOPClassUID: String?, affectedSOPInstanceUID: String?, status: DICOMDIMSEStatus, datasetFollows: Bool)
 
+    /// N-ACTION: an SCU invokes a specific action on a Normalized SOP Instance,
+    /// named (as with N-GET/N-SET) by the **Requested** SOP Class/Instance UID.
+    case nActionRequest(messageID: UInt16, requestedSOPClassUID: String, requestedSOPInstanceUID: String, actionTypeID: UInt16, datasetFollows: Bool)
+    /// Uses the **Affected** SOP Class/Instance UID; the action type is echoed back
+    /// only conditionally (PS3.7).
+    case nActionResponse(messageIDBeingRespondedTo: UInt16, affectedSOPClassUID: String?, affectedSOPInstanceUID: String?, actionTypeID: UInt16?, status: DICOMDIMSEStatus, datasetFollows: Bool)
+
+    /// N-CREATE: an SCU asks an SCP to create a new Normalized SOP Instance. Unlike
+    /// every other N-service request, this one uses the **Affected** SOP
+    /// Class/Instance UID even though it is a request — because the instance does
+    /// not exist yet, there is nothing to "request" against. The instance UID is
+    /// optional because the SCP, not the SCU, may be the one to assign it.
+    case nCreateRequest(messageID: UInt16, affectedSOPClassUID: String, affectedSOPInstanceUID: String?, datasetFollows: Bool)
+    case nCreateResponse(messageIDBeingRespondedTo: UInt16, affectedSOPClassUID: String?, affectedSOPInstanceUID: String?, status: DICOMDIMSEStatus, datasetFollows: Bool)
+
+    /// N-DELETE: an SCU asks an SCP to delete a Normalized SOP Instance, named by
+    /// the **Requested** SOP Class/Instance UID. Neither the request nor the
+    /// response ever carries a data set, so neither case has a `datasetFollows`.
+    case nDeleteRequest(messageID: UInt16, requestedSOPClassUID: String, requestedSOPInstanceUID: String)
+    case nDeleteResponse(messageIDBeingRespondedTo: UInt16, affectedSOPClassUID: String?, affectedSOPInstanceUID: String?, status: DICOMDIMSEStatus)
+
     /// `true` when a data set follows this command's PDVs, per the Command Data Set
     /// Type element (0000,0800): fixed by command kind for requests, and by
     /// `identifierFollows` for the C-FIND/C-MOVE/C-GET responses.
@@ -141,6 +162,11 @@ public enum DICOMDIMSECommand: Sendable, Equatable {
         case .nGetResponse(_, _, _, _, let datasetFollows): return datasetFollows
         case .nSetRequest: return true
         case .nSetResponse(_, _, _, _, let datasetFollows): return datasetFollows
+        case .nActionRequest(_, _, _, _, let datasetFollows): return datasetFollows
+        case .nActionResponse(_, _, _, _, _, let datasetFollows): return datasetFollows
+        case .nCreateRequest(_, _, _, let datasetFollows): return datasetFollows
+        case .nCreateResponse(_, _, _, _, let datasetFollows): return datasetFollows
+        case .nDeleteRequest, .nDeleteResponse: return false
         }
     }
 
@@ -252,6 +278,47 @@ public enum DICOMDIMSECommand: Sendable, Equatable {
             Self.appendElement(tag: 0x01000000, value: Self.uint16(0x8120), to: &content)
             Self.appendElement(tag: 0x01200000, value: Self.uint16(messageID), to: &content)
             Self.appendElement(tag: 0x08000000, value: Self.uint16(datasetFollows ? 0x0000 : 0x0101), to: &content)
+            Self.appendElement(tag: 0x09000000, value: Self.uint16(status.rawValue), to: &content)
+            if let sopClassUID { Self.appendElement(tag: 0x00020000, value: Self.ui(sopClassUID), to: &content) }
+            if let sopInstanceUID { Self.appendElement(tag: 0x10000000, value: Self.ui(sopInstanceUID), to: &content) }
+        case .nActionRequest(let messageID, let sopClassUID, let sopInstanceUID, let actionTypeID, let datasetFollows):
+            Self.appendElement(tag: 0x00030000, value: Self.ui(sopClassUID), to: &content)
+            Self.appendElement(tag: 0x01000000, value: Self.uint16(0x0130), to: &content)
+            Self.appendElement(tag: 0x01100000, value: Self.uint16(messageID), to: &content)
+            Self.appendElement(tag: 0x08000000, value: Self.uint16(datasetFollows ? 0x0000 : 0x0101), to: &content)
+            Self.appendElement(tag: 0x10010000, value: Self.ui(sopInstanceUID), to: &content)
+            Self.appendElement(tag: 0x10080000, value: Self.uint16(actionTypeID), to: &content)
+        case .nActionResponse(let messageID, let sopClassUID, let sopInstanceUID, let actionTypeID, let status, let datasetFollows):
+            Self.appendElement(tag: 0x01000000, value: Self.uint16(0x8130), to: &content)
+            Self.appendElement(tag: 0x01200000, value: Self.uint16(messageID), to: &content)
+            Self.appendElement(tag: 0x08000000, value: Self.uint16(datasetFollows ? 0x0000 : 0x0101), to: &content)
+            Self.appendElement(tag: 0x09000000, value: Self.uint16(status.rawValue), to: &content)
+            if let sopClassUID { Self.appendElement(tag: 0x00020000, value: Self.ui(sopClassUID), to: &content) }
+            if let sopInstanceUID { Self.appendElement(tag: 0x10000000, value: Self.ui(sopInstanceUID), to: &content) }
+            if let actionTypeID { Self.appendElement(tag: 0x10080000, value: Self.uint16(actionTypeID), to: &content) }
+        case .nCreateRequest(let messageID, let sopClassUID, let sopInstanceUID, let datasetFollows):
+            Self.appendElement(tag: 0x00020000, value: Self.ui(sopClassUID), to: &content)
+            Self.appendElement(tag: 0x01000000, value: Self.uint16(0x0140), to: &content)
+            Self.appendElement(tag: 0x01100000, value: Self.uint16(messageID), to: &content)
+            Self.appendElement(tag: 0x08000000, value: Self.uint16(datasetFollows ? 0x0000 : 0x0101), to: &content)
+            if let sopInstanceUID { Self.appendElement(tag: 0x10000000, value: Self.ui(sopInstanceUID), to: &content) }
+        case .nCreateResponse(let messageID, let sopClassUID, let sopInstanceUID, let status, let datasetFollows):
+            Self.appendElement(tag: 0x01000000, value: Self.uint16(0x8140), to: &content)
+            Self.appendElement(tag: 0x01200000, value: Self.uint16(messageID), to: &content)
+            Self.appendElement(tag: 0x08000000, value: Self.uint16(datasetFollows ? 0x0000 : 0x0101), to: &content)
+            Self.appendElement(tag: 0x09000000, value: Self.uint16(status.rawValue), to: &content)
+            if let sopClassUID { Self.appendElement(tag: 0x00020000, value: Self.ui(sopClassUID), to: &content) }
+            if let sopInstanceUID { Self.appendElement(tag: 0x10000000, value: Self.ui(sopInstanceUID), to: &content) }
+        case .nDeleteRequest(let messageID, let sopClassUID, let sopInstanceUID):
+            Self.appendElement(tag: 0x00030000, value: Self.ui(sopClassUID), to: &content)
+            Self.appendElement(tag: 0x01000000, value: Self.uint16(0x0150), to: &content)
+            Self.appendElement(tag: 0x01100000, value: Self.uint16(messageID), to: &content)
+            Self.appendElement(tag: 0x08000000, value: Self.uint16(0x0101), to: &content)
+            Self.appendElement(tag: 0x10010000, value: Self.ui(sopInstanceUID), to: &content)
+        case .nDeleteResponse(let messageID, let sopClassUID, let sopInstanceUID, let status):
+            Self.appendElement(tag: 0x01000000, value: Self.uint16(0x8150), to: &content)
+            Self.appendElement(tag: 0x01200000, value: Self.uint16(messageID), to: &content)
+            Self.appendElement(tag: 0x08000000, value: Self.uint16(0x0101), to: &content)
             Self.appendElement(tag: 0x09000000, value: Self.uint16(status.rawValue), to: &content)
             if let sopClassUID { Self.appendElement(tag: 0x00020000, value: Self.ui(sopClassUID), to: &content) }
             if let sopInstanceUID { Self.appendElement(tag: 0x10000000, value: Self.ui(sopInstanceUID), to: &content) }
@@ -368,6 +435,57 @@ public enum DICOMDIMSECommand: Sendable, Equatable {
                 affectedSOPInstanceUID: values[0x10000000].flatMap(readUI),
                 status: DICOMDIMSEStatus(rawValue: status),
                 datasetFollows: dataSetType != 0x0101
+            )
+        case 0x0130:
+            guard let messageID = values[0x01100000].flatMap(readUInt16),
+                  let dataSetType = values[0x08000000].flatMap(readUInt16),
+                  let sopClassUID = values[0x00030000].flatMap(readUI),
+                  let sopInstanceUID = values[0x10010000].flatMap(readUI),
+                  let actionTypeID = values[0x10080000].flatMap(readUInt16) else { throw DICOMDIMSEError.malformedCommandSet }
+            return .nActionRequest(messageID: messageID, requestedSOPClassUID: sopClassUID, requestedSOPInstanceUID: sopInstanceUID, actionTypeID: actionTypeID, datasetFollows: dataSetType != 0x0101)
+        case 0x8130:
+            guard let messageID = values[0x01200000].flatMap(readUInt16),
+                  let dataSetType = values[0x08000000].flatMap(readUInt16),
+                  let status = values[0x09000000].flatMap(readUInt16) else { throw DICOMDIMSEError.malformedCommandSet }
+            return .nActionResponse(
+                messageIDBeingRespondedTo: messageID,
+                affectedSOPClassUID: values[0x00020000].flatMap(readUI),
+                affectedSOPInstanceUID: values[0x10000000].flatMap(readUI),
+                actionTypeID: values[0x10080000].flatMap(readUInt16),
+                status: DICOMDIMSEStatus(rawValue: status),
+                datasetFollows: dataSetType != 0x0101
+            )
+        case 0x0140:
+            guard let messageID = values[0x01100000].flatMap(readUInt16),
+                  let dataSetType = values[0x08000000].flatMap(readUInt16),
+                  let sopClassUID = values[0x00020000].flatMap(readUI) else { throw DICOMDIMSEError.malformedCommandSet }
+            return .nCreateRequest(messageID: messageID, affectedSOPClassUID: sopClassUID, affectedSOPInstanceUID: values[0x10000000].flatMap(readUI), datasetFollows: dataSetType != 0x0101)
+        case 0x8140:
+            guard let messageID = values[0x01200000].flatMap(readUInt16),
+                  let dataSetType = values[0x08000000].flatMap(readUInt16),
+                  let status = values[0x09000000].flatMap(readUInt16) else { throw DICOMDIMSEError.malformedCommandSet }
+            return .nCreateResponse(
+                messageIDBeingRespondedTo: messageID,
+                affectedSOPClassUID: values[0x00020000].flatMap(readUI),
+                affectedSOPInstanceUID: values[0x10000000].flatMap(readUI),
+                status: DICOMDIMSEStatus(rawValue: status),
+                datasetFollows: dataSetType != 0x0101
+            )
+        case 0x0150:
+            guard let messageID = values[0x01100000].flatMap(readUInt16),
+                  values[0x08000000].flatMap(readUInt16) == 0x0101,
+                  let sopClassUID = values[0x00030000].flatMap(readUI),
+                  let sopInstanceUID = values[0x10010000].flatMap(readUI) else { throw DICOMDIMSEError.malformedCommandSet }
+            return .nDeleteRequest(messageID: messageID, requestedSOPClassUID: sopClassUID, requestedSOPInstanceUID: sopInstanceUID)
+        case 0x8150:
+            guard values[0x08000000].flatMap(readUInt16) == 0x0101,
+                  let messageID = values[0x01200000].flatMap(readUInt16),
+                  let status = values[0x09000000].flatMap(readUInt16) else { throw DICOMDIMSEError.malformedCommandSet }
+            return .nDeleteResponse(
+                messageIDBeingRespondedTo: messageID,
+                affectedSOPClassUID: values[0x00020000].flatMap(readUI),
+                affectedSOPInstanceUID: values[0x10000000].flatMap(readUI),
+                status: DICOMDIMSEStatus(rawValue: status)
             )
         default: throw DICOMDIMSEError.unsupportedCommand(field)
         }

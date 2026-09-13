@@ -1183,6 +1183,138 @@ struct DICOMDIMSENServiceTests {
         #expect(try DICOMDIMSECommand.decodeCommandSet(response.encodedCommandSet()) == response)
         #expect(!response.hasDataset)
     }
+
+    @Test func nActionRequestRoundTripsAndHasDatasetFollowsFlag() throws {
+        let withDataset = DICOMDIMSECommand.nActionRequest(
+            messageID: 1,
+            requestedSOPClassUID: DICOMSOPClass.storageCommitmentPushModel,
+            requestedSOPInstanceUID: "1.2.3.4",
+            actionTypeID: 1,
+            datasetFollows: true
+        )
+        #expect(try DICOMDIMSECommand.decodeCommandSet(withDataset.encodedCommandSet()) == withDataset)
+        #expect(withDataset.hasDataset)
+
+        let withoutDataset = DICOMDIMSECommand.nActionRequest(
+            messageID: 2,
+            requestedSOPClassUID: DICOMSOPClass.storageCommitmentPushModel,
+            requestedSOPInstanceUID: "1.2.3.5",
+            actionTypeID: 1,
+            datasetFollows: false
+        )
+        #expect(try DICOMDIMSECommand.decodeCommandSet(withoutDataset.encodedCommandSet()) == withoutDataset)
+        #expect(!withoutDataset.hasDataset)
+    }
+
+    @Test func nActionResponseRoundTripsWithAndWithoutOptionalFields() throws {
+        let full = DICOMDIMSECommand.nActionResponse(
+            messageIDBeingRespondedTo: 3,
+            affectedSOPClassUID: DICOMSOPClass.storageCommitmentPushModel,
+            affectedSOPInstanceUID: "1.2.3.6",
+            actionTypeID: 1,
+            status: .success,
+            datasetFollows: false
+        )
+        #expect(try DICOMDIMSECommand.decodeCommandSet(full.encodedCommandSet()) == full)
+
+        let minimal = DICOMDIMSECommand.nActionResponse(
+            messageIDBeingRespondedTo: 4,
+            affectedSOPClassUID: nil,
+            affectedSOPInstanceUID: nil,
+            actionTypeID: nil,
+            status: .success,
+            datasetFollows: false
+        )
+        let encoded = try minimal.encodedCommandSet()
+        #expect(try DICOMDIMSECommand.decodeCommandSet(encoded) == minimal)
+        #expect(commandSetElementValue(tag: 0x00020000, in: encoded) == nil)
+        #expect(commandSetElementValue(tag: 0x10000000, in: encoded) == nil)
+        #expect(commandSetElementValue(tag: 0x10080000, in: encoded) == nil)
+    }
+
+    @Test func nCreateRequestUsesAffectedFormsAndOmitsNilInstanceUID() throws {
+        let withInstance = DICOMDIMSECommand.nCreateRequest(
+            messageID: 1,
+            affectedSOPClassUID: DICOMSOPClass.modalityPerformedProcedureStep,
+            affectedSOPInstanceUID: "1.2.3.4",
+            datasetFollows: true
+        )
+        #expect(try DICOMDIMSECommand.decodeCommandSet(withInstance.encodedCommandSet()) == withInstance)
+        #expect(withInstance.hasDataset)
+
+        let withoutInstance = DICOMDIMSECommand.nCreateRequest(
+            messageID: 2,
+            affectedSOPClassUID: DICOMSOPClass.modalityPerformedProcedureStep,
+            affectedSOPInstanceUID: nil,
+            datasetFollows: true
+        )
+        let encoded = try withoutInstance.encodedCommandSet()
+        #expect(try DICOMDIMSECommand.decodeCommandSet(encoded) == withoutInstance)
+        #expect(commandSetElementValue(tag: 0x10000000, in: encoded) == nil)
+    }
+
+    @Test func nCreateResponseRoundTrips() throws {
+        let response = DICOMDIMSECommand.nCreateResponse(
+            messageIDBeingRespondedTo: 3,
+            affectedSOPClassUID: DICOMSOPClass.modalityPerformedProcedureStep,
+            affectedSOPInstanceUID: "1.2.3.4",
+            status: .success,
+            datasetFollows: false
+        )
+        #expect(try DICOMDIMSECommand.decodeCommandSet(response.encodedCommandSet()) == response)
+        #expect(!response.hasDataset)
+    }
+
+    @Test func nDeleteRequestAndResponseNeverHaveADatasetAndRoundTrip() throws {
+        let request = DICOMDIMSECommand.nDeleteRequest(
+            messageID: 1,
+            requestedSOPClassUID: DICOMSOPClass.modalityPerformedProcedureStep,
+            requestedSOPInstanceUID: "1.2.3.4"
+        )
+        #expect(try DICOMDIMSECommand.decodeCommandSet(request.encodedCommandSet()) == request)
+        #expect(!request.hasDataset)
+
+        let response = DICOMDIMSECommand.nDeleteResponse(
+            messageIDBeingRespondedTo: 2,
+            affectedSOPClassUID: DICOMSOPClass.modalityPerformedProcedureStep,
+            affectedSOPInstanceUID: "1.2.3.4",
+            status: .success
+        )
+        #expect(try DICOMDIMSECommand.decodeCommandSet(response.encodedCommandSet()) == response)
+        #expect(!response.hasDataset)
+    }
+
+    @Test func decoderThrowsUnsupportedCommandForUnknownCommandField() throws {
+        #expect(throws: DICOMDIMSEError.unsupportedCommand(0x9999)) {
+            try DICOMDIMSECommand.decodeCommandSet(
+                DICOMDIMSECommand.cEchoRequest(messageID: 1).encodedCommandSet().replacingCommandField(with: 0x9999)
+            )
+        }
+    }
+}
+
+/// Replaces the value of the Command Field (0000,0100) element in an already-encoded
+/// DIMSE command set, for tests that need a syntactically valid but unrecognized
+/// command field.
+private extension Data {
+    func replacingCommandField(with field: UInt16) -> Data {
+        guard let range = firstRangeOfCommandFieldValue(in: self) else { return self }
+        var copy = self
+        copy.replaceSubrange(range, with: [UInt8(field & 0xFF), UInt8(field >> 8)])
+        return copy
+    }
+}
+
+private func firstRangeOfCommandFieldValue(in data: Data) -> Range<Data.Index>? {
+    var offset = data.startIndex
+    while offset + 8 <= data.endIndex {
+        let tag = UInt32(data[offset]) | UInt32(data[offset + 1]) << 8 | UInt32(data[offset + 2]) << 16 | UInt32(data[offset + 3]) << 24
+        let length = Int(UInt32(data[offset + 4]) | UInt32(data[offset + 5]) << 8 | UInt32(data[offset + 6]) << 16 | UInt32(data[offset + 7]) << 24)
+        let valueStart = offset + 8
+        if tag == 0x01000000 { return valueStart..<(valueStart + length) }
+        offset = valueStart + length
+    }
+    return nil
 }
 
 /// Reads a single element's value from an encoded DIMSE command set by tag, to assert exact
