@@ -369,6 +369,24 @@ struct DICOMStructuredReportDocumentTests {
         try DICOMStructuredReport(file: DICOMFile(data: DICOMWriter.write(dataset: dataset)))
     }
 
+    private func conceptNameElement(codeMeaning: String) -> DICOMElement {
+        let item = DICOMDataset(elements: [
+            DICOMElement(tag: DICOMTag(group: 0x0008, element: 0x0104), vr: .LO, value: Data(codeMeaning.utf8))
+        ])
+        return DICOMElement(tag: DICOMTag(group: 0x0040, element: 0xA043), vr: .SQ, value: Data(), sequenceItems: [item])
+    }
+
+    private func measuredValueSequenceElement(value: Double, unitsCodeMeaning: String) -> DICOMElement {
+        let unitsItem = DICOMDataset(elements: [
+            DICOMElement(tag: DICOMTag(group: 0x0008, element: 0x0104), vr: .LO, value: Data(unitsCodeMeaning.utf8))
+        ])
+        let measuredValueItem = DICOMDataset(elements: [
+            DICOMElement(tag: DICOMTag(group: 0x0040, element: 0xA30A), vr: .DS, value: Data("\(value)".utf8)),
+            DICOMElement(tag: DICOMTag(group: 0x0040, element: 0x08EA), vr: .SQ, value: Data(), sequenceItems: [unitsItem])
+        ])
+        return DICOMElement(tag: DICOMTag(group: 0x0040, element: 0xA300), vr: .SQ, value: Data(), sequenceItems: [measuredValueItem])
+    }
+
     @Test func basicTextSRParsesFlagsAndTwoLevelTree() throws {
         let grandchild = DICOMDataset(elements: [
             relationshipTypeElement("CONTAINS"),
@@ -442,5 +460,81 @@ struct DICOMStructuredReportDocumentTests {
         #expect(throws: DICOMError.invalidStructuredReport) {
             try self.parse(root)
         }
+    }
+
+    // MARK: - Task 4: rendering and walking
+
+    private func threeLevelReport() throws -> DICOMStructuredReport {
+        let numItem = DICOMDataset(elements: [
+            relationshipTypeElement("CONTAINS"),
+            valueTypeElement("NUM"),
+            conceptNameElement(codeMeaning: "Length"),
+            measuredValueSequenceElement(value: 12.5, unitsCodeMeaning: "millimeter")
+        ])
+        let findingsContainer = DICOMDataset(elements: [
+            relationshipTypeElement("CONTAINS"),
+            valueTypeElement("CONTAINER"),
+            conceptNameElement(codeMeaning: "Findings"),
+            DICOMElement(tag: DICOMTag(group: 0x0040, element: 0xA050), vr: .CS, value: Data("SEPARATE".utf8)),
+            contentSequenceElement([numItem])
+        ])
+        let root = DICOMDataset(elements: [
+            valueTypeElement("CONTAINER"),
+            conceptNameElement(codeMeaning: "Report"),
+            contentSequenceElement([findingsContainer])
+        ])
+        return try parse(root)
+    }
+
+    @Test func plainTextRendersNestedReportWithStableIndentationAndNumValue() throws {
+        let report = try threeLevelReport()
+
+        let lines = report.plainText().split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+
+        #expect(lines.count == 3)
+        #expect(lines[0] == "Report")
+        #expect(lines[1] == "  Findings")
+        #expect(lines[2].hasPrefix("    "))
+        #expect(lines[2].contains("Length"))
+        #expect(lines[2].contains("12.5"))
+        #expect(lines[2].contains("millimeter"))
+    }
+
+    @Test func walkVisitsEveryItemOnceWithCorrectDepths() throws {
+        let report = try threeLevelReport()
+
+        var visited: [(valueType: String, depth: Int)] = []
+        report.walk { item, depth in visited.append((item.valueType, depth)) }
+
+        #expect(visited.map(\.valueType) == ["CONTAINER", "CONTAINER", "NUM"])
+        #expect(visited.map(\.depth) == [0, 1, 2])
+    }
+
+    @Test func itemsWithValueTypeFindsNestedMatches() throws {
+        let text1 = DICOMDataset(elements: [
+            relationshipTypeElement("CONTAINS"),
+            valueTypeElement("TEXT"),
+            DICOMElement(tag: DICOMTag(group: 0x0040, element: 0xA160), vr: .UT, value: Data("first".utf8))
+        ])
+        let text2 = DICOMDataset(elements: [
+            relationshipTypeElement("CONTAINS"),
+            valueTypeElement("TEXT"),
+            DICOMElement(tag: DICOMTag(group: 0x0040, element: 0xA160), vr: .UT, value: Data("second".utf8))
+        ])
+        let nestedContainer = DICOMDataset(elements: [
+            relationshipTypeElement("CONTAINS"),
+            valueTypeElement("CONTAINER"),
+            contentSequenceElement([text2])
+        ])
+        let root = DICOMDataset(elements: [
+            valueTypeElement("CONTAINER"),
+            contentSequenceElement([text1, nestedContainer])
+        ])
+        let report = try parse(root)
+
+        let textItems = report.items(withValueType: "TEXT")
+
+        #expect(textItems.count == 2)
+        #expect(textItems.map(\.value) == [.text("first"), .text("second")])
     }
 }

@@ -300,3 +300,98 @@ public struct DICOMStructuredReport: Sendable, Equatable {
         root = try dataset.structuredReportContentItem(isRoot: true, inheriting: .default, depth: 0)
     }
 }
+
+extension DICOMStructuredReport {
+    /// Visits every Content Item in the tree depth-first, root first, along
+    /// with its depth (the root is depth `0`).
+    public func walk(_ visit: (DICOMContentItem, Int) throws -> Void) rethrows {
+        try Self.walk(root, depth: 0, visit: visit)
+    }
+
+    private static func walk(_ item: DICOMContentItem, depth: Int, visit: (DICOMContentItem, Int) throws -> Void) rethrows {
+        try visit(item, depth)
+        for child in item.children {
+            try walk(child, depth: depth + 1, visit: visit)
+        }
+    }
+
+    /// Every Content Item in the tree (the root included) whose
+    /// ``DICOMContentItem/valueType`` equals `valueType`, in depth-first
+    /// order.
+    public func items(withValueType valueType: String) -> [DICOMContentItem] {
+        var matches: [DICOMContentItem] = []
+        walk { item, _ in
+            if item.valueType == valueType { matches.append(item) }
+        }
+        return matches
+    }
+
+    /// A readable, one-line-per-item rendering of the Content Tree, each
+    /// line indented by its depth.
+    ///
+    /// This is a debugging and fallback rendering, **not** a clinical
+    /// presentation: it shows a concept name's code meaning when present
+    /// and the value rendered per its type, with no template awareness and
+    /// no clinical formatting. A CONTAINER's concept name is shown as a
+    /// heading. A real report view should walk the tree itself with
+    /// ``walk(_:)`` rather than re-parse this string.
+    public func plainText(indent: String = "  ") -> String {
+        var lines: [String] = []
+        walk { item, depth in
+            lines.append(String(repeating: indent, count: depth) + Self.line(for: item))
+        }
+        return lines.joined(separator: "\n")
+    }
+
+    private static func line(for item: DICOMContentItem) -> String {
+        let name = item.conceptName?.codeMeaning
+        if case .container = item.value {
+            return name ?? item.valueType
+        }
+        let description = valueDescription(item.value)
+        guard let name else { return description }
+        guard !description.isEmpty else { return name }
+        return "\(name): \(description)"
+    }
+
+    private static func valueDescription(_ value: DICOMContentItemValue) -> String {
+        switch value {
+        case .container:
+            return ""
+        case .text(let text):
+            return text
+        case .code(let code):
+            return code.codeMeaning ?? code.codeValue ?? ""
+        case let .num(numericValue, units, qualifier):
+            if let numericValue {
+                let unitsText = units?.codeMeaning ?? units?.codeValue
+                return unitsText.map { "\(numericValue) \($0)" } ?? "\(numericValue)"
+            }
+            return qualifier?.codeMeaning ?? qualifier?.codeValue ?? ""
+        case .date(let date):
+            return date
+        case .time(let time):
+            return time
+        case .dateTime(let dateTime):
+            return dateTime
+        case .uidRef(let uid):
+            return uid
+        case .personName(let personName):
+            return personName.alphabetic ?? personName.ideographic ?? personName.phonetic ?? ""
+        case let .image(reference, _, _):
+            return reference.sopInstanceUID
+        case let .waveform(reference, _):
+            return reference.sopInstanceUID
+        case .composite(let reference):
+            return reference.sopInstanceUID
+        case let .spatialCoordinates(graphicType, _):
+            return graphicType
+        case let .spatialCoordinates3D(graphicType, _, _):
+            return graphicType
+        case let .temporalCoordinates(rangeType, _, _, _):
+            return rangeType
+        case .unsupported(let valueType):
+            return "(unsupported \(valueType))"
+        }
+    }
+}
