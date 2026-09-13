@@ -287,6 +287,18 @@ public struct DICOMFile: Sendable {
         dataset.presentationLUTShape
     }
 
+    /// The top-level Real World Value Mapping Sequence `(0040,9096)`.
+    ///
+    /// This is what a PET viewer uses to convert a stored pixel value to a
+    /// Standardized Uptake Value (SUV); see ``DICOMRealWorldValueMap`` for
+    /// why it is a separate transform from the Modality LUT. Enhanced
+    /// Multi-frame objects may instead (or additionally) declare this per
+    /// frame — see ``frameFunctionalGroups``. Empty when the dataset
+    /// declares no mapping.
+    public var realWorldValueMaps: [DICOMRealWorldValueMap] {
+        dataset.realWorldValueMaps(isSigned: dataset[.pixelRepresentation]?.uint16Value == 1, characterSet: dataset.characterSet)
+    }
+
     /// The first frame of ``pixelDataFrames``, if available.
     ///
     /// `nil` if `(7FE0,0010)` Pixel Data is absent, or if any of the
@@ -729,6 +741,7 @@ public struct DICOMFile: Sendable {
                 if let value = perFrameGroups.frameContent { resolved.frameContent = value }
                 if let value = perFrameGroups.frameAnatomy { resolved.frameAnatomy = value }
                 if let value = perFrameGroups.displayShutter { resolved.displayShutter = value }
+                if !perFrameGroups.realWorldValueMaps.isEmpty { resolved.realWorldValueMaps = perFrameGroups.realWorldValueMaps }
             }
             return resolved
         }
@@ -784,6 +797,7 @@ public struct DICOMFile: Sendable {
         // Display Shutter attributes ``displayShutter`` parses at the
         // dataset level.
         let frameShutterItem = item[DICOMTag(group: 0x0018, element: 0x9472)]?.sequenceItems?.first
+        let isSignedPixelRepresentation = dataset[.pixelRepresentation]?.uint16Value == 1
         return DICOMFrameFunctionalGroups(
             rescaleSlope: transformation?[.rescaleSlope]?.doubleValue,
             rescaleIntercept: transformation?[.rescaleIntercept]?.doubleValue,
@@ -794,7 +808,8 @@ public struct DICOMFile: Sendable {
             planeOrientation: planeOrientationItem?[.imageOrientationPatient]?.doubleValues,
             frameContent: frameContent,
             frameAnatomy: frameAnatomy,
-            displayShutter: frameShutterItem?.displayShutter
+            displayShutter: frameShutterItem?.displayShutter,
+            realWorldValueMaps: item.realWorldValueMaps(isSigned: isSignedPixelRepresentation, characterSet: itemCharacterSet)
         )
     }
 

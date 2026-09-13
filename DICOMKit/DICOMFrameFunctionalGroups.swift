@@ -31,6 +31,10 @@ public struct DICOMFrameFunctionalGroups: Sendable, Equatable {
     /// The Frame Display Shutter macro `(0018,9472)`, carrying the same
     /// Display Shutter attributes as ``DICOMFile/displayShutter``.
     public var displayShutter: DICOMDisplayShutter?
+    /// The Real World Value Mapping Sequence `(0040,9096)`, when this frame
+    /// (or the Shared Functional Groups it falls back to) declares one.
+    /// Empty when neither declares any.
+    public var realWorldValueMaps: [DICOMRealWorldValueMap] = []
 
     public init(
         rescaleSlope: Double? = nil,
@@ -42,7 +46,8 @@ public struct DICOMFrameFunctionalGroups: Sendable, Equatable {
         planeOrientation: [Double]? = nil,
         frameContent: DICOMFrameContent? = nil,
         frameAnatomy: DICOMFrameAnatomy? = nil,
-        displayShutter: DICOMDisplayShutter? = nil
+        displayShutter: DICOMDisplayShutter? = nil,
+        realWorldValueMaps: [DICOMRealWorldValueMap] = []
     ) {
         self.rescaleSlope = rescaleSlope
         self.rescaleIntercept = rescaleIntercept
@@ -54,6 +59,7 @@ public struct DICOMFrameFunctionalGroups: Sendable, Equatable {
         self.frameContent = frameContent
         self.frameAnatomy = frameAnatomy
         self.displayShutter = displayShutter
+        self.realWorldValueMaps = realWorldValueMaps
     }
 }
 
