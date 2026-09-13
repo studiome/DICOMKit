@@ -19,6 +19,12 @@ struct Reader {
     var skipsEncapsulatedPixelData = false
     var skippedEncapsulatedFragmentRanges: [Range<Int>]?
     var skippedBasicOffsetTable: Data?
+    /// Private Creator elements `(gggg,0010)`-`(gggg,00FF)` seen so far in
+    /// the current dataset or sequence item, keyed by the creator element's
+    /// own tag. Private Creators always precede the data elements in their
+    /// block (PS3.5 7.8.1), so this single forward pass is sufficient -- a
+    /// second pass isn't needed to resolve later private elements.
+    var privateCreators: [DICOMTag: String] = [:]
 
     mutating func readDataset(transferSyntax: TransferSyntax, endingAt endOffset: Int? = nil) throws -> [DICOMElement] {
         var elements: [DICOMElement] = []
@@ -75,7 +81,16 @@ struct Reader {
             // This lets sequences outside the small built-in dictionary
             // (e.g. Referenced Image Sequence) still be parsed.
             length = try readUInt32(byteOrder: .littleEndian)
-            vr = DICOMDictionary.vr(for: tag) ?? (length == .max ? .SQ : .UN)
+            if let dictVR = DICOMDictionary.vr(for: tag) {
+                vr = dictVR
+            } else if let privateVR = resolvedPrivateVR(for: tag) {
+                // Only under Implicit VR: Explicit VR always states the wire
+                // VR explicitly, so there's nothing to resolve there and a
+                // private dictionary must not override it.
+                vr = privateVR
+            } else {
+                vr = length == .max ? .SQ : .UN
+            }
         case .unknown:
             throw DICOMError.unsupportedTransferSyntax(transferSyntax.uid)
         }
@@ -145,7 +160,11 @@ struct Reader {
             return DICOMElement(tag: tag, vr: vr, value: Data())
         }
         let value = try readData(count: Int(length))
-        return DICOMElement(tag: tag, vr: vr, value: byteOrder == .bigEndian ? canonicalLittleEndian(value, vr: vr) : value)
+        let element = DICOMElement(tag: tag, vr: vr, value: byteOrder == .bigEndian ? canonicalLittleEndian(value, vr: vr) : value)
+        if tag.group % 2 == 1, (0x0010...0x00FF).contains(tag.element), let creator = element.stringValue {
+            privateCreators[tag] = creator
+        }
+        return element
     }
 
     mutating func skipEncapsulatedPixelData(byteOrder: ByteOrder) throws {
@@ -233,6 +252,19 @@ struct Reader {
                 throw DICOMError.invalidSequenceItem(itemTag)
             }
 
+            // PS3.5 7.5.3 defines a sequence item as its own dataset, and
+            // 7.8.1's Private Creator block scheme is described in terms of
+            // "the Data Set" declaring the creator for its own private
+            // elements -- an item is a separate Data Set, not a continuation
+            // of the one that contains the sequence. So a Private Creator
+            // declared before this sequence element does not apply to
+            // private elements inside its items: save the enclosing
+            // dataset's recorded creators, start the item with none, and
+            // restore them once the item is done.
+            let enclosingPrivateCreators = privateCreators
+            privateCreators = [:]
+            defer { privateCreators = enclosingPrivateCreators }
+
             let itemElements: [DICOMElement]
             if itemLength == .max {
                 itemElements = try readUndefinedLengthItem(transferSyntax: transferSyntax)
@@ -291,6 +323,21 @@ struct Reader {
         guard tag != .pixelData, tag.group.isMultiple(of: 2) else { return nil }
         guard let dictVR = DICOMDictionary.vr(for: tag), dictVR != .UN else { return nil }
         return dictVR
+    }
+
+    /// Resolves the VR of a private data element `(gggg,xxee)` (odd group,
+    /// element `>= 0x1000`) using the Private Creator recorded earlier for
+    /// its block and `options.privateDictionary`.
+    ///
+    /// Returns `nil` (leaving the caller's existing `UN`/`SQ` Implicit VR
+    /// behaviour unchanged) when there's no private dictionary, no Private
+    /// Creator has been recorded for this element's block, or the
+    /// dictionary doesn't recognize the creator/block/low-byte combination.
+    private func resolvedPrivateVR(for tag: DICOMTag) -> DICOMVR? {
+        guard tag.group % 2 == 1, tag.element >= 0x1000, let dictionary = options.privateDictionary else { return nil }
+        let block = UInt16(tag.element >> 8)
+        guard let creator = privateCreators[DICOMTag(group: tag.group, element: block)] else { return nil }
+        return dictionary.vr(privateCreator: creator, group: tag.group, elementLowByte: UInt8(tag.element & 0xFF))
     }
 
     /// Parses a defined-length `UN` element's value bytes as a sequence
