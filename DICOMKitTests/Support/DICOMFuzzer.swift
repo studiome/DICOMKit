@@ -54,6 +54,18 @@ struct DICOMFuzzer {
         case insertOrDelete
         case splice
         case lengthFieldCorruption
+        // Exists because a real defect -- Reader's unbounded sequence
+        // recursion, which overflowed the stack on a dataset nesting
+        // sequences ~100-150 levels deep -- escaped every strategy above it
+        // and this fuzzer's healthy-looking acceptance rate. None of them
+        // ever synthesizes deep nesting: bit flips, byte substitution, and
+        // length corruption perturb existing bytes without adding
+        // structure, and even splice only recombines two already-shallow
+        // corpus entries. Do not remove this case as "redundant" with the
+        // others -- it is the only one that reaches that code path at all,
+        // and the gap it closes is exactly the kind acceptance rate alone
+        // cannot reveal (see `nestedSequenceWrap`).
+        case nestedSequenceWrap
     }
 
     /// Applies one randomly chosen mutation strategy to `input` and returns
@@ -103,6 +115,9 @@ struct DICOMFuzzer {
 
         case .lengthFieldCorruption:
             corruptLengthField(in: &bytes)
+
+        case .nestedSequenceWrap:
+            wrapInNestedSequences(&bytes)
         }
         if bytes.count > maxOutputSize {
             bytes.removeLast(bytes.count - maxOutputSize)
@@ -134,5 +149,57 @@ struct DICOMFuzzer {
         bytes[offset + 1] = UInt8((value >> 8) & 0xFF)
         bytes[offset + 2] = UInt8((value >> 16) & 0xFF)
         bytes[offset + 3] = UInt8((value >> 24) & 0xFF)
+    }
+
+    /// Wraps a randomly chosen contiguous slice of `bytes` (possibly all of
+    /// it) in a chain of nested Implicit VR undefined-length sequences, deep
+    /// enough to land on both sides of any reasonable recursion-depth guard.
+    ///
+    /// Every other strategy in this fuzzer perturbs bytes that are already
+    /// there; none of them *adds structure*. Reaching a depth guard (or, before
+    /// one existed, a stack overflow) requires dozens of correctly-framed
+    /// tag/length/item headers nested inside one another, which a bit-flipper
+    /// or length-field corruption will not stumble into by chance in any
+    /// realistic campaign. This strategy builds that structure directly
+    /// instead: each level is `tag(4) + undefined-length(4) + item tag(4) +
+    /// item length(4) + payload + delimitation tag(4) + 0(4)`, which is a
+    /// well-formed Implicit VR sequence regardless of what tag is used --
+    /// PS3.5's Implicit VR convention treats *any* tag with an undefined
+    /// length as `SQ` (see the comment in `Reader.readElement`), so this
+    /// does not need a dictionary lookup to produce a tag the decoder will
+    /// actually recurse into.
+    ///
+    /// The level count is randomized across a range that brackets DICOMKit's
+    /// own limit (64) on both sides without hard-coding that number here --
+    /// mirroring `corruptLengthField`'s reasoning for not parsing the input
+    /// to find a "real" length field, this keeps the strategy from depending
+    /// on the exact value the code under test currently chooses.
+    private mutating func wrapInNestedSequences(_ bytes: inout [UInt8]) {
+        guard !bytes.isEmpty else { return }
+        let levels = Int.random(in: 40...100, using: &rng)
+        let start = Int.random(in: 0..<bytes.count, using: &rng)
+        let end = Int.random(in: start...bytes.count, using: &rng)
+
+        // An arbitrary even-group tag. Only its undefined length (below)
+        // matters for the Implicit VR convention that makes this parse as
+        // `SQ`, so any tag works, but an even group sidesteps private-tag
+        // VR resolution being asked to do anything with it.
+        let tag: [UInt8] = [0x08, 0x00, 0x40, 0x11]
+        let undefinedLength: [UInt8] = [0xFF, 0xFF, 0xFF, 0xFF]
+        let itemTag: [UInt8] = [0xFE, 0xFF, 0x00, 0xE0]
+        let delimitationItem: [UInt8] = [0xFE, 0xFF, 0xDD, 0xE0, 0x00, 0x00, 0x00, 0x00]
+
+        var payload = Array(bytes[start..<end])
+        for _ in 0..<levels {
+            var wrapped = tag + undefinedLength + itemTag + littleEndianUInt32(UInt32(payload.count))
+            wrapped.append(contentsOf: payload)
+            wrapped.append(contentsOf: delimitationItem)
+            payload = wrapped
+        }
+        bytes.replaceSubrange(start..<end, with: payload)
+    }
+
+    private func littleEndianUInt32(_ value: UInt32) -> [UInt8] {
+        [UInt8(value & 0xFF), UInt8((value >> 8) & 0xFF), UInt8((value >> 16) & 0xFF), UInt8((value >> 24) & 0xFF)]
     }
 }

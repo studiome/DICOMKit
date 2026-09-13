@@ -143,10 +143,10 @@ enum FuzzOutcome {
 /// 4000 is large enough that each target's fuzz-effectiveness floor (see
 /// `FuzzEffectivenessFloor`) is stable at this sample size: re-running with
 /// `DICOMKIT_FUZZ_ITERATIONS` left at this default across five seeds (the
-/// fixed default plus 1, 2, 42, 123456789) passed every time, at ~0.6s total
+/// fixed default plus 1, 2, 42, 123456789) passed every time, at ~0.7s total
 /// for all three fuzz tests — nowhere near the floors, which already carry
-/// an 8-13 point margin under the worst of the 50_000-iteration measurement
-/// (see `FuzzEffectivenessFloor`). `fuzzRun` additionally refuses to enforce
+/// roughly an 8-11.5 point margin under the worst of the 50_000-iteration
+/// measurement (see `FuzzEffectivenessFloor`). `fuzzRun` additionally refuses to enforce
 /// the floor at all below `minimumSampleSizeForEffectivenessFloor`, as a
 /// second, independent guard in case iterations is ever set below what's
 /// stable here (e.g. someone lowering it for a quick manual smoke run).
@@ -173,13 +173,36 @@ let minimumSampleSizeForEffectivenessFloor = 2000
 /// 123456789) and recording the acceptance rate each seed converged to
 /// (all five agreed within a fraction of a percentage point, i.e. this rate
 /// is a property of the corpus and mutation strategies, not a particular
-/// seed):
+/// seed).
 ///
-///   target       | rates across 5 seeds                  | min
-///   -------------|----------------------------------------|-------
-///   file-parser  | 38.53, 38.30, 37.96, 38.47, 38.25 %    | 37.96%
-///   ulpdu        | 24.92, 24.79, 24.69, 24.78, 24.77 %    | 24.69%
-///   dimse        | 18.28, 18.14, 18.02, 18.04, 17.93 %    | 17.93%
+/// These numbers were re-measured after adding the `nestedSequenceWrap`
+/// strategy (see `DICOMFuzzer`), which wraps a slice of the input in dozens
+/// of nested sequences to probe `Reader`'s recursion-depth guard -- the gap
+/// that let a real stack-overflow defect escape this fuzzer's original
+/// strategy set despite a healthy-looking acceptance rate. That strategy
+/// produces well-formed nesting but, being generic byte manipulation with no
+/// notion of DICOM file structure, has no way to avoid sometimes wrapping
+/// bytes that were required for a valid parse (a transfer syntax UID, a
+/// PDU's own header, ...), so it genuinely lowers how often mutated input
+/// still reaches a successful decode:
+///
+///   target       | before (previous strategy set)         | after (with nestedSequenceWrap)
+///   -------------|------------------------------------------|----------------------------------
+///   file-parser  | 38.53, 38.30, 37.96, 38.47, 38.25 % (min 37.96%) | 26.51, 26.85, 26.63, 26.65, 26.51 % (min 26.51%)
+///   ulpdu        | 24.92, 24.79, 24.69, 24.78, 24.77 % (min 24.69%) | 21.07, 21.48, 21.51, 21.04, 21.11 % (min 21.04%)
+///   dimse        | 18.28, 18.14, 18.02, 18.04, 17.93 % (min 17.93%) | 18.00, 18.15, 17.96, 18.14, 17.83 % (min 17.83%)
+///
+/// file-parser and ulpdu shifted well outside seed-to-seed noise (roughly
+/// 11-12 points and 3.5-4 points respectively), because `nestedSequenceWrap`
+/// wraps DICOM-dataset-shaped framing that a dataset decoder can partially
+/// recover from parsing around less often than the file-parser's own
+/// early-validation-surviving mutations, and that a PDU decoder rejects
+/// outright more often than the mutations already in the set. Their floors
+/// below are lowered accordingly. dimse's minimum barely moved (17.93% to
+/// 17.83%, well within the seed-to-seed noise both before and after) --
+/// consistent with the new strategy's DICOM-dataset-specific framing rarely
+/// producing anything a DIMSE command-set decoder would accept either way --
+/// so its floor is unchanged.
 ///
 /// None of these are the "under a few percent" case that would call for
 /// treating the mutation strategy itself as broken (see the commit message
@@ -193,11 +216,12 @@ let minimumSampleSizeForEffectivenessFloor = 2000
 /// early validation at all (that shows up as single-digit or 0%, nowhere
 /// close to these floors).
 enum FuzzEffectivenessFloor {
-    /// Measured minimum 37.96%; floor set ~13 points below it.
-    static let fileParser = 0.25
-    /// Measured minimum 24.69%; floor set ~10 points below it.
-    static let ulpdu = 0.15
-    /// Measured minimum 17.93%; floor set ~8 points below it.
+    /// Measured minimum 26.51%; floor set ~11.5 points below it.
+    static let fileParser = 0.15
+    /// Measured minimum 21.04%; floor set ~11 points below it.
+    static let ulpdu = 0.10
+    /// Measured minimum 17.83% (effectively unchanged from 17.93% before
+    /// `nestedSequenceWrap`); floor unchanged, ~8 points below it.
     static let dimse = 0.10
 }
 
@@ -369,6 +393,33 @@ func fileParserFuzzCorpus() throws -> [Data] {
             implicitUndefinedLengthSequence(
                 tag: DICOMTag(group: 0x0008, element: 0x1140),
                 itemElements: [innerSequence]
+            )
+        ]
+    ))
+
+    // Datasets nesting sequences at, and one level past, Reader's own
+    // recursion-depth guard (see ReaderNestingDepthTests and
+    // Reader.maxSequenceDepth). These seed the depth boundary directly so
+    // it's exercised by every campaign regardless of what the
+    // `nestedSequenceWrap` mutation strategy's randomized depth happens to
+    // land on, rather than relying solely on that strategy finding it.
+    corpus.append(part10File(
+        transferSyntaxUID: TransferSyntax.implicitVRLittleEndian.uid,
+        datasetElements: [
+            nestedImplicitSequenceChain(
+                levels: Reader.maxSequenceDepth,
+                tag: .referencedStudySequence,
+                leaf: implicitElement(tag: .patientName, value: "Doe^Jane")
+            )
+        ]
+    ))
+    corpus.append(part10File(
+        transferSyntaxUID: TransferSyntax.implicitVRLittleEndian.uid,
+        datasetElements: [
+            nestedImplicitSequenceChain(
+                levels: Reader.maxSequenceDepth + 1,
+                tag: .referencedStudySequence,
+                leaf: implicitElement(tag: .patientName, value: "Doe^Jane")
             )
         ]
     ))
