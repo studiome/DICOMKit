@@ -16,6 +16,28 @@ Implicit VR parsing resolves 5,092 public tags with unambiguous VRs from the
 generated DICOM PS3.6 2025a dictionary. Context-dependent and private tags
 remain `UN` unless supplied through DICOMKit's explicit handling.
 
+``DICOMReadOptions`` controls two further, independently switchable
+resolutions performed while parsing, both `nil`/on by default and passed as
+a trailing parameter to `DICOMFile`/`DICOMMetadataFile`:
+
+- `reinterpretsUnknownVR` re-derives a defined-length `UN` element's VR from
+  the dictionary under Explicit VR Little Endian (PS3.5 6.2.2) — the usual
+  symptom of data that passed through middleware which converted Implicit VR
+  to Explicit VR without a dictionary of its own. A `UN` element the
+  dictionary resolves to `SQ` is parsed as an Implicit VR Little Endian
+  sequence, since that's the encoding such a conversion preserves; unparseable
+  bytes fall back to `UN` rather than failing the whole dataset. This never
+  applies to Pixel Data, private (odd-group) tags, tags the dictionary
+  doesn't know, or Explicit VR **Big** Endian, since a `UN` value's bytes are
+  always little-endian even there.
+- `privateDictionary` resolves a private element's VR under Implicit VR
+  using a caller-supplied ``DICOMPrivateDictionary``, matched against the
+  Private Creator recorded earlier in the same dataset or sequence item.
+  DICOMKit ships none of its own: private attribute meanings are
+  vendor-specific, and a dictionary sourced from reverse engineering can
+  make DICOMKit read a vendor's bytes as the wrong type. Being unable to
+  read a private attribute is safer than reading it wrongly.
+
 ```swift
 let file = try DICOMFile(data: data)
 let name = file.dataset[.patientName]?.stringValue
@@ -34,6 +56,7 @@ if let pixelData = file.pixelData {
 ## Essentials
 
 - ``DICOMFile`` — Parse a DICOM Part 10 file.
+- ``DICOMReadOptions`` — Control `UN` re-interpretation and private VR resolution while parsing.
 - ``DICOMDataset`` — Look up and iterate over data elements.
 - ``DICOMStudy`` — Group and order instances by study and series.
 - ``DICOMAnonymizer`` — Apply caller-defined recursive de-identification rules.
@@ -156,6 +179,9 @@ protocol foundation, not a clinical interoperability or PACS conformance claim.
 
 - ``DICOMFile``
 - ``DICOMWriter``
+- ``DICOMReadOptions``
+- ``DICOMPrivateDictionary``
+- ``DICOMPrivateTagEntry``
 - ``DICOMDataset``
 - ``DICOMDirectory``
 - ``DICOMDirectoryRecord``

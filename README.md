@@ -19,6 +19,20 @@ See the [changelog](CHANGELOG.md) for the current implementation status.
   Implicit VR parsing, plus 5,092 unambiguous public-tag VRs generated from
   DICOM PS3.6 2025a; context-dependent or unknown defined-length attributes
   remain `UN`
+- Re-derives a defined-length `UN` element's VR from the dictionary under
+  Explicit VR Little Endian (PS3.5 6.2.2), including parsing a `UN` element
+  the dictionary resolves to `SQ` as an Implicit VR Little Endian sequence —
+  the encoding such conversions preserve. Controlled by
+  `DICOMReadOptions.reinterpretsUnknownVR` (on by default) and passed to
+  `DICOMFile`/`DICOMMetadataFile`; never applied to Pixel Data, private
+  tags, or under Explicit VR Big Endian, where a `UN` value's always-little-endian
+  bytes would be misread
+- Resolves a private element's VR under Implicit VR from a caller-supplied
+  `DICOMPrivateDictionary` (`DICOMReadOptions.privateDictionary`), matched
+  against the Private Creator recorded earlier in the same dataset or
+  sequence item. DICOMKit ships no private dictionary of its own: private
+  attribute meanings are vendor-specific, and a table built from reverse
+  engineering risks decoding a vendor's bytes as the wrong type
 - Parses defined-length and undefined-length sequences recursively
 - Exposes a lightweight Swift object model: `DICOMFile`, `DICOMDataset`,
   `DICOMElement`, `DICOMTag`, and `DICOMVR`

@@ -4,6 +4,33 @@ All notable changes to DICOMKit are documented here.
 
 ## v0.5 — Unreleased
 
+- Added `DICOMReadOptions`, passed as a trailing parameter to `DICOMFile` and
+  `DICOMMetadataFile` (existing call sites are unaffected by the default).
+  `reinterpretsUnknownVR` (on by default) re-derives a defined-length `UN`
+  element's VR from the dictionary under Explicit VR Little Endian, per
+  PS3.5 6.2.2 — the usual fix for data that passed through middleware which
+  converted Implicit VR to Explicit VR without a dictionary of its own. A
+  `UN` element the dictionary resolves to `SQ` is parsed as an Implicit VR
+  Little Endian sequence, reusing the existing sequence reader, since that's
+  the encoding such a conversion preserves; unparseable bytes fall back to
+  `UN` instead of failing the whole dataset. This never touches Pixel Data,
+  private tags, tags absent from the dictionary, or Explicit VR **Big**
+  Endian, where a `UN` value's always-little-endian bytes would otherwise be
+  read with the wrong byte order.
+- Added `DICOMPrivateDictionary` and `DICOMPrivateTagEntry`, a mechanism for
+  an application to supply its own vendor-documented private attribute VRs
+  via `DICOMReadOptions.privateDictionary`. DICOMKit ships none itself:
+  private attribute meanings are vendor-specific and unpublished, and a
+  dictionary sourced from reverse engineering can make DICOMKit read a
+  vendor's bytes as the wrong type — being unable to read a private
+  attribute is safer than reading it wrongly. When supplied, a private
+  element's VR under Implicit VR is resolved from the Private Creator
+  recorded earlier in the same dataset or sequence item; `Reader` tracks
+  creators in a single forward pass and resets them at each sequence item
+  boundary, since a creator declared in a parent dataset doesn't extend into
+  an item. `DICOMDataset.privateCreator(for:)` and
+  `privateElement(creator:group:element:)`, which already existed, are
+  unaffected.
 - Added full Enhanced Multi-frame functional group resolution. Generalized
   the shared-then-per-frame merge that previously only handled Pixel Value
   Transformation and Frame VOI LUT into `DICOMFrameFunctionalGroups`
