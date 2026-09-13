@@ -129,11 +129,16 @@ public enum TransferSyntax: Sendable, Equatable {
         }
     }
 
-    /// `package` rather than `internal`: `DICOMAssociation` (in
-    /// `DICOMKitNetworking`) resolves a negotiated transfer syntax UID back
-    /// into a `TransferSyntax` with this initializer across the module
-    /// boundary.
-    package init(uid: String) {
+    /// Resolves a transfer syntax UID, such as one read out of
+    /// `(0002,0010)`, negotiated during association, or returned by a
+    /// DICOMweb QIDO/WADO response, into a `TransferSyntax`.
+    ///
+    /// An unrecognised UID never fails: it becomes ``unknown(_:)`` so the
+    /// caller can still carry the original UID around (to report it, log
+    /// it, or round-trip it back out via ``uid``) instead of losing it to a
+    /// thrown error. Check ``hasPixelDataDecoder`` to find out what DICOMKit
+    /// can actually do with the result; `.unknown` always answers `false`.
+    public init(uid: String) {
         switch uid {
         case Self.implicitVRLittleEndian.uid: self = .implicitVRLittleEndian
         case Self.explicitVRLittleEndian.uid: self = .explicitVRLittleEndian
