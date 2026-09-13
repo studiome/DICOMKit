@@ -100,6 +100,31 @@ public enum TransferSyntax: Sendable, Equatable {
         }
     }
 
+    /// Whether DICOMKit has a Pixel Data decoder for this transfer syntax.
+    ///
+    /// A `true` here means DICOMKit will *attempt* to decode Pixel Data
+    /// encoded in this syntax — it is not a promise that every stream of
+    /// this syntax will decode successfully. The underlying codec (a
+    /// built-in decoder, or ImageIO for the JPEG 2000 family including
+    /// HTJ2K) can still reject a particular codestream, in which case
+    /// ``DICOMFile/pixelDataFrames`` reports `nil` for that file even though
+    /// this property is `true`.
+    ///
+    /// This lets a caller distinguish two different situations: "DICOMKit
+    /// cannot show this kind of image" (this is `false`) from "DICOMKit
+    /// could not show this particular image" (this is `true`, but
+    /// ``DICOMFile/pixelDataFrames`` is still `nil`).
+    public var hasPixelDataDecoder: Bool {
+        switch self {
+        case .implicitVRLittleEndian, .explicitVRLittleEndian, .explicitVRBigEndian, .deflatedExplicitVRLittleEndian,
+             .rleLossless, .jpegBaseline, .jpegLossless, .jpegLosslessSV1, .jpegLSLossless, .jpegLSNearLossless,
+             .jpeg2000Lossless, .jpeg2000, .htj2kLossless, .htj2kLosslessRPCL, .htj2k:
+            true
+        case .unknown:
+            false
+        }
+    }
+
     init(uid: String) {
         switch uid {
         case Self.implicitVRLittleEndian.uid: self = .implicitVRLittleEndian

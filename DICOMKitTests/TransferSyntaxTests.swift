@@ -51,4 +51,19 @@ struct TransferSyntaxTests {
         let fragments = try #require(file.dataset[.pixelData]?.encapsulatedFragments)
         #expect(fragments == [fragment])
     }
+
+    @Test(arguments: [
+        TransferSyntax.htj2kLossless, .htj2kLosslessRPCL, .htj2k,
+        .rleLossless, .jpegBaseline, .jpegLossless, .jpegLosslessSV1,
+        .jpegLSLossless, .jpegLSNearLossless, .jpeg2000Lossless, .jpeg2000,
+        .implicitVRLittleEndian, .explicitVRLittleEndian, .explicitVRBigEndian,
+        .deflatedExplicitVRLittleEndian
+    ])
+    func hasPixelDataDecoderIsTrueForEveryDecodableSyntax(transferSyntax: TransferSyntax) {
+        #expect(transferSyntax.hasPixelDataDecoder)
+    }
+
+    @Test func hasPixelDataDecoderIsFalseForUnknownSyntax() {
+        #expect(TransferSyntax(uid: "1.2.9999.not.a.real.syntax").hasPixelDataDecoder == false)
+    }
 }

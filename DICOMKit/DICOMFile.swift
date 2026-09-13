@@ -408,18 +408,29 @@ public struct DICOMFile: Sendable {
                 )
             }
 
-        case .jpegBaseline, .jpeg2000Lossless, .jpeg2000:
+        case .jpegBaseline, .jpeg2000Lossless, .jpeg2000, .htj2kLossless, .htj2kLosslessRPCL, .htj2k:
             // These backends decode their transfer syntaxes to 8-bit samples, so a
             // frame declaring any other Bits Allocated can't be represented
             // faithfully; saying so here beats handing back pixel data whose
             // attributes contradict its own bytes.
+            //
+            // HTJ2K (PS3.5 Annex A.4.4) is a JPEG 2000 codestream that swaps
+            // in a different block coder (FBCOT instead of EBCOT); it is not
+            // a distinct container format. So it's routed through the same
+            // ImageIO-backed `JPEGFrameDecoder` / `CGImageSourceCreateWithData`
+            // path as `.jpeg2000Lossless` / `.jpeg2000` on the assumption that
+            // if ImageIO can decode HTJ2K at all, it does so through that same
+            // `CGImageSource`. A stream ImageIO doesn't support — whether
+            // because HTJ2K isn't supported on this platform or the stream is
+            // simply invalid — surfaces as an ordinary decode failure (`nil`
+            // pixel data below), not as a parse error: the file still opens.
             guard bitsAllocated == 8,
                   let fragmentFrames = encapsulatedFrames(of: pixelElement, frameCount: frameCount) else { return nil }
             let decodeRGB: ([Data], Int, Int) throws -> Data = { fragments, width, height in
                 switch transferSyntax {
                 case .jpegBaseline:
                     return try TurboJPEGDecoder.decodeRGB(fragments: fragments, width: width, height: height)
-                case .jpeg2000Lossless, .jpeg2000:
+                case .jpeg2000Lossless, .jpeg2000, .htj2kLossless, .htj2kLosslessRPCL, .htj2k:
                     return try JPEGFrameDecoder.decodeRGB(fragments: fragments, width: width, height: height)
                 default:
                     preconditionFailure("Validated JPEG-family transfer syntax")
@@ -429,7 +440,7 @@ public struct DICOMFile: Sendable {
                 switch transferSyntax {
                 case .jpegBaseline:
                     return try TurboJPEGDecoder.decodeMonochrome(fragments: fragments, width: width, height: height)
-                case .jpeg2000Lossless, .jpeg2000:
+                case .jpeg2000Lossless, .jpeg2000, .htj2kLossless, .htj2kLosslessRPCL, .htj2k:
                     return try JPEGFrameDecoder.decodeMonochrome(fragments: fragments, width: width, height: height)
                 default:
                     preconditionFailure("Validated JPEG-family transfer syntax")
