@@ -97,6 +97,27 @@ public enum DICOMDIMSECommand: Sendable, Equatable {
     /// response (PS3.7): present on success, and may be omitted on failure.
     case nEventReportResponse(messageIDBeingRespondedTo: UInt16, affectedSOPClassUID: String?, affectedSOPInstanceUID: String?, eventTypeID: UInt16?, status: DICOMDIMSEStatus, datasetFollows: Bool)
 
+    /// N-GET: an SCU retrieves attribute values from a Normalized SOP Instance. The
+    /// request names the instance with the **Requested** SOP Class/Instance UID
+    /// (0000,0003)/(0000,1001) — not the Affected forms — because on a request the
+    /// instance is merely being referred to, not affected. An empty
+    /// `attributeIdentifiers` means "return all attributes" (PS3.7), which is why
+    /// the wire form omits the Attribute Identifier List element entirely rather
+    /// than encoding a zero-length one. N-GET-RQ never carries a data set.
+    case nGetRequest(messageID: UInt16, requestedSOPClassUID: String, requestedSOPInstanceUID: String, attributeIdentifiers: [DICOMTag])
+    /// A response instead uses the **Affected** SOP Class/Instance UID, per PS3.7 —
+    /// the single most common source of N-service interoperability bugs is mixing
+    /// up these two forms between a request and its response.
+    case nGetResponse(messageIDBeingRespondedTo: UInt16, affectedSOPClassUID: String?, affectedSOPInstanceUID: String?, status: DICOMDIMSEStatus, datasetFollows: Bool)
+
+    /// N-SET: an SCU modifies attribute values on a Normalized SOP Instance, named
+    /// (as with N-GET) by the **Requested** SOP Class/Instance UID. Unlike its
+    /// siblings, N-SET-RQ always carries a Modification List, so there is no
+    /// `datasetFollows` here — `hasDataset` is unconditionally `true` for this case.
+    case nSetRequest(messageID: UInt16, requestedSOPClassUID: String, requestedSOPInstanceUID: String)
+    /// Uses the **Affected** SOP Class/Instance UID, as every N-service response does.
+    case nSetResponse(messageIDBeingRespondedTo: UInt16, affectedSOPClassUID: String?, affectedSOPInstanceUID: String?, status: DICOMDIMSEStatus, datasetFollows: Bool)
+
     /// `true` when a data set follows this command's PDVs, per the Command Data Set
     /// Type element (0000,0800): fixed by command kind for requests, and by
     /// `identifierFollows` for the C-FIND/C-MOVE/C-GET responses.
@@ -116,6 +137,10 @@ public enum DICOMDIMSECommand: Sendable, Equatable {
         case .cGetResponse(_, _, let identifierFollows, _, _): return identifierFollows
         case .nEventReportRequest(_, _, _, _, let datasetFollows): return datasetFollows
         case .nEventReportResponse(_, _, _, _, _, let datasetFollows): return datasetFollows
+        case .nGetRequest: return false
+        case .nGetResponse(_, _, _, _, let datasetFollows): return datasetFollows
+        case .nSetRequest: return true
+        case .nSetResponse(_, _, _, _, let datasetFollows): return datasetFollows
         }
     }
 
@@ -203,6 +228,33 @@ public enum DICOMDIMSECommand: Sendable, Equatable {
             if let sopClassUID { Self.appendElement(tag: 0x00020000, value: Self.ui(sopClassUID), to: &content) }
             if let sopInstanceUID { Self.appendElement(tag: 0x10000000, value: Self.ui(sopInstanceUID), to: &content) }
             if let eventTypeID { Self.appendElement(tag: 0x10020000, value: Self.uint16(eventTypeID), to: &content) }
+        case .nGetRequest(let messageID, let sopClassUID, let sopInstanceUID, let attributeIdentifiers):
+            Self.appendElement(tag: 0x00030000, value: Self.ui(sopClassUID), to: &content)
+            Self.appendElement(tag: 0x01000000, value: Self.uint16(0x0110), to: &content)
+            Self.appendElement(tag: 0x01100000, value: Self.uint16(messageID), to: &content)
+            Self.appendElement(tag: 0x08000000, value: Self.uint16(0x0101), to: &content)
+            Self.appendElement(tag: 0x10010000, value: Self.ui(sopInstanceUID), to: &content)
+            if !attributeIdentifiers.isEmpty { Self.appendElement(tag: 0x10050000, value: Self.at(attributeIdentifiers), to: &content) }
+        case .nGetResponse(let messageID, let sopClassUID, let sopInstanceUID, let status, let datasetFollows):
+            Self.appendElement(tag: 0x01000000, value: Self.uint16(0x8110), to: &content)
+            Self.appendElement(tag: 0x01200000, value: Self.uint16(messageID), to: &content)
+            Self.appendElement(tag: 0x08000000, value: Self.uint16(datasetFollows ? 0x0000 : 0x0101), to: &content)
+            Self.appendElement(tag: 0x09000000, value: Self.uint16(status.rawValue), to: &content)
+            if let sopClassUID { Self.appendElement(tag: 0x00020000, value: Self.ui(sopClassUID), to: &content) }
+            if let sopInstanceUID { Self.appendElement(tag: 0x10000000, value: Self.ui(sopInstanceUID), to: &content) }
+        case .nSetRequest(let messageID, let sopClassUID, let sopInstanceUID):
+            Self.appendElement(tag: 0x00030000, value: Self.ui(sopClassUID), to: &content)
+            Self.appendElement(tag: 0x01000000, value: Self.uint16(0x0120), to: &content)
+            Self.appendElement(tag: 0x01100000, value: Self.uint16(messageID), to: &content)
+            Self.appendElement(tag: 0x08000000, value: Self.uint16(0x0000), to: &content)
+            Self.appendElement(tag: 0x10010000, value: Self.ui(sopInstanceUID), to: &content)
+        case .nSetResponse(let messageID, let sopClassUID, let sopInstanceUID, let status, let datasetFollows):
+            Self.appendElement(tag: 0x01000000, value: Self.uint16(0x8120), to: &content)
+            Self.appendElement(tag: 0x01200000, value: Self.uint16(messageID), to: &content)
+            Self.appendElement(tag: 0x08000000, value: Self.uint16(datasetFollows ? 0x0000 : 0x0101), to: &content)
+            Self.appendElement(tag: 0x09000000, value: Self.uint16(status.rawValue), to: &content)
+            if let sopClassUID { Self.appendElement(tag: 0x00020000, value: Self.ui(sopClassUID), to: &content) }
+            if let sopInstanceUID { Self.appendElement(tag: 0x10000000, value: Self.ui(sopInstanceUID), to: &content) }
         }
         var result = Data()
         Self.appendElement(tag: 0x00000000, value: Self.uint32(UInt32(content.count)), to: &result)
@@ -282,6 +334,41 @@ public enum DICOMDIMSECommand: Sendable, Equatable {
                 status: DICOMDIMSEStatus(rawValue: status),
                 datasetFollows: dataSetType != 0x0101
             )
+        case 0x0110:
+            guard let messageID = values[0x01100000].flatMap(readUInt16),
+                  values[0x08000000].flatMap(readUInt16) == 0x0101,
+                  let sopClassUID = values[0x00030000].flatMap(readUI),
+                  let sopInstanceUID = values[0x10010000].flatMap(readUI) else { throw DICOMDIMSEError.malformedCommandSet }
+            let attributeIdentifiers = values[0x10050000].flatMap(readAT) ?? []
+            return .nGetRequest(messageID: messageID, requestedSOPClassUID: sopClassUID, requestedSOPInstanceUID: sopInstanceUID, attributeIdentifiers: attributeIdentifiers)
+        case 0x8110:
+            guard let messageID = values[0x01200000].flatMap(readUInt16),
+                  let dataSetType = values[0x08000000].flatMap(readUInt16),
+                  let status = values[0x09000000].flatMap(readUInt16) else { throw DICOMDIMSEError.malformedCommandSet }
+            return .nGetResponse(
+                messageIDBeingRespondedTo: messageID,
+                affectedSOPClassUID: values[0x00020000].flatMap(readUI),
+                affectedSOPInstanceUID: values[0x10000000].flatMap(readUI),
+                status: DICOMDIMSEStatus(rawValue: status),
+                datasetFollows: dataSetType != 0x0101
+            )
+        case 0x0120:
+            guard let messageID = values[0x01100000].flatMap(readUInt16),
+                  values[0x08000000].flatMap(readUInt16) == 0x0000,
+                  let sopClassUID = values[0x00030000].flatMap(readUI),
+                  let sopInstanceUID = values[0x10010000].flatMap(readUI) else { throw DICOMDIMSEError.malformedCommandSet }
+            return .nSetRequest(messageID: messageID, requestedSOPClassUID: sopClassUID, requestedSOPInstanceUID: sopInstanceUID)
+        case 0x8120:
+            guard let messageID = values[0x01200000].flatMap(readUInt16),
+                  let dataSetType = values[0x08000000].flatMap(readUInt16),
+                  let status = values[0x09000000].flatMap(readUInt16) else { throw DICOMDIMSEError.malformedCommandSet }
+            return .nSetResponse(
+                messageIDBeingRespondedTo: messageID,
+                affectedSOPClassUID: values[0x00020000].flatMap(readUI),
+                affectedSOPInstanceUID: values[0x10000000].flatMap(readUI),
+                status: DICOMDIMSEStatus(rawValue: status),
+                datasetFollows: dataSetType != 0x0101
+            )
         default: throw DICOMDIMSEError.unsupportedCommand(field)
         }
     }
@@ -312,6 +399,29 @@ public enum DICOMDIMSECommand: Sendable, Equatable {
     private static func readAE(_ value: Data) -> String? { guard value.count == 16 else { return nil }; return String(data: value, encoding: .ascii)?.trimmingCharacters(in: .whitespaces) }
     private static func lo(_ value: String) -> Data { var bytes = Data(value.utf8); if bytes.count % 2 != 0 { bytes.append(0x20) }; return bytes }
     private static func readLO(_ value: Data) -> String? { String(data: value, encoding: .ascii)?.trimmingCharacters(in: .whitespaces) }
+
+    /// Encodes an Attribute Identifier List (VR AT): each tag as four bytes,
+    /// group little-endian then element little-endian, concatenated.
+    private static func at(_ tags: [DICOMTag]) -> Data {
+        var data = Data()
+        for tag in tags {
+            data.append(UInt8(tag.group & 0xFF)); data.append(UInt8(tag.group >> 8))
+            data.append(UInt8(tag.element & 0xFF)); data.append(UInt8(tag.element >> 8))
+        }
+        return data
+    }
+    private static func readAT(_ value: Data) -> [DICOMTag]? {
+        guard value.count % 4 == 0 else { return nil }
+        var tags: [DICOMTag] = []
+        var offset = 0
+        while offset < value.count {
+            let group = UInt16(value[offset]) | UInt16(value[offset + 1]) << 8
+            let element = UInt16(value[offset + 2]) | UInt16(value[offset + 3]) << 8
+            tags.append(DICOMTag(group: group, element: element))
+            offset += 4
+        }
+        return tags
+    }
 
     private static func appendSubOperationCounts(_ counts: DICOMSubOperationCounts, to data: inout Data) {
         appendElement(tag: 0x10200000, value: uint16(counts.remaining), to: &data)

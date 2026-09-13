@@ -509,6 +509,31 @@ func dimseFuzzCorpus() throws -> [Data] {
             eventTypeID: 1,
             status: .success,
             datasetFollows: false
+        ),
+        .nGetRequest(
+            messageID: 1,
+            requestedSOPClassUID: DICOMSOPClass.modalityPerformedProcedureStep,
+            requestedSOPInstanceUID: "1.2.3.4.5.6",
+            attributeIdentifiers: [DICOMTag(group: 0x0008, element: 0x0060), DICOMTag(group: 0x0010, element: 0x0010)]
+        ),
+        .nGetResponse(
+            messageIDBeingRespondedTo: 1,
+            affectedSOPClassUID: DICOMSOPClass.modalityPerformedProcedureStep,
+            affectedSOPInstanceUID: "1.2.3.4.5.6",
+            status: .success,
+            datasetFollows: true
+        ),
+        .nSetRequest(
+            messageID: 1,
+            requestedSOPClassUID: DICOMSOPClass.modalityPerformedProcedureStep,
+            requestedSOPInstanceUID: "1.2.3.4.5.6"
+        ),
+        .nSetResponse(
+            messageIDBeingRespondedTo: 1,
+            affectedSOPClassUID: DICOMSOPClass.modalityPerformedProcedureStep,
+            affectedSOPInstanceUID: "1.2.3.4.5.6",
+            status: .success,
+            datasetFollows: false
         )
     ].map { try $0.encodedCommandSet() }
 }

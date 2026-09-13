@@ -1091,6 +1091,98 @@ struct DICOMDIMSENServiceTests {
 
         #expect(throws: DICOMDIMSEError.malformedCommandSet) { try DICOMDIMSECommand.decodeCommandSet(raw) }
     }
+
+    @Test func nGetRequestRoundTripsWithThreeAttributeIdentifiers() throws {
+        let identifiers = [
+            DICOMTag(group: 0x0008, element: 0x0060),
+            DICOMTag(group: 0x0010, element: 0x0010),
+            DICOMTag(group: 0x0020, element: 0x000D)
+        ]
+        let request = DICOMDIMSECommand.nGetRequest(
+            messageID: 1,
+            requestedSOPClassUID: DICOMSOPClass.modalityPerformedProcedureStep,
+            requestedSOPInstanceUID: "1.2.3.4",
+            attributeIdentifiers: identifiers
+        )
+        let decoded = try DICOMDIMSECommand.decodeCommandSet(request.encodedCommandSet())
+        #expect(decoded == request)
+        guard case .nGetRequest(_, _, _, let decodedIdentifiers) = decoded else { Issue.record("expected nGetRequest"); return }
+        #expect(decodedIdentifiers == identifiers)
+        #expect(!request.hasDataset)
+    }
+
+    @Test func nGetRequestWithEmptyAttributeIdentifiersOmitsTheElement() throws {
+        let request = DICOMDIMSECommand.nGetRequest(
+            messageID: 1,
+            requestedSOPClassUID: DICOMSOPClass.modalityPerformedProcedureStep,
+            requestedSOPInstanceUID: "1.2.3.4",
+            attributeIdentifiers: []
+        )
+        let encoded = try request.encodedCommandSet()
+        #expect(commandSetElementValue(tag: 0x10050000, in: encoded) == nil)
+        guard case .nGetRequest(_, _, _, let decodedIdentifiers) = try DICOMDIMSECommand.decodeCommandSet(encoded) else {
+            Issue.record("expected nGetRequest"); return
+        }
+        #expect(decodedIdentifiers.isEmpty)
+    }
+
+    @Test func nGetRequestUsesRequestedNotAffectedSOPClassUID() throws {
+        // A decoder that accidentally reads (0000,0002) instead of (0000,0003)
+        // would silently pass this test's positive round trip while breaking
+        // interop with any peer that (correctly) sends only (0000,0003) on an
+        // N-GET-RQ. Prove the negative directly: a command set carrying the
+        // Affected form instead of the Requested form must be rejected.
+        func element(group: UInt16, element: UInt16, value: Data) -> Data {
+            var data = Data([UInt8(group & 0xFF), UInt8(group >> 8), UInt8(element & 0xFF), UInt8(element >> 8)])
+            data.append(UInt8(value.count & 0xFF)); data.append(UInt8((value.count >> 8) & 0xFF)); data.append(UInt8((value.count >> 16) & 0xFF)); data.append(UInt8(value.count >> 24))
+            data.append(value)
+            return data
+        }
+        func uint16(_ value: UInt16) -> Data { Data([UInt8(value & 0xFF), UInt8(value >> 8)]) }
+        func ui(_ value: String) -> Data { var bytes = Data(value.utf8); if bytes.count % 2 != 0 { bytes.append(0) }; return bytes }
+        var raw = Data()
+        raw.append(element(group: 0x0000, element: 0x0002, value: ui(DICOMSOPClass.modalityPerformedProcedureStep))) // wrong: Affected, not Requested
+        raw.append(element(group: 0x0000, element: 0x0100, value: uint16(0x0110))) // Command Field: N-GET-RQ
+        raw.append(element(group: 0x0000, element: 0x0110, value: uint16(1))) // Message ID
+        raw.append(element(group: 0x0000, element: 0x0800, value: uint16(0x0101))) // Command Data Set Type
+        raw.append(element(group: 0x0000, element: 0x1001, value: ui("1.2.3.4"))) // Requested SOP Instance UID
+
+        #expect(throws: DICOMDIMSEError.malformedCommandSet) { try DICOMDIMSECommand.decodeCommandSet(raw) }
+    }
+
+    @Test func nGetResponseRoundTripsUsingAffectedSOPClassAndInstanceUID() throws {
+        let response = DICOMDIMSECommand.nGetResponse(
+            messageIDBeingRespondedTo: 2,
+            affectedSOPClassUID: DICOMSOPClass.modalityPerformedProcedureStep,
+            affectedSOPInstanceUID: "1.2.3.4",
+            status: .success,
+            datasetFollows: true
+        )
+        #expect(try DICOMDIMSECommand.decodeCommandSet(response.encodedCommandSet()) == response)
+        #expect(response.hasDataset)
+    }
+
+    @Test func nSetRequestAlwaysHasDatasetAndRoundTrips() throws {
+        let request = DICOMDIMSECommand.nSetRequest(
+            messageID: 1,
+            requestedSOPClassUID: DICOMSOPClass.modalityPerformedProcedureStep,
+            requestedSOPInstanceUID: "1.2.3.4"
+        )
+        #expect(try DICOMDIMSECommand.decodeCommandSet(request.encodedCommandSet()) == request)
+        #expect(request.hasDataset)
+    }
+
+    @Test func nSetResponseRoundTripsUsingAffectedSOPClassAndInstanceUID() throws {
+        let response = DICOMDIMSECommand.nSetResponse(
+            messageIDBeingRespondedTo: 2,
+            affectedSOPClassUID: DICOMSOPClass.modalityPerformedProcedureStep,
+            affectedSOPInstanceUID: "1.2.3.4",
+            status: .success,
+            datasetFollows: false
+        )
+        #expect(try DICOMDIMSECommand.decodeCommandSet(response.encodedCommandSet()) == response)
+        #expect(!response.hasDataset)
+    }
 }
 
 /// Reads a single element's value from an encoded DIMSE command set by tag, to assert exact
