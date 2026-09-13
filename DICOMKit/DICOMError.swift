@@ -33,4 +33,8 @@ public enum DICOMError: Error, Sendable, Equatable {
     /// A ``DICOMPrivateTagEntry`` declares an even group; private attributes
     /// live only in odd groups.
     case invalidPrivateDictionary
+    /// A dataset has no Value Type `(0040,A040)` at all, so it isn't a
+    /// Structured Report, or its Content Sequence nests deeper than
+    /// ``DICOMStructuredReport`` is willing to recurse.
+    case invalidStructuredReport
 }
