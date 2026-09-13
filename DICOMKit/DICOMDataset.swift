@@ -33,6 +33,16 @@ public struct DICOMDataset: Sendable, Sequence, Equatable {
         storage[tag]?.stringValue(characterSet: characterSet)
     }
 
+    /// Decodes a `PN` value using this dataset's Specific Character Set.
+    ///
+    /// This is the entry point a viewer should use to display a Patient
+    /// Name (or any other Person Name): unlike ``DICOMElement/personNameValue``,
+    /// which always assumes UTF-8, this honors the dataset's own `(0008,0005)`
+    /// declaration, including any ISO 2022 code extensions it names.
+    public func personNameValue(for tag: DICOMTag) -> DICOMPersonName? {
+        storage[tag]?.personNameValue(characterSet: characterSet)
+    }
+
     /// Returns the Private Creator that owns a private data element.
     ///
     /// `nil` is returned unless `tag` is in an odd private group and has an

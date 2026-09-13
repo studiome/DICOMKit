@@ -164,7 +164,19 @@ public struct DICOMElement: Sendable, Equatable {
 
     /// The three representation groups of a `PN` value.
     public var personNameValue: DICOMPersonName? {
-        guard vr == .PN, let stringValue else { return nil }
+        personNameValue(characterSet: .utf8)
+    }
+
+    /// The three representation groups of a `PN` value, decoded with a
+    /// DICOM character set.
+    ///
+    /// Use this (or ``DICOMDataset/personNameValue(for:)``) instead of the
+    /// UTF-8-only ``personNameValue`` whenever the value may use a
+    /// non-default Specific Character Set — for example a Japanese Patient
+    /// Name whose ideographic component is only decodable once the
+    /// declared ISO 2022 code extensions are known.
+    public func personNameValue(characterSet: DICOMCharacterSet) -> DICOMPersonName? {
+        guard vr == .PN, let stringValue = stringValue(characterSet: characterSet) else { return nil }
         return DICOMPersonName(stringValue)
     }
 

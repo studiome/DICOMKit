@@ -212,6 +212,11 @@ public struct DICOMCharacterSet: Sendable, Equatable {
     /// The G0/G1 code element register an ISO 2022 escape sequence switches.
     private enum EscapeRegister { case g0, g1 }
 
+    /// Bytes that reset the ISO 2022 escape state per PS3.5 6.1.2.5.3: the
+    /// multi-value delimiter `\` (0x5C), and the Person Name component (`=`,
+    /// 0x3D) and component-group (`^`, 0x5E) delimiters.
+    private static let valueAndComponentDelimiters: Set<UInt8> = [0x5C, 0x3D, 0x5E]
+
     /// ISO 2022 escape sequences DICOM PS3.5 Table 6.1-2 defines for
     /// switching the active G0/G1 repertoire, keyed by the bytes that follow
     /// ESC (0x1B). Recognizing a new sequence is just adding a table entry;
@@ -258,8 +263,16 @@ public struct DICOMCharacterSet: Sendable, Equatable {
     /// the surrounding bytes are still decoded normally. This is safer than
     /// guessing at an unknown extension's semantics or corrupting the run
     /// that follows it.
+    ///
+    /// Per PS3.5 6.1.2.5.3, the escape state resets to the initial G0/G1
+    /// state (value 1, and undesignated) at the start of each value of a
+    /// multi-valued attribute (`\`) and at each Person Name component
+    /// (`=`) and component-group (`^`) delimiter. Those delimiter bytes are
+    /// always plain ASCII and are emitted as-is; only the escape state
+    /// resets, not the output.
     private func decodeWithCodeExtensions(_ data: Data) -> String? {
-        var g0 = codeElements.first ?? .asciiDefault
+        let initialG0 = codeElements.first ?? .asciiDefault
+        var g0 = initialG0
         var g1: DICOMCodeElement?
         var result = ""
         var runBytes: [UInt8] = []
@@ -276,6 +289,15 @@ public struct DICOMCharacterSet: Sendable, Equatable {
         var index = 0
         while index < bytes.count {
             let byte = bytes[index]
+            if Self.valueAndComponentDelimiters.contains(byte) {
+                flushRun()
+                result.append(Character(UnicodeScalar(byte)))
+                g0 = initialG0
+                g1 = nil
+                runRegister = nil
+                index += 1
+                continue
+            }
             guard byte == 0x1B else {
                 let register: EscapeRegister = (byte & 0x80) != 0 ? .g1 : .g0
                 if register != runRegister { flushRun(); runRegister = register }

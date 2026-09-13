@@ -88,14 +88,18 @@ struct DICOMCharacterSetTests {
         let characterSet = DICOMCharacterSet(declaration: "ISO 2022 IR 6\\ISO 2022 IR 87")
         var bytes = Data()
         bytes.append(contentsOf: [0x1B, 0x24, 0x42]) // ESC $ B: G0 = JIS X 0208 Kanji
-        // JIS X 0208 row/cell bytes for "日本語" (verified independently via
+        // JIS X 0208 row/cell bytes for "山田" (verified independently via
         // Foundation's own ISO-2022-JP encoder, which emits exactly this
-        // escape/payload/escape framing for that string).
-        bytes.append(contentsOf: [0x46, 0x7C, 0x4B, 0x5C, 0x38, 0x6C])
+        // escape/payload/escape framing for that string). Chosen instead of
+        // e.g. "日本語" because none of its bytes equal the `\`/`=`/`^`
+        // delimiter values that reset escape state (see the delimiter tests
+        // below) — PS3.5 leaves it to the creator of a multi-byte-encoded
+        // value to avoid that collision in the first place.
+        bytes.append(contentsOf: [0x3B, 0x33, 0x45, 0x44])
         bytes.append(contentsOf: [0x1B, 0x28, 0x42]) // ESC ( B: back to ASCII
         bytes.append(contentsOf: Data("XY".utf8))
 
-        #expect(characterSet.decode(bytes) == "日本語XY")
+        #expect(characterSet.decode(bytes) == "山田XY")
     }
 
     @Test func escSwitchesG1ToKoreanEUCPair() {
@@ -121,5 +125,54 @@ struct DICOMCharacterSetTests {
         // of that run fails; the decoder falls back to decoding the raw run
         // as ISO 8859-1 (which never fails) instead of losing the whole value.
         #expect(characterSet.decode(bytes) == "AZ")
+    }
+
+    // MARK: - Delimiter state reset (PS3.5 6.1.2.5.3) and Person Names
+
+    /// JIS X 0208 row/cell bytes for "田中" (verified independently via
+    /// Foundation's ISO-2022-JP encoder). Deliberately chosen because none of
+    /// its bytes collide with the `\`, `=`, or `^` delimiter values, unlike
+    /// the "日本語" fixture used elsewhere in this file.
+    private static let tanakaKanjiBytes: [UInt8] = [0x45, 0x44, 0x43, 0x66]
+
+    @Test func personNameDecodesASCIIAlphabeticAndEscapedIdeographicComponents() {
+        var value = Data("Tanaka".utf8)
+        value.append(0x3D) // '=' component-group delimiter
+        value.append(contentsOf: [0x1B, 0x24, 0x42]) // ESC $ B: G0 = JIS X 0208 Kanji
+        value.append(contentsOf: Self.tanakaKanjiBytes)
+        value.append(contentsOf: [0x1B, 0x28, 0x42]) // ESC ( B: back to ASCII
+
+        let dataset = DICOMDataset(elements: [
+            DICOMElement(tag: .specificCharacterSet, vr: .CS, value: Data("ISO 2022 IR 6\\ISO 2022 IR 87".utf8)),
+            DICOMElement(tag: .patientName, vr: .PN, value: value)
+        ])
+
+        let name = dataset.personNameValue(for: .patientName)
+        #expect(name?.alphabetic == "Tanaka")
+        #expect(name?.ideographic == "田中")
+    }
+
+    @Test func twoValuedAttributeDecodesBothValuesWhenOnlyTheSecondEscapes() {
+        let characterSet = DICOMCharacterSet(declaration: "ISO 2022 IR 6\\ISO 2022 IR 87")
+        var value = Data("AB".utf8)
+        value.append(0x5C) // '\' value delimiter
+        value.append(contentsOf: [0x1B, 0x24, 0x42])
+        value.append(contentsOf: Self.tanakaKanjiBytes)
+        value.append(contentsOf: [0x1B, 0x28, 0x42])
+
+        let element = DICOMElement(tag: DICOMTag(group: 0x0008, element: 0x0080), vr: .LO, value: value)
+        #expect(element.stringValues(characterSet: characterSet) == ["AB", "田中"])
+    }
+
+    @Test func escapeStateDoesNotLeakAcrossAValueDelimiter() {
+        let characterSet = DICOMCharacterSet(declaration: "ISO 2022 IR 6\\ISO 2022 IR 87")
+        var value = Data()
+        value.append(contentsOf: [0x1B, 0x24, 0x42]) // switch to Kanji, deliberately not switched back
+        value.append(contentsOf: Self.tanakaKanjiBytes)
+        value.append(0x5C) // '\' value delimiter: must reset G0 back to ASCII
+        value.append(contentsOf: Data("CD".utf8))
+
+        let element = DICOMElement(tag: DICOMTag(group: 0x0008, element: 0x0080), vr: .LO, value: value)
+        #expect(element.stringValues(characterSet: characterSet) == ["田中", "CD"])
     }
 }
