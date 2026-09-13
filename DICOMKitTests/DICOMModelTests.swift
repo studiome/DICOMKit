@@ -1001,6 +1001,172 @@ struct DICOMULTests {
         guard case .associationRejection(let rejection) = await transport.sent[0] else { Issue.record("expected rejection sent"); return }
         #expect(rejection == expectedRejection)
     }
+
+    // MARK: - N-service SCU operations
+
+    private func acceptedAssociation(sopClassUID: String, contextID: UInt8 = 1) -> DICOMAssociationAcceptance {
+        DICOMAssociationAcceptance(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: contextID, result: .acceptance, transferSyntaxUID: "1.2.840.10008.1.2")])
+    }
+
+    @Test func nCreateSendsCommandAndAttributesAndReturnsResult() async throws {
+        let transport = DICOMULMockTransport(received: [
+            .associationAcceptance(acceptedAssociation(sopClassUID: DICOMSOPClass.modalityPerformedProcedureStep)),
+            .pData(try DICOMDIMSECommand.nCreateResponse(messageIDBeingRespondedTo: 100, affectedSOPClassUID: DICOMSOPClass.modalityPerformedProcedureStep, affectedSOPInstanceUID: "1.2.3", status: .success, datasetFollows: false).commandPDVs(contextID: 1, maximumPayloadLength: 1024))
+        ])
+        let association = DICOMAssociation(transport: transport)
+        _ = try await association.request(DICOMAssociationRequest(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, abstractSyntaxUID: DICOMSOPClass.modalityPerformedProcedureStep, transferSyntaxUIDs: ["1.2.840.10008.1.2"])]))
+        let result = try await association.nCreate(messageID: 100, contextID: 1, sopClassUID: DICOMSOPClass.modalityPerformedProcedureStep, sopInstanceUID: nil, attributes: Data([1, 2, 3]))
+        #expect(result.status == .success)
+        #expect(result.affectedSOPClassUID == DICOMSOPClass.modalityPerformedProcedureStep)
+        #expect(result.affectedSOPInstanceUID == "1.2.3")
+        #expect(result.dataset == nil)
+        let sent = await transport.sent
+        #expect(sent.count == 3) // association request, command PDV, attributes PDV
+        guard case .pData(let commandValues) = sent[1] else { Issue.record("expected command pData"); return }
+        let commandData = Data(commandValues.flatMap { Array($0.data) })
+        guard case .nCreateRequest(let messageID, let sopClassUID, let sopInstanceUID, let datasetFollows) = try DICOMDIMSECommand.decodeCommandSet(commandData) else { Issue.record("expected nCreateRequest"); return }
+        #expect(messageID == 100)
+        #expect(sopClassUID == DICOMSOPClass.modalityPerformedProcedureStep)
+        #expect(sopInstanceUID == nil)
+        #expect(datasetFollows)
+        guard case .pData(let dataValues) = sent[2] else { Issue.record("expected attributes pData"); return }
+        #expect(dataValues.allSatisfy { !$0.isCommand })
+    }
+
+    @Test func nCreateSOPClassOverloadResolvesContext() async throws {
+        let transport = DICOMULMockTransport(received: [
+            .associationAcceptance(acceptedAssociation(sopClassUID: DICOMSOPClass.modalityPerformedProcedureStep)),
+            .pData(try DICOMDIMSECommand.nCreateResponse(messageIDBeingRespondedTo: 100, affectedSOPClassUID: nil, affectedSOPInstanceUID: nil, status: .success, datasetFollows: false).commandPDVs(contextID: 1, maximumPayloadLength: 1024))
+        ])
+        let association = DICOMAssociation(transport: transport)
+        _ = try await association.request(DICOMAssociationRequest(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, abstractSyntaxUID: DICOMSOPClass.modalityPerformedProcedureStep, transferSyntaxUIDs: ["1.2.840.10008.1.2"])]))
+        let result = try await association.nCreate(messageID: 100, sopClassUID: DICOMSOPClass.modalityPerformedProcedureStep, sopInstanceUID: nil, attributes: nil)
+        #expect(result.status == .success)
+    }
+
+    @Test func nSetSendsModificationListAsDataPDV() async throws {
+        let transport = DICOMULMockTransport(received: [
+            .associationAcceptance(acceptedAssociation(sopClassUID: DICOMSOPClass.modalityPerformedProcedureStep)),
+            .pData(try DICOMDIMSECommand.nSetResponse(messageIDBeingRespondedTo: 101, affectedSOPClassUID: DICOMSOPClass.modalityPerformedProcedureStep, affectedSOPInstanceUID: "1.2.3", status: .success, datasetFollows: false).commandPDVs(contextID: 1, maximumPayloadLength: 1024))
+        ])
+        let association = DICOMAssociation(transport: transport)
+        _ = try await association.request(DICOMAssociationRequest(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, abstractSyntaxUID: DICOMSOPClass.modalityPerformedProcedureStep, transferSyntaxUIDs: ["1.2.840.10008.1.2"])]))
+        let result = try await association.nSet(messageID: 101, contextID: 1, sopClassUID: DICOMSOPClass.modalityPerformedProcedureStep, sopInstanceUID: "1.2.3", modifications: Data([4, 5, 6]))
+        #expect(result.status == .success)
+        let sent = await transport.sent
+        #expect(sent.count == 3)
+        guard case .pData(let dataValues) = sent[2] else { Issue.record("expected modification-list pData"); return }
+        #expect(dataValues.allSatisfy { !$0.isCommand })
+        #expect(Data(dataValues.flatMap { Array($0.data) }) == Data([4, 5, 6]))
+    }
+
+    @Test func nGetEncodesAttributeIdentifiersAndReturnsAttributeList() async throws {
+        let identifiers = [DICOMTag(group: 0x0008, element: 0x0060), DICOMTag(group: 0x0010, element: 0x0010)]
+        let transport = DICOMULMockTransport(received: [
+            .associationAcceptance(acceptedAssociation(sopClassUID: DICOMSOPClass.modalityPerformedProcedureStep)),
+            .pData(try DICOMDIMSECommand.nGetResponse(messageIDBeingRespondedTo: 102, affectedSOPClassUID: DICOMSOPClass.modalityPerformedProcedureStep, affectedSOPInstanceUID: "1.2.3", status: .success, datasetFollows: true).commandPDVs(contextID: 1, maximumPayloadLength: 1024)),
+            .pData([DICOMPDataValue(contextID: 1, isCommand: false, isLastFragment: true, data: Data([7, 8]))])
+        ])
+        let association = DICOMAssociation(transport: transport)
+        _ = try await association.request(DICOMAssociationRequest(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, abstractSyntaxUID: DICOMSOPClass.modalityPerformedProcedureStep, transferSyntaxUIDs: ["1.2.840.10008.1.2"])]))
+        let result = try await association.nGet(messageID: 102, contextID: 1, sopClassUID: DICOMSOPClass.modalityPerformedProcedureStep, sopInstanceUID: "1.2.3", attributeIdentifiers: identifiers)
+        #expect(result.status == .success)
+        #expect(result.dataset == Data([7, 8]))
+        let sent = await transport.sent
+        guard case .pData(let commandValues) = sent[1] else { Issue.record("expected command pData"); return }
+        let commandData = Data(commandValues.flatMap { Array($0.data) })
+        guard case .nGetRequest(_, _, _, let decodedIdentifiers) = try DICOMDIMSECommand.decodeCommandSet(commandData) else { Issue.record("expected nGetRequest"); return }
+        #expect(decodedIdentifiers == identifiers)
+    }
+
+    @Test func nGetResponseWithDatasetFollowsFalseYieldsNilDataset() async throws {
+        let transport = DICOMULMockTransport(received: [
+            .associationAcceptance(acceptedAssociation(sopClassUID: DICOMSOPClass.modalityPerformedProcedureStep)),
+            .pData(try DICOMDIMSECommand.nGetResponse(messageIDBeingRespondedTo: 103, affectedSOPClassUID: DICOMSOPClass.modalityPerformedProcedureStep, affectedSOPInstanceUID: "1.2.3", status: .success, datasetFollows: false).commandPDVs(contextID: 1, maximumPayloadLength: 1024))
+        ])
+        let association = DICOMAssociation(transport: transport)
+        _ = try await association.request(DICOMAssociationRequest(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, abstractSyntaxUID: DICOMSOPClass.modalityPerformedProcedureStep, transferSyntaxUIDs: ["1.2.840.10008.1.2"])]))
+        let result = try await association.nGet(messageID: 103, contextID: 1, sopClassUID: DICOMSOPClass.modalityPerformedProcedureStep, sopInstanceUID: "1.2.3", attributeIdentifiers: [])
+        #expect(result.dataset == nil)
+    }
+
+    @Test func nActionSendsActionInformationAndReturnsStatus() async throws {
+        let transport = DICOMULMockTransport(received: [
+            .associationAcceptance(acceptedAssociation(sopClassUID: DICOMSOPClass.storageCommitmentPushModel)),
+            .pData(try DICOMDIMSECommand.nActionResponse(messageIDBeingRespondedTo: 104, affectedSOPClassUID: DICOMSOPClass.storageCommitmentPushModel, affectedSOPInstanceUID: "1.2.840.10008.1.20.1.1", actionTypeID: 1, status: .success, datasetFollows: false).commandPDVs(contextID: 1, maximumPayloadLength: 1024))
+        ])
+        let association = DICOMAssociation(transport: transport)
+        _ = try await association.request(DICOMAssociationRequest(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, abstractSyntaxUID: DICOMSOPClass.storageCommitmentPushModel, transferSyntaxUIDs: ["1.2.840.10008.1.2"])]))
+        let result = try await association.nAction(messageID: 104, contextID: 1, sopClassUID: DICOMSOPClass.storageCommitmentPushModel, sopInstanceUID: "1.2.840.10008.1.20.1.1", actionTypeID: 1, actionInformation: Data([9]))
+        #expect(result.status == .success)
+        let sent = await transport.sent
+        guard case .pData(let dataValues) = sent[2] else { Issue.record("expected action-information pData"); return }
+        #expect(Data(dataValues.flatMap { Array($0.data) }) == Data([9]))
+    }
+
+    @Test func nDeleteSendsRequestWithNoDataAndReturnsStatus() async throws {
+        let transport = DICOMULMockTransport(received: [
+            .associationAcceptance(acceptedAssociation(sopClassUID: DICOMSOPClass.modalityPerformedProcedureStep)),
+            .pData(try DICOMDIMSECommand.nDeleteResponse(messageIDBeingRespondedTo: 105, affectedSOPClassUID: DICOMSOPClass.modalityPerformedProcedureStep, affectedSOPInstanceUID: "1.2.3", status: .success).commandPDVs(contextID: 1, maximumPayloadLength: 1024))
+        ])
+        let association = DICOMAssociation(transport: transport)
+        _ = try await association.request(DICOMAssociationRequest(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, abstractSyntaxUID: DICOMSOPClass.modalityPerformedProcedureStep, transferSyntaxUIDs: ["1.2.840.10008.1.2"])]))
+        let result = try await association.nDelete(messageID: 105, contextID: 1, sopClassUID: DICOMSOPClass.modalityPerformedProcedureStep, sopInstanceUID: "1.2.3")
+        #expect(result.status == .success)
+        #expect(await transport.sent.count == 2) // association request, command PDV only
+    }
+
+    @Test func nEventReportSendsEventInformationAndReturnsStatus() async throws {
+        let transport = DICOMULMockTransport(received: [
+            .associationAcceptance(acceptedAssociation(sopClassUID: DICOMSOPClass.storageCommitmentPushModel)),
+            .pData(try DICOMDIMSECommand.nEventReportResponse(messageIDBeingRespondedTo: 106, affectedSOPClassUID: DICOMSOPClass.storageCommitmentPushModel, affectedSOPInstanceUID: "1.2.840.10008.1.20.1.1", eventTypeID: 1, status: .success, datasetFollows: false).commandPDVs(contextID: 1, maximumPayloadLength: 1024))
+        ])
+        let association = DICOMAssociation(transport: transport)
+        _ = try await association.request(DICOMAssociationRequest(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, abstractSyntaxUID: DICOMSOPClass.storageCommitmentPushModel, transferSyntaxUIDs: ["1.2.840.10008.1.2"])]))
+        let result = try await association.nEventReport(messageID: 106, contextID: 1, sopClassUID: DICOMSOPClass.storageCommitmentPushModel, sopInstanceUID: "1.2.840.10008.1.20.1.1", eventTypeID: 1, eventInformation: Data([1, 2]))
+        #expect(result.status == .success)
+        let sent = await transport.sent
+        guard case .pData(let dataValues) = sent[2] else { Issue.record("expected event-information pData"); return }
+        #expect(Data(dataValues.flatMap { Array($0.data) }) == Data([1, 2]))
+    }
+
+    @Test func nServiceMismatchedMessageIDThrowsUnexpectedDIMSECommand() async throws {
+        let transport = DICOMULMockTransport(received: [
+            .associationAcceptance(acceptedAssociation(sopClassUID: DICOMSOPClass.modalityPerformedProcedureStep)),
+            .pData(try DICOMDIMSECommand.nDeleteResponse(messageIDBeingRespondedTo: 999, affectedSOPClassUID: nil, affectedSOPInstanceUID: nil, status: .success).commandPDVs(contextID: 1, maximumPayloadLength: 1024))
+        ])
+        let association = DICOMAssociation(transport: transport)
+        _ = try await association.request(DICOMAssociationRequest(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, abstractSyntaxUID: DICOMSOPClass.modalityPerformedProcedureStep, transferSyntaxUIDs: ["1.2.840.10008.1.2"])]))
+        await #expect(throws: DICOMAssociationError.unexpectedDIMSECommand) {
+            _ = try await association.nDelete(messageID: 107, contextID: 1, sopClassUID: DICOMSOPClass.modalityPerformedProcedureStep, sopInstanceUID: "1.2.3")
+        }
+    }
+
+    @Test func nServiceWrongResponseKindThrowsUnexpectedDIMSECommand() async throws {
+        let transport = DICOMULMockTransport(received: [
+            .associationAcceptance(acceptedAssociation(sopClassUID: DICOMSOPClass.modalityPerformedProcedureStep)),
+            .pData(try DICOMDIMSECommand.cEchoResponse(messageIDBeingRespondedTo: 108, status: .success).commandPDVs(contextID: 1, maximumPayloadLength: 1024))
+        ])
+        let association = DICOMAssociation(transport: transport)
+        _ = try await association.request(DICOMAssociationRequest(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, abstractSyntaxUID: DICOMSOPClass.modalityPerformedProcedureStep, transferSyntaxUIDs: ["1.2.840.10008.1.2"])]))
+        await #expect(throws: DICOMAssociationError.unexpectedDIMSECommand) {
+            _ = try await association.nDelete(messageID: 108, contextID: 1, sopClassUID: DICOMSOPClass.modalityPerformedProcedureStep, sopInstanceUID: "1.2.3")
+        }
+    }
+
+    @Test func nServiceOperationsThrowNotAssociatedForUnacceptedContext() async throws {
+        let transport = DICOMULMockTransport(received: [
+            .associationAcceptance(DICOMAssociationAcceptance(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, result: .abstractSyntaxNotSupported, transferSyntaxUID: "1.2.840.10008.1.2")]))
+        ])
+        let association = DICOMAssociation(transport: transport)
+        _ = try await association.request(DICOMAssociationRequest(calledAETitle: "PACS", callingAETitle: "DICOMKIT", presentationContexts: [.init(id: 1, abstractSyntaxUID: DICOMSOPClass.modalityPerformedProcedureStep, transferSyntaxUIDs: ["1.2.840.10008.1.2"])]))
+        await #expect(throws: DICOMAssociationError.notAssociated) { try await association.nCreate(messageID: 1, contextID: 1, sopClassUID: DICOMSOPClass.modalityPerformedProcedureStep, sopInstanceUID: nil, attributes: nil) }
+        await #expect(throws: DICOMAssociationError.notAssociated) { try await association.nSet(messageID: 1, contextID: 1, sopClassUID: DICOMSOPClass.modalityPerformedProcedureStep, sopInstanceUID: "1", modifications: Data()) }
+        await #expect(throws: DICOMAssociationError.notAssociated) { try await association.nGet(messageID: 1, contextID: 1, sopClassUID: DICOMSOPClass.modalityPerformedProcedureStep, sopInstanceUID: "1", attributeIdentifiers: []) }
+        await #expect(throws: DICOMAssociationError.notAssociated) { try await association.nAction(messageID: 1, contextID: 1, sopClassUID: DICOMSOPClass.modalityPerformedProcedureStep, sopInstanceUID: "1", actionTypeID: 1, actionInformation: nil) }
+        await #expect(throws: DICOMAssociationError.notAssociated) { try await association.nDelete(messageID: 1, contextID: 1, sopClassUID: DICOMSOPClass.modalityPerformedProcedureStep, sopInstanceUID: "1") }
+        await #expect(throws: DICOMAssociationError.notAssociated) { try await association.nEventReport(messageID: 1, contextID: 1, sopClassUID: DICOMSOPClass.modalityPerformedProcedureStep, sopInstanceUID: "1", eventTypeID: 1, eventInformation: nil) }
+    }
 }
 
 /// Tests for the DIMSE-N (Normalized) services: N-EVENT-REPORT, N-GET, N-SET,

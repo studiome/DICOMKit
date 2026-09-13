@@ -68,6 +68,20 @@ public struct DICOMDIMSERequest: Sendable, Equatable {
     }
 }
 
+/// The result of a DIMSE-N (Normalized) service operation: the peer's final
+/// status, the Affected SOP Class/Instance UID it reported, and the
+/// Attribute List, Action Reply, or Event Reply data set it returned — `nil`
+/// when the response declared none.
+public struct DICOMNServiceResult: Sendable, Equatable {
+    public let status: DICOMDIMSEStatus
+    public let affectedSOPClassUID: String?
+    public let affectedSOPInstanceUID: String?
+    public let dataset: Data?
+    public init(status: DICOMDIMSEStatus, affectedSOPClassUID: String?, affectedSOPInstanceUID: String?, dataset: Data?) {
+        self.status = status; self.affectedSOPClassUID = affectedSOPClassUID; self.affectedSOPInstanceUID = affectedSOPInstanceUID; self.dataset = dataset
+    }
+}
+
 /// An incoming C-STORE request awaiting an SCP response.
 public struct DICOMCStoreRequest: Sendable, Equatable {
     public let messageID: UInt16
@@ -362,6 +376,122 @@ public actor DICOMAssociation {
         return try await cGet(messageID: messageID, contextID: contextID, sopClassUID: sopClassUID, identifier: identifier, onStore: onStore)
     }
 
+    // MARK: - N-service SCU operations
+
+    /// Sends N-CREATE, asking the peer to create a new Normalized SOP Instance.
+    /// `sopInstanceUID` may be `nil` to let the peer assign one.
+    public func nCreate(messageID: UInt16, contextID: UInt8, sopClassUID: String, sopInstanceUID: String?, attributes: Data?) async throws -> DICOMNServiceResult {
+        guard let acceptance, acceptance.presentationContexts.contains(where: { $0.id == contextID && $0.result == .acceptance }) else { throw DICOMAssociationError.notAssociated }
+        let maximumPayload = max(1, Int(acceptance.maximumPDULength) - 12)
+        let command = DICOMDIMSECommand.nCreateRequest(messageID: messageID, affectedSOPClassUID: sopClassUID, affectedSOPInstanceUID: sopInstanceUID, datasetFollows: attributes != nil)
+        try await transport.send(.pData(try command.commandPDVs(contextID: contextID, maximumPayloadLength: maximumPayload)))
+        if let attributes { try await transport.send(.pData(pdvs(data: attributes, contextID: contextID, maximumPayloadLength: maximumPayload))) }
+        let decoded = try DICOMDIMSECommand.decodeCommandSet(try await receiveCommand(contextID: contextID))
+        guard case .nCreateResponse(let responseID, let sopClassUID, let sopInstanceUID, let status, _) = decoded, responseID == messageID else { throw DICOMAssociationError.unexpectedDIMSECommand }
+        let dataset = decoded.hasDataset ? try await receiveDataset(contextID: contextID) : nil
+        return DICOMNServiceResult(status: status, affectedSOPClassUID: sopClassUID, affectedSOPInstanceUID: sopInstanceUID, dataset: dataset)
+    }
+
+    /// Sends N-CREATE using the accepted presentation context for `sopClassUID`.
+    public func nCreate(messageID: UInt16, sopClassUID: String, sopInstanceUID: String?, attributes: Data?) async throws -> DICOMNServiceResult {
+        guard let contextID = presentationContextID(for: sopClassUID) else { throw DICOMAssociationError.notAssociated }
+        return try await nCreate(messageID: messageID, contextID: contextID, sopClassUID: sopClassUID, sopInstanceUID: sopInstanceUID, attributes: attributes)
+    }
+
+    /// Sends N-SET, modifying attribute values on a Normalized SOP Instance.
+    /// N-SET-RQ always carries a Modification List, so `modifications` is not optional.
+    public func nSet(messageID: UInt16, contextID: UInt8, sopClassUID: String, sopInstanceUID: String, modifications: Data) async throws -> DICOMNServiceResult {
+        guard let acceptance, acceptance.presentationContexts.contains(where: { $0.id == contextID && $0.result == .acceptance }) else { throw DICOMAssociationError.notAssociated }
+        let maximumPayload = max(1, Int(acceptance.maximumPDULength) - 12)
+        let command = DICOMDIMSECommand.nSetRequest(messageID: messageID, requestedSOPClassUID: sopClassUID, requestedSOPInstanceUID: sopInstanceUID)
+        try await transport.send(.pData(try command.commandPDVs(contextID: contextID, maximumPayloadLength: maximumPayload)))
+        try await transport.send(.pData(pdvs(data: modifications, contextID: contextID, maximumPayloadLength: maximumPayload)))
+        let decoded = try DICOMDIMSECommand.decodeCommandSet(try await receiveCommand(contextID: contextID))
+        guard case .nSetResponse(let responseID, let sopClassUID, let sopInstanceUID, let status, _) = decoded, responseID == messageID else { throw DICOMAssociationError.unexpectedDIMSECommand }
+        let dataset = decoded.hasDataset ? try await receiveDataset(contextID: contextID) : nil
+        return DICOMNServiceResult(status: status, affectedSOPClassUID: sopClassUID, affectedSOPInstanceUID: sopInstanceUID, dataset: dataset)
+    }
+
+    /// Sends N-SET using the accepted presentation context for `sopClassUID`.
+    public func nSet(messageID: UInt16, sopClassUID: String, sopInstanceUID: String, modifications: Data) async throws -> DICOMNServiceResult {
+        guard let contextID = presentationContextID(for: sopClassUID) else { throw DICOMAssociationError.notAssociated }
+        return try await nSet(messageID: messageID, contextID: contextID, sopClassUID: sopClassUID, sopInstanceUID: sopInstanceUID, modifications: modifications)
+    }
+
+    /// Sends N-GET, retrieving attribute values from a Normalized SOP Instance.
+    /// An empty `attributeIdentifiers` requests every attribute.
+    public func nGet(messageID: UInt16, contextID: UInt8, sopClassUID: String, sopInstanceUID: String, attributeIdentifiers: [DICOMTag]) async throws -> DICOMNServiceResult {
+        guard let acceptance, acceptance.presentationContexts.contains(where: { $0.id == contextID && $0.result == .acceptance }) else { throw DICOMAssociationError.notAssociated }
+        let maximumPayload = max(1, Int(acceptance.maximumPDULength) - 12)
+        let command = DICOMDIMSECommand.nGetRequest(messageID: messageID, requestedSOPClassUID: sopClassUID, requestedSOPInstanceUID: sopInstanceUID, attributeIdentifiers: attributeIdentifiers)
+        try await transport.send(.pData(try command.commandPDVs(contextID: contextID, maximumPayloadLength: maximumPayload)))
+        let decoded = try DICOMDIMSECommand.decodeCommandSet(try await receiveCommand(contextID: contextID))
+        guard case .nGetResponse(let responseID, let sopClassUID, let sopInstanceUID, let status, _) = decoded, responseID == messageID else { throw DICOMAssociationError.unexpectedDIMSECommand }
+        let dataset = decoded.hasDataset ? try await receiveDataset(contextID: contextID) : nil
+        return DICOMNServiceResult(status: status, affectedSOPClassUID: sopClassUID, affectedSOPInstanceUID: sopInstanceUID, dataset: dataset)
+    }
+
+    /// Sends N-GET using the accepted presentation context for `sopClassUID`.
+    public func nGet(messageID: UInt16, sopClassUID: String, sopInstanceUID: String, attributeIdentifiers: [DICOMTag]) async throws -> DICOMNServiceResult {
+        guard let contextID = presentationContextID(for: sopClassUID) else { throw DICOMAssociationError.notAssociated }
+        return try await nGet(messageID: messageID, contextID: contextID, sopClassUID: sopClassUID, sopInstanceUID: sopInstanceUID, attributeIdentifiers: attributeIdentifiers)
+    }
+
+    /// Sends N-ACTION, invoking a specific action on a Normalized SOP Instance.
+    public func nAction(messageID: UInt16, contextID: UInt8, sopClassUID: String, sopInstanceUID: String, actionTypeID: UInt16, actionInformation: Data?) async throws -> DICOMNServiceResult {
+        guard let acceptance, acceptance.presentationContexts.contains(where: { $0.id == contextID && $0.result == .acceptance }) else { throw DICOMAssociationError.notAssociated }
+        let maximumPayload = max(1, Int(acceptance.maximumPDULength) - 12)
+        let command = DICOMDIMSECommand.nActionRequest(messageID: messageID, requestedSOPClassUID: sopClassUID, requestedSOPInstanceUID: sopInstanceUID, actionTypeID: actionTypeID, datasetFollows: actionInformation != nil)
+        try await transport.send(.pData(try command.commandPDVs(contextID: contextID, maximumPayloadLength: maximumPayload)))
+        if let actionInformation { try await transport.send(.pData(pdvs(data: actionInformation, contextID: contextID, maximumPayloadLength: maximumPayload))) }
+        let decoded = try DICOMDIMSECommand.decodeCommandSet(try await receiveCommand(contextID: contextID))
+        guard case .nActionResponse(let responseID, let sopClassUID, let sopInstanceUID, _, let status, _) = decoded, responseID == messageID else { throw DICOMAssociationError.unexpectedDIMSECommand }
+        let dataset = decoded.hasDataset ? try await receiveDataset(contextID: contextID) : nil
+        return DICOMNServiceResult(status: status, affectedSOPClassUID: sopClassUID, affectedSOPInstanceUID: sopInstanceUID, dataset: dataset)
+    }
+
+    /// Sends N-ACTION using the accepted presentation context for `sopClassUID`.
+    public func nAction(messageID: UInt16, sopClassUID: String, sopInstanceUID: String, actionTypeID: UInt16, actionInformation: Data?) async throws -> DICOMNServiceResult {
+        guard let contextID = presentationContextID(for: sopClassUID) else { throw DICOMAssociationError.notAssociated }
+        return try await nAction(messageID: messageID, contextID: contextID, sopClassUID: sopClassUID, sopInstanceUID: sopInstanceUID, actionTypeID: actionTypeID, actionInformation: actionInformation)
+    }
+
+    /// Sends N-DELETE, asking the peer to delete a Normalized SOP Instance.
+    /// Neither N-DELETE-RQ nor N-DELETE-RSP ever carries a data set.
+    public func nDelete(messageID: UInt16, contextID: UInt8, sopClassUID: String, sopInstanceUID: String) async throws -> DICOMNServiceResult {
+        guard let acceptance, acceptance.presentationContexts.contains(where: { $0.id == contextID && $0.result == .acceptance }) else { throw DICOMAssociationError.notAssociated }
+        let maximumPayload = max(1, Int(acceptance.maximumPDULength) - 12)
+        let command = DICOMDIMSECommand.nDeleteRequest(messageID: messageID, requestedSOPClassUID: sopClassUID, requestedSOPInstanceUID: sopInstanceUID)
+        try await transport.send(.pData(try command.commandPDVs(contextID: contextID, maximumPayloadLength: maximumPayload)))
+        guard case .nDeleteResponse(let responseID, let sopClassUID, let sopInstanceUID, let status) = try DICOMDIMSECommand.decodeCommandSet(try await receiveCommand(contextID: contextID)), responseID == messageID else { throw DICOMAssociationError.unexpectedDIMSECommand }
+        return DICOMNServiceResult(status: status, affectedSOPClassUID: sopClassUID, affectedSOPInstanceUID: sopInstanceUID, dataset: nil)
+    }
+
+    /// Sends N-DELETE using the accepted presentation context for `sopClassUID`.
+    public func nDelete(messageID: UInt16, sopClassUID: String, sopInstanceUID: String) async throws -> DICOMNServiceResult {
+        guard let contextID = presentationContextID(for: sopClassUID) else { throw DICOMAssociationError.notAssociated }
+        return try await nDelete(messageID: messageID, contextID: contextID, sopClassUID: sopClassUID, sopInstanceUID: sopInstanceUID)
+    }
+
+    /// Sends N-EVENT-REPORT, notifying the peer of an event on a Normalized SOP Instance.
+    public func nEventReport(messageID: UInt16, contextID: UInt8, sopClassUID: String, sopInstanceUID: String, eventTypeID: UInt16, eventInformation: Data?) async throws -> DICOMNServiceResult {
+        guard let acceptance, acceptance.presentationContexts.contains(where: { $0.id == contextID && $0.result == .acceptance }) else { throw DICOMAssociationError.notAssociated }
+        let maximumPayload = max(1, Int(acceptance.maximumPDULength) - 12)
+        let command = DICOMDIMSECommand.nEventReportRequest(messageID: messageID, affectedSOPClassUID: sopClassUID, affectedSOPInstanceUID: sopInstanceUID, eventTypeID: eventTypeID, datasetFollows: eventInformation != nil)
+        try await transport.send(.pData(try command.commandPDVs(contextID: contextID, maximumPayloadLength: maximumPayload)))
+        if let eventInformation { try await transport.send(.pData(pdvs(data: eventInformation, contextID: contextID, maximumPayloadLength: maximumPayload))) }
+        let decoded = try DICOMDIMSECommand.decodeCommandSet(try await receiveCommand(contextID: contextID))
+        guard case .nEventReportResponse(let responseID, let sopClassUID, let sopInstanceUID, _, let status, _) = decoded, responseID == messageID else { throw DICOMAssociationError.unexpectedDIMSECommand }
+        let dataset = decoded.hasDataset ? try await receiveDataset(contextID: contextID) : nil
+        return DICOMNServiceResult(status: status, affectedSOPClassUID: sopClassUID, affectedSOPInstanceUID: sopInstanceUID, dataset: dataset)
+    }
+
+    /// Sends N-EVENT-REPORT using the accepted presentation context for `sopClassUID`.
+    public func nEventReport(messageID: UInt16, sopClassUID: String, sopInstanceUID: String, eventTypeID: UInt16, eventInformation: Data?) async throws -> DICOMNServiceResult {
+        guard let contextID = presentationContextID(for: sopClassUID) else { throw DICOMAssociationError.notAssociated }
+        return try await nEventReport(messageID: messageID, contextID: contextID, sopClassUID: sopClassUID, sopInstanceUID: sopInstanceUID, eventTypeID: eventTypeID, eventInformation: eventInformation)
+    }
+
     /// Receives the next DIMSE request: reassembles the command set from command PDVs
     /// on a single presentation context, then — when the decoded command's
     /// ``DICOMDIMSECommand/hasDataset`` is `true` — reassembles the data set that
@@ -484,6 +614,31 @@ public actor DICOMAssociation {
     private func tearDown() {
         acceptance = nil
         requestedPresentationContexts = []
+    }
+
+    /// Reassembles a DIMSE command set from command PDVs on `contextID`. Shared by the
+    /// N-service SCU methods above, whose response handling is otherwise identical.
+    private func receiveCommand(contextID: UInt8) async throws -> Data {
+        var command = Data()
+        while true {
+            guard case .pData(let values) = try await receivePDU() else { throw DICOMAssociationError.unexpectedPDU }
+            for value in values where value.contextID == contextID && value.isCommand {
+                command.append(value.data)
+                if value.isLastFragment { return command }
+            }
+        }
+    }
+
+    /// Reassembles a data set from data PDVs on `contextID`.
+    private func receiveDataset(contextID: UInt8) async throws -> Data {
+        var dataset = Data()
+        while true {
+            guard case .pData(let values) = try await receivePDU() else { throw DICOMAssociationError.unexpectedPDU }
+            for value in values where value.contextID == contextID && !value.isCommand {
+                dataset.append(value.data)
+                if value.isLastFragment { return dataset }
+            }
+        }
     }
 
     private func pdvs(data: Data, contextID: UInt8, maximumPayloadLength: Int) -> [DICOMPDataValue] {
