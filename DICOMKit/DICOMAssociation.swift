@@ -590,6 +590,67 @@ public actor DICOMAssociation {
         if let identifier { try await transport.send(.pData(pdvs(data: identifier, contextID: contextID, maximumPayloadLength: maximumPayload))) }
     }
 
+    // MARK: - N-service SCP responses
+
+    /// Sends N-CREATE-RSP for a request received through ``receiveRequest()``. A
+    /// non-`nil` `attributes` becomes the response's Attribute List data set.
+    public func respondToNCreate(messageIDBeingRespondedTo: UInt16, contextID: UInt8, affectedSOPClassUID: String?, affectedSOPInstanceUID: String?, status: DICOMDIMSEStatus, attributes: Data? = nil) async throws {
+        guard let acceptance, acceptance.presentationContexts.contains(where: { $0.id == contextID && $0.result == .acceptance }) else { throw DICOMAssociationError.notAssociated }
+        let maximumPayload = max(1, Int(acceptance.maximumPDULength) - 12)
+        let response = DICOMDIMSECommand.nCreateResponse(messageIDBeingRespondedTo: messageIDBeingRespondedTo, affectedSOPClassUID: affectedSOPClassUID, affectedSOPInstanceUID: affectedSOPInstanceUID, status: status, datasetFollows: attributes != nil)
+        try await transport.send(.pData(try response.commandPDVs(contextID: contextID, maximumPayloadLength: maximumPayload)))
+        if let attributes { try await transport.send(.pData(pdvs(data: attributes, contextID: contextID, maximumPayloadLength: maximumPayload))) }
+    }
+
+    /// Sends N-SET-RSP for a request received through ``receiveRequest()``. A
+    /// non-`nil` `attributes` becomes the response's Attribute List data set.
+    public func respondToNSet(messageIDBeingRespondedTo: UInt16, contextID: UInt8, affectedSOPClassUID: String?, affectedSOPInstanceUID: String?, status: DICOMDIMSEStatus, attributes: Data? = nil) async throws {
+        guard let acceptance, acceptance.presentationContexts.contains(where: { $0.id == contextID && $0.result == .acceptance }) else { throw DICOMAssociationError.notAssociated }
+        let maximumPayload = max(1, Int(acceptance.maximumPDULength) - 12)
+        let response = DICOMDIMSECommand.nSetResponse(messageIDBeingRespondedTo: messageIDBeingRespondedTo, affectedSOPClassUID: affectedSOPClassUID, affectedSOPInstanceUID: affectedSOPInstanceUID, status: status, datasetFollows: attributes != nil)
+        try await transport.send(.pData(try response.commandPDVs(contextID: contextID, maximumPayloadLength: maximumPayload)))
+        if let attributes { try await transport.send(.pData(pdvs(data: attributes, contextID: contextID, maximumPayloadLength: maximumPayload))) }
+    }
+
+    /// Sends N-GET-RSP for a request received through ``receiveRequest()``. A
+    /// non-`nil` `attributes` becomes the response's Attribute List data set.
+    public func respondToNGet(messageIDBeingRespondedTo: UInt16, contextID: UInt8, affectedSOPClassUID: String?, affectedSOPInstanceUID: String?, status: DICOMDIMSEStatus, attributes: Data? = nil) async throws {
+        guard let acceptance, acceptance.presentationContexts.contains(where: { $0.id == contextID && $0.result == .acceptance }) else { throw DICOMAssociationError.notAssociated }
+        let maximumPayload = max(1, Int(acceptance.maximumPDULength) - 12)
+        let response = DICOMDIMSECommand.nGetResponse(messageIDBeingRespondedTo: messageIDBeingRespondedTo, affectedSOPClassUID: affectedSOPClassUID, affectedSOPInstanceUID: affectedSOPInstanceUID, status: status, datasetFollows: attributes != nil)
+        try await transport.send(.pData(try response.commandPDVs(contextID: contextID, maximumPayloadLength: maximumPayload)))
+        if let attributes { try await transport.send(.pData(pdvs(data: attributes, contextID: contextID, maximumPayloadLength: maximumPayload))) }
+    }
+
+    /// Sends N-ACTION-RSP for a request received through ``receiveRequest()``. A
+    /// non-`nil` `attributes` becomes the response's Action Reply data set.
+    public func respondToNAction(messageIDBeingRespondedTo: UInt16, contextID: UInt8, affectedSOPClassUID: String?, affectedSOPInstanceUID: String?, actionTypeID: UInt16?, status: DICOMDIMSEStatus, attributes: Data? = nil) async throws {
+        guard let acceptance, acceptance.presentationContexts.contains(where: { $0.id == contextID && $0.result == .acceptance }) else { throw DICOMAssociationError.notAssociated }
+        let maximumPayload = max(1, Int(acceptance.maximumPDULength) - 12)
+        let response = DICOMDIMSECommand.nActionResponse(messageIDBeingRespondedTo: messageIDBeingRespondedTo, affectedSOPClassUID: affectedSOPClassUID, affectedSOPInstanceUID: affectedSOPInstanceUID, actionTypeID: actionTypeID, status: status, datasetFollows: attributes != nil)
+        try await transport.send(.pData(try response.commandPDVs(contextID: contextID, maximumPayloadLength: maximumPayload)))
+        if let attributes { try await transport.send(.pData(pdvs(data: attributes, contextID: contextID, maximumPayloadLength: maximumPayload))) }
+    }
+
+    /// Sends N-DELETE-RSP for a request received through ``receiveRequest()``.
+    /// N-DELETE-RSP never carries a data set.
+    public func respondToNDelete(messageIDBeingRespondedTo: UInt16, contextID: UInt8, affectedSOPClassUID: String?, affectedSOPInstanceUID: String?, status: DICOMDIMSEStatus) async throws {
+        guard let acceptance, acceptance.presentationContexts.contains(where: { $0.id == contextID && $0.result == .acceptance }) else { throw DICOMAssociationError.notAssociated }
+        let maximumPayload = max(1, Int(acceptance.maximumPDULength) - 12)
+        let response = DICOMDIMSECommand.nDeleteResponse(messageIDBeingRespondedTo: messageIDBeingRespondedTo, affectedSOPClassUID: affectedSOPClassUID, affectedSOPInstanceUID: affectedSOPInstanceUID, status: status)
+        try await transport.send(.pData(try response.commandPDVs(contextID: contextID, maximumPayloadLength: maximumPayload)))
+    }
+
+    /// Sends N-EVENT-REPORT-RSP for a request received through ``receiveRequest()``. A
+    /// non-`nil` `attributes` becomes the response's Event Reply data set.
+    public func respondToNEventReport(messageIDBeingRespondedTo: UInt16, contextID: UInt8, affectedSOPClassUID: String?, affectedSOPInstanceUID: String?, eventTypeID: UInt16?, status: DICOMDIMSEStatus, attributes: Data? = nil) async throws {
+        guard let acceptance, acceptance.presentationContexts.contains(where: { $0.id == contextID && $0.result == .acceptance }) else { throw DICOMAssociationError.notAssociated }
+        let maximumPayload = max(1, Int(acceptance.maximumPDULength) - 12)
+        let response = DICOMDIMSECommand.nEventReportResponse(messageIDBeingRespondedTo: messageIDBeingRespondedTo, affectedSOPClassUID: affectedSOPClassUID, affectedSOPInstanceUID: affectedSOPInstanceUID, eventTypeID: eventTypeID, status: status, datasetFollows: attributes != nil)
+        try await transport.send(.pData(try response.commandPDVs(contextID: contextID, maximumPayloadLength: maximumPayload)))
+        if let attributes { try await transport.send(.pData(pdvs(data: attributes, contextID: contextID, maximumPayloadLength: maximumPayload))) }
+    }
+
     /// Releases an established association. This method is idempotent, including
     /// after an abort or a peer-initiated release.
     public func release() async throws {
