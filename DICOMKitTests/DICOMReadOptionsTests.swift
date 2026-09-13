@@ -72,6 +72,72 @@ struct DICOMUnknownVRReinterpretationTests {
     }
 }
 
+/// Covers parsing a defined-length `UN` element whose dictionary VR is `SQ`:
+/// PS3.5 says its bytes are encoded Implicit VR Little Endian regardless of
+/// the enclosing dataset's transfer syntax, because that's what the
+/// conversion that produced the `UN` re-encoding preserved.
+struct DICOMUnknownSequenceReinterpretationTests {
+    @Test func reinterpretsDefinedLengthUnknownSequenceAsImplicitVRLittleEndian() throws {
+        let item1 = implicitElement(tag: .patientName, value: "Doe^Jane")
+        let item2 = implicitElement(tag: .referencedSOPInstanceUID, value: "1.2.3.4")
+        let sequenceBytes = itemBytes(item1) + itemBytes(item2)
+        let data = part10File(transferSyntaxUID: TransferSyntax.explicitVRLittleEndian.uid, datasetElements: [
+            element(tag: .referencedStudySequence, vr: .UN, value: sequenceBytes)
+        ])
+
+        let file = try DICOMFile(data: data)
+
+        let sequenceElement = try #require(file.dataset[.referencedStudySequence])
+        #expect(sequenceElement.vr == .SQ)
+        #expect(sequenceElement.sequenceItems?.count == 2)
+        #expect(sequenceElement.sequenceItems?[0][.patientName]?.stringValue == "Doe^Jane")
+        #expect(sequenceElement.sequenceItems?[1][.referencedSOPInstanceUID]?.stringValue == "1.2.3.4")
+    }
+
+    @Test func reinterpretsNestedSequenceInsideUnknownSequence() throws {
+        let nestedItem = implicitElement(tag: .lutExplanation, value: "Nested")
+        let nestedSequence = implicitDefinedLengthSequence(tag: .voiLUTSequence, itemElements: [nestedItem])
+        let outerItem = nestedSequence + implicitElement(tag: .patientName, value: "Doe^Jane")
+        let sequenceBytes = itemBytes(outerItem)
+        let data = part10File(transferSyntaxUID: TransferSyntax.explicitVRLittleEndian.uid, datasetElements: [
+            element(tag: .referencedStudySequence, vr: .UN, value: sequenceBytes)
+        ])
+
+        let file = try DICOMFile(data: data)
+
+        let sequenceElement = try #require(file.dataset[.referencedStudySequence])
+        #expect(sequenceElement.vr == .SQ)
+        let outerItemDataset = try #require(sequenceElement.sequenceItems?.first)
+        #expect(outerItemDataset[.patientName]?.stringValue == "Doe^Jane")
+        let nestedSequenceElement = try #require(outerItemDataset[.voiLUTSequence])
+        #expect(nestedSequenceElement.vr == .SQ)
+        #expect(nestedSequenceElement.sequenceItems?.first?[.lutExplanation]?.stringValue == "Nested")
+    }
+
+    @Test func keepsUnknownVRWhenSequenceBytesAreUnparseable() throws {
+        let garbage = Data([0xDE, 0xAD, 0xBE, 0xEF, 0x00, 0x00, 0x00, 0x00])
+        let data = part10File(transferSyntaxUID: TransferSyntax.explicitVRLittleEndian.uid, datasetElements: [
+            element(tag: .referencedStudySequence, vr: .UN, value: garbage),
+            element(tag: .patientName, vr: .PN, value: "Doe^Jane")
+        ])
+
+        let file = try DICOMFile(data: data)
+
+        #expect(file.dataset[.referencedStudySequence]?.vr == .UN)
+        #expect(file.dataset[.referencedStudySequence]?.value == garbage)
+        #expect(file.dataset[.patientName]?.stringValue == "Doe^Jane")
+    }
+}
+
+/// A raw Implicit VR item header (`FFFE,E000`) wrapping `payload`, for
+/// assembling a defined-length sequence's item bytes by hand.
+private func itemBytes(_ payload: Data) -> Data {
+    var data = uint16(0xFFFE) + uint16(0xE000)
+    data.append(uint32(UInt32(payload.count)))
+    data.append(payload)
+    return data
+}
+
 /// Builds a raw Explicit VR Big Endian `UN` element. `UN`'s 2-byte VR code
 /// and 4-byte length always use the enclosing dataset's byte order for the
 /// header, but this helper only needs to exercise the header path since the

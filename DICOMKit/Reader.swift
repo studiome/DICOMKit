@@ -93,8 +93,28 @@ struct Reader {
         // under a big-endian reader would make numeric accessors interpret
         // its bytes with the wrong byte order.
         if isExplicitVRWireFormat, byteOrder == .littleEndian, vr == .UN, length != .max, options.reinterpretsUnknownVR,
-           let dictVR = reinterpretedVR(for: tag), dictVR != .SQ {
-            vr = dictVR
+           let dictVR = reinterpretedVR(for: tag) {
+            if dictVR == .SQ {
+                // The dictionary says this defined-length `UN` element is
+                // actually a sequence. PS3.5 doesn't define how such a
+                // sequence's *items* are encoded, but in practice this VR
+                // loss happens when something converted Implicit VR data to
+                // Explicit VR without a dictionary: it copied the item bytes
+                // through unchanged, so they remain Implicit VR Little
+                // Endian regardless of the enclosing dataset's transfer
+                // syntax. Reuse `readSequence` with that transfer syntax
+                // rather than writing a second sequence reader.
+                if let sequence = parseUnknownSequence(length: length) {
+                    return DICOMElement(tag: tag, vr: .SQ, value: Data(), sequenceItems: sequence.items, sequenceItemOffsets: sequence.itemOffsets)
+                }
+                // If the bytes don't actually parse as a well-formed
+                // Implicit VR sequence, fall back to keeping the element
+                // `UN` with its original bytes rather than propagating the
+                // parse error: a single unparseable nested sequence
+                // shouldn't prevent the rest of the dataset from opening.
+            } else {
+                vr = dictVR
+            }
         }
 
         if vr == .SQ || (vr == .UN && length == .max) {
@@ -271,6 +291,28 @@ struct Reader {
         guard tag != .pixelData, tag.group.isMultiple(of: 2) else { return nil }
         guard let dictVR = DICOMDictionary.vr(for: tag), dictVR != .UN else { return nil }
         return dictVR
+    }
+
+    /// Parses a defined-length `UN` element's value bytes as a sequence
+    /// encoded in Implicit VR Little Endian (see the comment at the call
+    /// site in ``readElement(transferSyntax:)`` for why that encoding, and
+    /// not the enclosing dataset's, is the correct one to try).
+    ///
+    /// Returns `nil` without any visible side effect on `offset` if the
+    /// bytes don't parse as a well-formed sequence occupying exactly
+    /// `length` bytes, so the caller can fall back to treating the element
+    /// as opaque `UN` data.
+    private mutating func parseUnknownSequence(length: UInt32) -> (items: [DICOMDataset], itemOffsets: [UInt32])? {
+        let startOffset = offset
+        let expectedEndOffset = startOffset + Int(length)
+        guard expectedEndOffset <= data.count,
+              let sequence = try? readSequence(transferSyntax: .implicitVRLittleEndian, length: length),
+              offset == expectedEndOffset
+        else {
+            offset = startOffset
+            return nil
+        }
+        return sequence
     }
 
     mutating func readData(count: Int) throws -> Data {
