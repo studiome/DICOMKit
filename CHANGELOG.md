@@ -23,6 +23,14 @@ All notable changes to DICOMKit are documented here.
   `DICOMAssociation`, `DICOMwebClient`, or DICOM JSON now needs to add
   `DICOMKitNetworking`.
 
+- Fixed an unbounded recursion in the sequence reader. A dataset nesting
+  sequences about 110 levels deep overflowed the stack and killed the process
+  with SIGBUS — uncatchable by the caller, and reachable from any untrusted
+  file. `Reader` now bounds nesting at 64 levels and throws
+  `DICOMError.sequenceNestingTooDeep`, and the fuzzer gained a mutation
+  strategy that synthesizes deep nesting, since none of its original
+  strategies could produce the structure that exposed this.
+
 - Added the three High-Throughput JPEG 2000 (HTJ2K) transfer syntaxes —
   `.201` (Lossless Only), `.202` (RPCL Options, Lossless Only), and `.203` —
   to `TransferSyntax`. A dataset declaring any of these now opens and its

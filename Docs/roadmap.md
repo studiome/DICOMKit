@@ -79,7 +79,7 @@ Impact ratings below mean:
 
 | Gap | Impact | Note |
 | --- | :---: | --- |
-| ~~Fuzz testing~~ | **A** | ~~DICOMKit parses untrusted files and has no fuzzing. Several trap-on-malformed-input defects have already been found by hand; a fuzzer would find the rest.~~ **Done** — see Phase 1, item 3. A long local campaign (~9M mutations across 15 seeds, including `0` and `UInt64.max`) found nothing further to fix. |
+| ~~Fuzz testing~~ | **A** | ~~DICOMKit parses untrusted files and has no fuzzing. Several trap-on-malformed-input defects have already been found by hand; a fuzzer would find the rest.~~ **Done** — see Phase 1, item 3. A long local campaign (~9M mutations across 15 seeds, including `0` and `UInt64.max`) found nothing further to fix — but an unbounded sequence recursion (SIGBUS at ~110 levels of nesting) was later found by hand while building an unrelated test, which the original mutation strategies could not synthesize. Fixed in `a328243`; the fuzzer gained a nesting strategy in `06be109`. Acceptance rate alone is not proof of coverage. |
 | ~~Three-product split~~ | **C** | ~~Proposed in [viewer-profile.md](viewer-profile.md), not started.~~ **Done** — see Phase 6, item 11. `DICOMKit`/`DICOMKitAuthoring`/`DICOMKitNetworking` are now three SwiftPM products in one package; a viewer links `DICOMKit` alone. |
 | Performance benchmarks | **C** | No measurements, so regressions are invisible. |
 
