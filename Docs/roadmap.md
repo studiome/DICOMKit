@@ -61,7 +61,7 @@ Impact ratings below mean:
 
 | Gap | Impact | Note |
 | --- | :---: | --- |
-| Structured Report content tree | **B** | Reports stored as SR cannot be shown at all. |
+| ~~Structured Report content tree~~ | **B** | ~~Reports stored as SR cannot be shown at all.~~ **Done** — see Phase 5, item 9. Templates (TID 1500 and similar) remain uninterpreted by design; by-reference relationships are exposed but not resolved into the tree. |
 | Waveform `(5400,0100)` | **C** | ECG and similar. |
 | Segmentation frame resolution | **C** | Segment Identification functional group. |
 | RT objects | **C** | RTSTRUCT/RTPLAN/RTDOSE. |
@@ -157,10 +157,12 @@ previous session's analysis; the key structural change comes first.
 
 ### Phase 5 — Reporting and conformance (impact B)
 
-9. **Structured Report content tree** (~5 commits)
-   - Model Content Item, its value types, and relationship types as a tree.
-   - Parse Content Sequence recursively with reference resolution.
-   - Render to plain text and to a structure a UI can walk, without imposing a rendering.
+9. **Structured Report content tree** — **Done** (4 commits: `656ef45`, `b854332`, `19897ed`, `2f80f2d`)
+   - Model `DICOMContentItem` and `DICOMContentItemValue` (CONTAINER, TEXT, CODE, NUM) as a recursive tree, reusing `DICOMCodeSequenceItem` and decoding text with the item's inherited Specific Character Set. — `656ef45` "Read structured report content items"
+   - Add the remaining SR Value Types: DATE, TIME, DATETIME, UIDREF, PNAME, IMAGE, WAVEFORM, COMPOSITE, SCOORD, SCOORD3D, and TCOORD, reusing `DICOMSOPReference` for image/waveform/composite references. — `b854332` "Read the remaining content item value types"
+   - Add `DICOMStructuredReport` for the report root (completion/verification flags, content date/time) and a bounded recursion depth guard (`DICOMError.invalidStructuredReport`) so a malformed or hostile Content Sequence throws instead of exhausting the stack; add `DICOMSOPClass.structuredReport`. — `19897ed` "Read structured report documents"
+   - Add `plainText(indent:)` for a debugging/fallback rendering, `walk(_:)` for depth-first traversal, and `items(withValueType:)` for finding nested matches — a structure a UI can walk without DICOMKit imposing a rendering. — `2f80f2d` "Render and walk report content"
+   - Deliberately out of scope: template interpretation (TID 1500 and similar) and resolving by-reference relationships (Referenced Content Item Identifier) into `children`, since that would turn a tree into a graph the `children` model can't represent. While testing the depth guard, found that the general-purpose sequence reader itself (unrelated to this SR work) can stack-overflow on ~100-150+ levels of nested sequences regardless of content — flagged separately, not fixed here.
 
 10. **PS3.15 profile options** (~4 commits)
     - Restructure `DICOMDeidentificationProfile` around the Basic Application Level Confidentiality Profile plus explicitly selected options.

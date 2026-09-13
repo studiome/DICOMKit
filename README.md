@@ -94,6 +94,17 @@ See the [changelog](CHANGELOG.md) for the current implementation status.
   presentation state's shutter, VOI, and Presentation LUT Shape to a
   referenced file's rendered pixel data through
   `DICOMFile.pixelData(applying:)` / `pixelDataFrames(applying:)`
+- Parses Structured Report Content Trees (`DICOMStructuredReport`,
+  `DICOMSOPClass.structuredReport`: Basic Text/Enhanced/Comprehensive SR) —
+  the recursive Content Item tree (PS3.3 C.17.3) covering every SR Value
+  Type (`CONTAINER`, `TEXT`, `CODE`, `NUM`, `DATE`/`TIME`/`DATETIME`,
+  `UIDREF`, `PNAME`, `IMAGE`, `WAVEFORM`, `COMPOSITE`, `SCOORD`/`SCOORD3D`,
+  `TCOORD`), plus `plainText()`/`walk(_:)`/`items(withValueType:)` for
+  reading it. A bounded recursion depth guard keeps a malformed or hostile
+  Content Sequence from exhausting the stack. Templates (TID 1500 and
+  similar) are not interpreted and no meaning is imposed on a concept name;
+  by-reference relationships (`Referenced Content Item Identifier`) are
+  exposed but not resolved into the tree
 - Decodes JPEG Lossless, Non-Hierarchical (Process 14) Pixel Data for `.57`
   and `.70`: single-component `MONOCHROME1` / `MONOCHROME2` and interleaved
   1:1:1 `RGB`, with 2–16-bit precision, Selection Values 1–7, Point Transform,
@@ -354,9 +365,7 @@ pull request:
 
 ## Roadmap
 
-1. Structured Report content tree — SR objects are stored but not modeled,
-   so they cannot be shown at all
-2. PS3.15 profile options — the Basic Application Level Confidentiality
+1. PS3.15 profile options — the Basic Application Level Confidentiality
    Profile's options (Retain Longitudinal Temporal Information, Retain UIDs,
    Clean Pixel Data, …), not just a conservative preset
 

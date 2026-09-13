@@ -187,6 +187,30 @@ All notable changes to DICOMKit are documented here.
     attribute set — that stays the caller's responsibility, checked with
     `DICOMModuleValidator` — since the set is long and modality-specific and
     guessing at it would produce data that looks conformant without being so.
+- Added `DICOMStructuredReport` and `DICOMContentItem`/`DICOMContentItemValue`,
+  parsing an SR's Content Tree (PS3.3 C.17.3): the dataset itself is the root
+  Content Item, and each item's Content Sequence `(0040,A730)` holds its
+  children recursively. Every SR Value Type is modeled — `CONTAINER`, `TEXT`,
+  `CODE`, `NUM` (Measured Value Sequence, with a Numeric Value Qualifier Code
+  Sequence fallback when there's no measurement), `DATE`/`TIME`/`DATETIME`,
+  `UIDREF`, `PNAME`, `IMAGE`, `WAVEFORM`, `COMPOSITE`, `SCOORD`/`SCOORD3D`, and
+  `TCOORD` — with an unrecognized Value Type falling back to
+  `.unsupported(valueType:)` without dropping its children. Text and Person
+  Name values are decoded with the item's own Specific Character Set,
+  inherited from the enclosing item when it declares none, the same rule
+  already used for Presentation States. Parsing bounds its own recursion
+  depth, throwing the new `DICOMError.invalidStructuredReport` instead of
+  exhausting the stack on a malformed or hostile Content Sequence, and on a
+  dataset with no Value Type at all (which means it isn't an SR).
+  `DICOMStructuredReport.plainText(indent:)` renders a debugging/fallback
+  view of the tree; `walk(_:)` and `items(withValueType:)` read it
+  programmatically. Added `DICOMSOPClass.structuredReport` (Basic Text,
+  Enhanced, and Comprehensive SR). This is deliberately a faithful tree
+  parse, not template interpretation: TID 1500 and similar templates are not
+  understood, no meaning is imposed on a concept name, and by-reference
+  relationships (Referenced Content Item Identifier `(0040,DB73)`) are
+  exposed raw rather than resolved into `children`, since that would turn a
+  tree into a graph the `children` model cannot represent.
 
 ## v0.4 — Complete
 

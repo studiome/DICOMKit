@@ -211,6 +211,32 @@ which set Performed Procedure Step Status `(0040,0252)` but leave the rest of
 the MPPS attribute set — long and modality-specific — to the caller, checked
 with ``DICOMModuleValidator``.
 
+``DICOMStructuredReport/init(file:)`` parses a Structured Report's Content
+Tree (PS3.3 C.17.3): the dataset itself is the root ``DICOMContentItem``, and
+each item's Content Sequence `(0040,A730)` holds its children recursively.
+Every SR Value Type is modeled by ``DICOMContentItemValue`` — `CONTAINER`,
+`TEXT`, `CODE`, `NUM`, `DATE`/`TIME`/`DATETIME`, `UIDREF`, `PNAME`, `IMAGE`,
+`WAVEFORM`, `COMPOSITE`, `SCOORD`/`SCOORD3D`, and `TCOORD` — with any Value
+Type DICOMKit doesn't recognize falling back to `.unsupported(valueType:)`
+without dropping its children. Text values are decoded with the item's own
+(possibly inherited) Specific Character Set, the same inheritance rule used
+elsewhere in DICOMKit (PS3.5 7.5.3). Parsing bounds its own recursion at
+`DICOMDataset.structuredReportMaxDepth`, throwing
+``DICOMError/invalidStructuredReport`` rather than exhausting the stack on a
+malformed or hostile Content Sequence; the same error is thrown when a
+dataset has no Value Type at all, since that means it isn't an SR.
+``DICOMStructuredReport/plainText(indent:)``,
+``DICOMStructuredReport/walk(_:)``, and
+``DICOMStructuredReport/items(withValueType:)`` read the parsed tree —
+`plainText` is a debugging/fallback rendering, not a clinical presentation.
+DICOMKit deliberately does **not** interpret SR templates (TID 1500 and
+similar) or impose meaning on a concept name: that is a much larger,
+standards-heavy job on its own, and a wrong interpretation of a measurement
+is worse than none. By-reference relationships
+(``DICOMContentItem/referencedContentItemIdentifier``) are exposed raw and
+not resolved into ``DICOMContentItem/children``, since doing so would turn a
+tree into a graph the `children` model cannot represent.
+
 ## Topics
 
 ### File reading
@@ -301,3 +327,9 @@ with ``DICOMModuleValidator``.
 - ``DICOMFrameAnatomy``
 - ``DICOMCodeSequenceItem``
 - ``DICOMRealWorldValueMap``
+
+### Structured Reports
+
+- ``DICOMStructuredReport``
+- ``DICOMContentItem``
+- ``DICOMContentItemValue``
