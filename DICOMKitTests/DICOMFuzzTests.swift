@@ -29,8 +29,14 @@ struct DICOMFuzzTests {
     @Test func fileParserNeverTrapsOnMutatedInput() throws {
         let corpus = try fileParserFuzzCorpus()
         let seed = fuzzSeed()
-        let iterations = fuzzIterations(default: 2000)
-        fuzzRun(name: "file-parser", corpus: corpus, iterations: iterations, seed: seed) { data in
+        let iterations = fuzzIterations(default: DefaultFuzzIterations.fileParser)
+        fuzzRun(
+            name: "file-parser",
+            corpus: corpus,
+            iterations: iterations,
+            seed: seed,
+            minimumAcceptanceRate: FuzzEffectivenessFloor.fileParser
+        ) { data in
             do {
                 let file = try DICOMFile(data: data)
                 // The one invariant checkable on a *successful* parse: the
@@ -41,12 +47,14 @@ struct DICOMFuzzTests {
                 // element count.
                 try assertDatasetIsSafeToIterate(file.dataset)
                 try assertDatasetIsSafeToIterate(file.metaInformation)
+                return .accepted
             } catch let violation as FuzzInvariantViolation {
                 throw violation
             } catch {
                 // Any other thrown error is the correct, expected outcome
                 // for malformed/mutated input: the parser rejected it
                 // instead of trapping on it.
+                return .rejected
             }
         }
     }
@@ -54,8 +62,14 @@ struct DICOMFuzzTests {
     @Test func upperLayerPDUDecoderNeverTrapsOnMutatedInput() throws {
         let corpus = try ulpduFuzzCorpus()
         let seed = fuzzSeed()
-        let iterations = fuzzIterations(default: 4000)
-        fuzzRun(name: "ulpdu", corpus: corpus, iterations: iterations, seed: seed) { data in
+        let iterations = fuzzIterations(default: DefaultFuzzIterations.ulpdu)
+        fuzzRun(
+            name: "ulpdu",
+            corpus: corpus,
+            iterations: iterations,
+            seed: seed,
+            minimumAcceptanceRate: FuzzEffectivenessFloor.ulpdu
+        ) { data in
             do {
                 // `DICOMULPDU` is a plain enum of value types (strings,
                 // arrays, fixed-width integers): fully decoding one, as
@@ -63,9 +77,11 @@ struct DICOMFuzzTests {
                 // reach — there's no lazily-evaluated storage left to trap
                 // on access the way `DICOMFile`'s pixel data path has.
                 _ = try DICOMULPDU.decode(data)
+                return .accepted
             } catch {
                 // Expected: malformed/mutated input rejected instead of
                 // trapping on it.
+                return .rejected
             }
         }
     }
@@ -73,13 +89,21 @@ struct DICOMFuzzTests {
     @Test func dimseCommandSetDecoderNeverTrapsOnMutatedInput() throws {
         let corpus = try dimseFuzzCorpus()
         let seed = fuzzSeed()
-        let iterations = fuzzIterations(default: 4000)
-        fuzzRun(name: "dimse", corpus: corpus, iterations: iterations, seed: seed) { data in
+        let iterations = fuzzIterations(default: DefaultFuzzIterations.dimse)
+        fuzzRun(
+            name: "dimse",
+            corpus: corpus,
+            iterations: iterations,
+            seed: seed,
+            minimumAcceptanceRate: FuzzEffectivenessFloor.dimse
+        ) { data in
             do {
                 _ = try DICOMDIMSECommand.decodeCommandSet(data)
+                return .accepted
             } catch {
                 // Expected: malformed/mutated input rejected instead of
                 // trapping on it.
+                return .rejected
             }
         }
     }
@@ -95,6 +119,86 @@ struct DICOMFuzzTests {
 /// is internally inconsistent" (a real finding).
 struct FuzzInvariantViolation: Error, CustomStringConvertible {
     let description: String
+}
+
+/// What happened when one mutated input was handed to a decoder.
+///
+/// This is distinct from whether `decode` throws: a `decode` closure is
+/// documented to swallow every error the library itself throws (that's the
+/// expected, safe outcome for malformed input) and report it as `.rejected`,
+/// reserving a thrown `FuzzInvariantViolation` for a real finding. Without
+/// this, `fuzzRun` cannot tell "the parser ran on this input and produced a
+/// value" apart from "the input never got past early validation" — both look
+/// identical (a normal return) from the loop's point of view.
+enum FuzzOutcome {
+    /// The decoder accepted the input and produced a value.
+    case accepted
+    /// The decoder rejected the input by throwing the error the library
+    /// itself throws for malformed/mutated input.
+    case rejected
+}
+
+/// Default iteration counts for `swift test`'s ordinary, fast run.
+///
+/// 4000 is large enough that each target's fuzz-effectiveness floor (see
+/// `FuzzEffectivenessFloor`) is stable at this sample size: re-running with
+/// `DICOMKIT_FUZZ_ITERATIONS` left at this default across five seeds (the
+/// fixed default plus 1, 2, 42, 123456789) passed every time, at ~0.6s total
+/// for all three fuzz tests — nowhere near the floors, which already carry
+/// an 8-13 point margin under the worst of the 50_000-iteration measurement
+/// (see `FuzzEffectivenessFloor`). `fuzzRun` additionally refuses to enforce
+/// the floor at all below `minimumSampleSizeForEffectivenessFloor`, as a
+/// second, independent guard in case iterations is ever set below what's
+/// stable here (e.g. someone lowering it for a quick manual smoke run).
+enum DefaultFuzzIterations {
+    static let fileParser = 4000
+    static let ulpdu = 4000
+    static let dimse = 4000
+}
+
+/// Below this many iterations, a campaign's measured acceptance rate is
+/// considered too noisy to enforce `minimumAcceptanceRate` against — doing so
+/// anyway is exactly the kind of thing that makes a fuzz test fail at random
+/// and get disabled by the next person who sees it. `fuzzRun` silently skips
+/// the floor check under this size; it still runs every mutation and still
+/// enforces the never-traps/never-produces-an-invariant-violation contract.
+let minimumSampleSizeForEffectivenessFloor = 2000
+
+/// Minimum fraction of mutated inputs, per target, that must reach a
+/// successful parse over a campaign for the campaign to be considered
+/// meaningful. See `fuzzRun`'s effectiveness-floor check.
+///
+/// Measured by running 50_000-iteration campaigns (`DICOMKIT_FUZZ_ITERATIONS
+/// =50000`) against five different seeds (the fixed default plus 1, 2, 42,
+/// 123456789) and recording the acceptance rate each seed converged to
+/// (all five agreed within a fraction of a percentage point, i.e. this rate
+/// is a property of the corpus and mutation strategies, not a particular
+/// seed):
+///
+///   target       | rates across 5 seeds                  | min
+///   -------------|----------------------------------------|-------
+///   file-parser  | 38.53, 38.30, 37.96, 38.47, 38.25 %    | 37.96%
+///   ulpdu        | 24.92, 24.79, 24.69, 24.78, 24.77 %    | 24.69%
+///   dimse        | 18.28, 18.14, 18.02, 18.04, 17.93 %    | 17.93%
+///
+/// None of these are the "under a few percent" case that would call for
+/// treating the mutation strategy itself as broken (see the commit message
+/// for that discussion) — each target comfortably reaches the parser well
+/// past its early validation. Each floor below is set well under its
+/// measured minimum (not a round number picked without measurement): enough
+/// margin to absorb both seed-to-seed noise and the extra noise of the much
+/// smaller `DefaultFuzzIterations` sample used by an ordinary `swift test`
+/// run, while still catching the failure mode this exists for — the
+/// mutation engine or corpus regressing to where inputs no longer get past
+/// early validation at all (that shows up as single-digit or 0%, nowhere
+/// close to these floors).
+enum FuzzEffectivenessFloor {
+    /// Measured minimum 37.96%; floor set ~13 points below it.
+    static let fileParser = 0.25
+    /// Measured minimum 24.69%; floor set ~10 points below it.
+    static let ulpdu = 0.15
+    /// Measured minimum 17.93%; floor set ~8 points below it.
+    static let dimse = 0.10
 }
 
 /// Recursively walks `dataset` and every dataset nested inside its sequence
@@ -149,19 +253,26 @@ func fuzzRun(
     corpus: [Data],
     iterations: Int,
     seed: UInt64,
+    minimumAcceptanceRate: Double,
     sourceLocation: SourceLocation = #_sourceLocation,
-    decode: (Data) throws -> Void
+    decode: (Data) throws -> FuzzOutcome
 ) {
     precondition(!corpus.isEmpty, "fuzz corpus must not be empty")
     var fuzzer = DICOMFuzzer(seed: seed)
     fuzzer.corpus = corpus
     let inFlightURL = FileManager.default.temporaryDirectory.appendingPathComponent("dicomkit-fuzz-\(name)-inflight.bin")
+    var acceptedCount = 0
     for index in 0..<iterations {
         let base = corpus[index % corpus.count]
         let mutated = fuzzer.mutate(base)
         try? mutated.write(to: inFlightURL)
         do {
-            try decode(mutated)
+            switch try decode(mutated) {
+            case .accepted:
+                acceptedCount += 1
+            case .rejected:
+                break
+            }
         } catch let violation as FuzzInvariantViolation {
             let savedURL = FileManager.default.temporaryDirectory
                 .appendingPathComponent("dicomkit-fuzz-\(name)-failure-seed\(seed)-iter\(index).bin")
@@ -177,6 +288,29 @@ func fuzzRun(
         }
     }
     try? FileManager.default.removeItem(at: inFlightURL)
+
+    // Effectiveness floor: a fuzzer whose mutations (or seed corpus) have
+    // regressed to the point that nothing gets past the library's early
+    // validation is silently testing almost nothing while still reporting
+    // green. Below `minimumSampleSizeForEffectivenessFloor`, the measured
+    // rate is too noisy on a small sample to enforce without flaking CI, so
+    // skip the check rather than risk that.
+    guard iterations >= minimumSampleSizeForEffectivenessFloor else { return }
+    let acceptanceRate = Double(acceptedCount) / Double(iterations)
+    let percent: (Double) -> String = { String(format: "%.2f%%", $0 * 100) }
+    let message = """
+        fuzz effectiveness floor breached [\(name)]: only \(acceptedCount)/\(iterations) \
+        (\(percent(acceptanceRate))) mutated inputs reached a successful parse, below the \
+        required \(percent(minimumAcceptanceRate)). This does NOT mean the library is broken. \
+        It means the mutation engine (DICOMFuzzer) or the seed corpus (in DICOMFuzzTests.swift) \
+        has stopped producing inputs that get past \(name)'s early structural validation — for \
+        the file parser, the Part 10 preamble/"DICM" prefix check; for the other targets, their \
+        equivalent header checks — so this fuzz run is no longer exercising the decoder's \
+        interesting, length-driven code paths and its "no trap" result carries no real \
+        confidence. Investigate recent changes to DICOMFuzzer's mutation strategies, the seed \
+        corpus, or newly-added early validation in the library itself. (seed=\(seed))
+        """
+    #expect(acceptanceRate >= minimumAcceptanceRate, Comment(rawValue: message), sourceLocation: sourceLocation)
 }
 
 // MARK: - File parser corpus
