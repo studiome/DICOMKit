@@ -30,6 +30,18 @@ jobs:
       - name: Test package on macOS
         run: swift test
 
+      - name: Fuzz DICOMFile/DICOMULPDU/DICOMDIMSECommand
+        # A bounded campaign, not the full local one: enough iterations to
+        # cost roughly a minute of runner time on every run, seeded from the
+        # run ID so successive CI runs explore different mutations instead
+        # of repeating the same ones. `swift test` fails this step (and the
+        # job, since no `continue-on-error` is set) on any test failure; a
+        # trap kills the process outright, which `swift test`'s own non-zero
+        # exit status also surfaces as a failed step. See
+        # DICOMKitTests/DICOMFuzzTests.swift for why a crash found here
+        # can't be caught in-process and must be reproduced from the seed.
+        run: DICOMKIT_FUZZ_ITERATIONS=400000 DICOMKIT_FUZZ_SEED=${{ github.run_id }} swift test --filter DICOMFuzzTests
+
       - name: Build package for iOS and iPadOS
         run: |
           ios_sdk="$(xcrun --sdk iphoneos --show-sdk-path)"

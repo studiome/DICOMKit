@@ -16,7 +16,7 @@ Impact ratings below mean:
 
 | Gap | Impact | Note |
 | --- | :---: | --- |
-| Specific Character Set code extensions | **A** | `DICOMDataset` reads only the **first** value of `(0008,0005)`, so a multi-valued declaration — the normal case for Japanese Person Names — decodes the ideographic and phonetic components with the wrong encoding. Only ISO_IR 6/100/13 and ISO 2022 IR 87 are modelled; Korean (IR 149), GB18030, Cyrillic (IR 144), Arabic (IR 127), Greek (IR 126), Hebrew (IR 138), Thai (IR 166) and Latin 2–5 (IR 101/109/110/148) are all missing. |
+| ~~Specific Character Set code extensions~~ | **A** | ~~`DICOMDataset` reads only the **first** value of `(0008,0005)`, so a multi-valued declaration — the normal case for Japanese Person Names — decodes the ideographic and phonetic components with the wrong encoding. Only ISO_IR 6/100/13 and ISO 2022 IR 87 are modelled; Korean (IR 149), GB18030, Cyrillic (IR 144), Arabic (IR 127), Greek (IR 126), Hebrew (IR 138), Thai (IR 166) and Latin 2–5 (IR 101/109/110/148) are all missing.~~ **Done** — see Phase 1, item 1. |
 | `UN` re-interpretation in Explicit VR | **B** | An element that arrives as `UN` with a defined length is kept as `UN`. PS3.5 6.2.2 allows re-deriving the VR from the dictionary, which is what makes data readable after it has passed through middleware that strips VRs. |
 | Private Creator block resolution | **B** | Private tags are always `UN` under Implicit VR; there is no `(gggg,00xx)` Private Creator lookup and no vendor dictionary, so GE/Siemens/Philips/Canon/FUJIFILM private attributes are unreadable. |
 | Icon Image Sequence `(0088,0200)` | **C** | The cheapest possible thumbnail source for a series picker. |
@@ -79,7 +79,7 @@ Impact ratings below mean:
 
 | Gap | Impact | Note |
 | --- | :---: | --- |
-| Fuzz testing | **A** | DICOMKit parses untrusted files and has no fuzzing. Several trap-on-malformed-input defects have already been found by hand; a fuzzer would find the rest. |
+| ~~Fuzz testing~~ | **A** | ~~DICOMKit parses untrusted files and has no fuzzing. Several trap-on-malformed-input defects have already been found by hand; a fuzzer would find the rest.~~ **Done** — see Phase 1, item 3. A long local campaign (~9M mutations across 15 seeds, including `0` and `UInt64.max`) found nothing further to fix. |
 | Three-product split | **C** | Proposed in [viewer-profile.md](viewer-profile.md), not started. |
 | Performance benchmarks | **C** | No measurements, so regressions are invisible. |
 
@@ -92,12 +92,13 @@ Each phase is a series of small Red/Green TDD commits on `main`, in the order li
 The three gaps here can make DICOMKit produce output that is wrong in a way a
 user cannot see, or crash on a hostile file. Nothing else should go first.
 
-1. **Character set code extensions** (~5 commits)
-   - Model `(0008,0005)` as an ordered list of code elements rather than a single value.
-   - Add the missing single-byte sets (IR 101/109/110/126/127/138/144/148/166) and the multi-byte sets (IR 87, IR 159, IR 149, GB18030, UTF-8).
-   - Implement ISO 2022 escape-sequence switching between G0/G1 within one value, which is what makes a Japanese `PN` decode correctly across its alphabetic, ideographic and phonetic components.
-   - Apply the dataset's character set to nested sequence items, which inherit it.
-   - Verify with round-trip fixtures for a Japanese `PN` and a Korean `PN`.
+1. **Character set code extensions** — **Done** (7 commits: `cf7f806`, `e703e7a`, `82e8173`, `7ffc9e9`, `e464e28`, `15f29aa`, `20213b8`)
+   - Add the missing single-byte sets. — `cf7f806` "Decode single-byte specific character sets"
+   - Implement ISO 2022 escape-sequence switching between G0/G1 within one value, which is what makes a Japanese `PN` decode correctly across its alphabetic, ideographic and phonetic components. — `e703e7a` "Switch character sets on ISO 2022 escapes"
+   - Add the multi-byte sets (IR 87, IR 159, IR 149, GB18030, UTF-8). — `82e8173` "Decode multi-byte character set extensions"
+   - Reset character set state at value delimiters. — `7ffc9e9` "Reset character set state at value delimiters"
+   - Apply the dataset's character set to nested sequence items, which inherit it. — `e464e28` "Inherit the character set into sequence items"
+   - Extend character set decoding to DICOM JSON and Presentation State text. — `15f29aa` "Decode text with the dataset character set in JSON", `20213b8` "Decode presentation state text with its character set"
 
 2. **Pixel spacing precedence** — **Done** (3 commits: `1b1ca0c`, `95c6e41`, and this section's own "Resolve measurement scale per ultrasound region")
    - Add `DICOMImageGeometry.spacingSource` distinguishing Pixel Spacing, Imager Pixel Spacing, calibrated spacing, and none. — `1b1ca0c` "Resolve pixel spacing precedence"
@@ -105,10 +106,11 @@ user cannot see, or crash on a hostile file. Nothing else should go first.
    - Add Ultrasound Region Calibration, exposing each region's physical units and deltas. — `95c6e41` "Read ultrasound region calibration"
    - Document that a caller must not measure when the source is `none`. — "Resolve measurement scale per ultrasound region" (a commit can't record its own final hash; see `git log` for it)
 
-3. **Fuzz testing** (~3 commits)
-   - Add a `swift-testing`-driven corpus fuzzer over `DICOMFile(data:)`, `DICOMULPDU.decode`, and `DICOMDIMSECommand.decodeCommandSet`, seeded from the existing fixtures with structure-aware mutation.
-   - Assert the invariant "never trap, never hang" — every input either parses or throws.
-   - Wire a short run into CI and keep any crashing input as a regression fixture.
+3. **Fuzz testing** — **Done** (3 commits: `5707a39`, `b4d1036`, and this section's own "Run the fuzzer in CI")
+   - Add a `swift-testing`-driven, deterministically-seeded (SplitMix64) corpus fuzzer over `DICOMFile(data:)`, with bit-flip, byte-substitution, truncation, insert/delete, splice, and DICOM-aware length-field-corruption mutation strategies. — `5707a39` "Add a deterministic parser fuzzer"
+   - Extend the same engine to `DICOMULPDU.decode` and `DICOMDIMSECommand.decodeCommandSet`. — `b4d1036` "Fuzz the upper layer and DIMSE decoders"
+   - Assert the invariant "never trap, never hang" — every input either parses or throws — and wire a bounded (~400k-iteration, run-seeded) campaign into CI. — "Run the fuzzer in CI" (a commit can't record its own final hash; see `git log` for it)
+   - A local campaign of ~9M mutations across 15 seeds (including `0` and `UInt64.max`, at up to 300k iterations per target per seed) found no crashing or invariant-violating input, so this phase adds no regression fixtures under `DICOMKitTests/Fixtures/Fuzz/`.
 
 ### Phase 2 — Enhanced multi-frame (impact A/B)
 
