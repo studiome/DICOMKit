@@ -209,14 +209,103 @@ public struct DICOMCharacterSet: Sendable, Equatable {
         return String(data: data, encoding: .isoLatin1)
     }
 
-    /// Placeholder for the ISO 2022 escape-sequence state machine.
+    /// The G0/G1 code element register an ISO 2022 escape sequence switches.
+    private enum EscapeRegister { case g0, g1 }
+
+    /// ISO 2022 escape sequences DICOM PS3.5 Table 6.1-2 defines for
+    /// switching the active G0/G1 repertoire, keyed by the bytes that follow
+    /// ESC (0x1B). Recognizing a new sequence is just adding a table entry;
+    /// the scanner in `decodeWithCodeExtensions` finds each sequence's
+    /// length itself from the general ISO/IEC 2022 escape grammar (ESC, then
+    /// intermediate bytes 0x20–0x2F, then a final byte 0x30–0x7E) rather
+    /// than this table hardcoding lengths.
+    private static let escapeActions: [[UInt8]: (EscapeRegister, DICOMCodeElement)] = [
+        [0x28, 0x42]: (.g0, .asciiDefault),      // ESC ( B
+        [0x28, 0x4A]: (.g0, .japaneseRomaji),    // ESC ( J
+        [0x29, 0x49]: (.g1, .japaneseKatakana),  // ESC ) I
+        [0x2D, 0x41]: (.g1, .latin1),            // ESC - A
+        [0x2D, 0x42]: (.g1, .latin2),            // ESC - B
+        [0x2D, 0x43]: (.g1, .latin3),            // ESC - C
+        [0x2D, 0x44]: (.g1, .latin4),            // ESC - D
+        [0x2D, 0x46]: (.g1, .greek),             // ESC - F
+        [0x2D, 0x47]: (.g1, .arabic),            // ESC - G
+        [0x2D, 0x48]: (.g1, .hebrew),            // ESC - H
+        [0x2D, 0x4C]: (.g1, .cyrillic),          // ESC - L
+        [0x2D, 0x4D]: (.g1, .latin5),            // ESC - M
+        [0x2D, 0x54]: (.g1, .thai)               // ESC - T
+    ]
+
+    /// Decodes a declaration with ISO 2022 code extensions by walking its
+    /// bytes, maintaining G0 (initially the declaration's value 1, or ASCII
+    /// when value 1 is empty) and G1 (initially undesignated) repertoires.
     ///
-    /// Declarations with code extensions are decoded byte-run-by-byte,
-    /// switching G0/G1 repertoires on recognized escape sequences. Until
-    /// that state machine is implemented, fall back to decoding the whole
-    /// buffer with the initial (value 1) repertoire, ignoring any escapes —
-    /// better than returning `nil`, though it does not yet handle switches.
+    /// Per the DICOM restriction of ISO/IEC 2022 to two registers (PS3.5
+    /// 6.1.2.4 Note), a byte's register is determined by its high bit: clear
+    /// selects G0, set selects G1. Consecutive bytes that share a register
+    /// are accumulated into one run and decoded with one call, so a
+    /// multi-byte repertoire's sequences are never split byte-by-byte. A
+    /// high-bit byte before any G1 designation falls back to decoding under
+    /// G0, since that should not occur in a conformant stream.
+    ///
+    /// An unrecognized escape sequence is skipped — its own bytes never join
+    /// a run and are never emitted as text — but does not abort the decode;
+    /// the surrounding bytes are still decoded normally. This is safer than
+    /// guessing at an unknown extension's semantics or corrupting the run
+    /// that follows it.
     private func decodeWithCodeExtensions(_ data: Data) -> String? {
-        Self.decodeWholeBuffer(data, repertoire: codeElements[0])
+        var g0 = codeElements.first ?? .asciiDefault
+        var g1: DICOMCodeElement?
+        var result = ""
+        var runBytes: [UInt8] = []
+        var runRegister: EscapeRegister?
+
+        func flushRun() {
+            guard !runBytes.isEmpty else { return }
+            let repertoire = (runRegister == .g1) ? (g1 ?? g0) : g0
+            result += Self.decodeRun(Data(runBytes), repertoire: repertoire) ?? ""
+            runBytes.removeAll(keepingCapacity: true)
+        }
+
+        let bytes = [UInt8](data)
+        var index = 0
+        while index < bytes.count {
+            let byte = bytes[index]
+            guard byte == 0x1B else {
+                let register: EscapeRegister = (byte & 0x80) != 0 ? .g1 : .g0
+                if register != runRegister { flushRun(); runRegister = register }
+                runBytes.append(byte)
+                index += 1
+                continue
+            }
+
+            // ISO/IEC 2022 escape grammar: ESC, intermediate bytes (0x20–0x2F),
+            // then one final byte (0x30–0x7E) that terminates the sequence.
+            var scan = index + 1
+            while scan < bytes.count, (0x20...0x2F).contains(bytes[scan]) { scan += 1 }
+            guard scan < bytes.count, (0x30...0x7E).contains(bytes[scan]) else {
+                // Truncated escape sequence at the end of the buffer: nothing
+                // recoverable follows, so stop here.
+                break
+            }
+            let sequence = Array(bytes[(index + 1)...scan])
+            index = scan + 1
+            if let (register, element) = Self.escapeActions[sequence] {
+                flushRun()
+                switch register {
+                case .g0: g0 = element
+                case .g1: g1 = element
+                }
+            }
+            // else: unrecognized escape — already skipped by advancing `index`.
+        }
+        flushRun()
+        return result
+    }
+
+    /// Decodes one contiguous run of bytes that all belong to the same G0/G1
+    /// repertoire. For single-byte repertoires (and UTF-8/GB18030) this is
+    /// the same whole-buffer decode as the non-extension path.
+    private static func decodeRun(_ data: Data, repertoire: DICOMCodeElement) -> String? {
+        decodeWholeBuffer(data, repertoire: repertoire)
     }
 }

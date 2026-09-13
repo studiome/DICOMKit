@@ -48,4 +48,37 @@ struct DICOMCharacterSetTests {
         let characterSet = DICOMCharacterSet(declaration: "ISO 2022 IR 6\\ISO 2022 IR 87")
         #expect(characterSet.codeElements == [.asciiDefault, .japaneseKanji])
     }
+
+    // MARK: - ISO 2022 escape switching (single-byte extensions)
+
+    @Test func escSwitchesG1ToLatin1ForTheRemainderOfARun() {
+        let characterSet = DICOMCharacterSet(declaration: "ISO 2022 IR 6\\ISO 2022 IR 100")
+        var bytes = Data("AB".utf8)
+        bytes.append(contentsOf: [0x1B, 0x2D, 0x41]) // ESC - A: G1 = Latin-1
+        bytes.append(0xE9)                            // é, GR byte (high bit set)
+        bytes.append(contentsOf: Data("C".utf8))      // back to G0 (still ASCII)
+
+        #expect(characterSet.decode(bytes) == "ABéC")
+    }
+
+    @Test func escSwitchesRomajiG0AndKatakanaG1() {
+        let characterSet = DICOMCharacterSet(declaration: "ISO 2022 IR 6\\ISO 2022 IR 13")
+        var bytes = Data("A".utf8)
+        bytes.append(contentsOf: [0x1B, 0x28, 0x4A])       // ESC ( J: G0 = Japanese Romaji
+        bytes.append(contentsOf: Data("B".utf8))
+        bytes.append(contentsOf: [0x1B, 0x29, 0x49])       // ESC ) I: G1 = Japanese Katakana
+        bytes.append(contentsOf: [0xB1, 0xB2, 0xB3])       // ｱｲｳ (JIS X 0201 katakana zone, GR)
+        bytes.append(contentsOf: Data("C".utf8))
+
+        #expect(characterSet.decode(bytes) == "ABｱｲｳC")
+    }
+
+    @Test func unrecognizedEscapeIsSkippedWithoutBreakingSurroundingText() {
+        let characterSet = DICOMCharacterSet(declaration: "ISO 2022 IR 6\\ISO 2022 IR 100")
+        var bytes = Data("A".utf8)
+        bytes.append(contentsOf: [0x1B, 0x28, 0x5A]) // ESC ( Z: not a recognized designation
+        bytes.append(contentsOf: Data("B".utf8))
+
+        #expect(characterSet.decode(bytes) == "AB")
+    }
 }
