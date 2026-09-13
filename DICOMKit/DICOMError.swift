@@ -37,4 +37,10 @@ public enum DICOMError: Error, Sendable, Equatable {
     /// Structured Report, or its Content Sequence nests deeper than
     /// ``DICOMStructuredReport`` is willing to recurse.
     case invalidStructuredReport
+    /// A sequence nests deeper than `Reader` is willing to recurse. Every
+    /// dataset-parsing entry point (``DICOMFile``, ``DICOMMetadataFile``,
+    /// and the `UN`-to-`SQ` re-interpretation of a defined-length unknown
+    /// sequence) shares this bound, guarding against a malformed or hostile
+    /// dataset driving unbounded recursion and overflowing the call stack.
+    case sequenceNestingTooDeep
 }

@@ -449,16 +449,22 @@ struct DICOMStructuredReportDocumentTests {
 
         // Comfortably past DICOMDataset.structuredReportMaxDepth (64), but
         // still well short of triggering a stack overflow while *building*
-        // and *decoding* the raw Part 10 bytes themselves — this test's
-        // purpose is to prove DICOMStructuredReport's own guard fires, not
-        // to stress-test the general-purpose sequence reader.
+        // this in-memory tree — this test's purpose is to prove
+        // DICOMStructuredReport's own guard fires, not to stress-test the
+        // general-purpose sequence reader (which has its own, separate
+        // depth guard -- see ReaderNestingDepthTests -- and would reject
+        // this same nesting first if it were round-tripped through
+        // DICOMWriter/DICOMFile, since both bounds happen to be 64).
+        // Calling `structuredReportContentItem` directly on the in-memory
+        // dataset, instead of going through `parse` (which does that
+        // round-trip), keeps this test isolated to SR's own recursion.
         let root = DICOMDataset(elements: [
             valueTypeElement("CONTAINER"),
             contentSequenceElement([nestedContainer(remainingDepth: 90)])
         ])
 
         #expect(throws: DICOMError.invalidStructuredReport) {
-            try self.parse(root)
+            _ = try root.structuredReportContentItem(isRoot: true, inheriting: .default, depth: 0)
         }
     }
 
