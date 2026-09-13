@@ -98,6 +98,36 @@ public struct DICOMFile: Sendable {
         dataset.ultrasoundRegions
     }
 
+    /// The scale to measure with at a specific pixel, honoring per-region
+    /// ultrasound calibration before falling back to
+    /// ``imageGeometry``'s ``DICOMImageGeometry/measurementSpacing``.
+    ///
+    /// When `(column, row)` falls inside an ultrasound region (see
+    /// ``ultrasoundRegions``) whose ``DICOMUltrasoundRegion/isSpatialCalibration``
+    /// is `true`, this returns that region's physical deltas as
+    /// `[physicalDeltaY, physicalDeltaX]` — row spacing first, matching the
+    /// ordering of every other spacing attribute — tagged with
+    /// ``DICOMPixelSpacingSource/ultrasoundRegion(index:)``. Those values
+    /// are **in centimetres**, unlike every other spacing attribute in
+    /// DICOM, which is in millimetres: converting them to millimetres
+    /// before combining them with any other spacing value is the caller's
+    /// responsibility, and skipping that conversion silently produces a
+    /// 10x measurement error.
+    ///
+    /// Otherwise this falls back to ``imageGeometry``'s spacing. Returns
+    /// `nil` when the resolved source would be
+    /// ``DICOMPixelSpacingSource/none``.
+    public func measurementSpacing(atColumn column: Int, row: Int) -> (spacing: [Double], source: DICOMPixelSpacingSource)? {
+        for (index, region) in ultrasoundRegions.enumerated() where region.contains(column: column, row: row) {
+            guard region.isSpatialCalibration,
+                  let deltaX = region.physicalDeltaX,
+                  let deltaY = region.physicalDeltaY else { continue }
+            return ([deltaY, deltaX], .ultrasoundRegion(index: index))
+        }
+        guard let geometry = imageGeometry, let spacing = geometry.measurementSpacing else { return nil }
+        return (spacing, geometry.measurementSpacingSource)
+    }
+
     /// Enhanced Multi-frame rendering attributes, resolved per frame.
     ///
     /// Shared Functional Groups provide defaults; Per-frame Functional Groups

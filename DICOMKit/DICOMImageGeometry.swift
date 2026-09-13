@@ -17,6 +17,10 @@ public enum DICOMPixelSpacingSource: Sendable, Equatable {
     case imagerPixelSpacing
     /// Nominal Scanned Pixel Spacing `(0018,2010)`.
     case nominalScannedPixelSpacing
+    /// The physical delta of the ultrasound region (Sequence of Ultrasound
+    /// Regions `(0018,6011)`, item `index`) that contains the measured
+    /// point. See ``DICOMFile/measurementSpacing(atColumn:row:)``.
+    case ultrasoundRegion(index: Int)
     /// No spacing attribute is present.
     case none
 }
@@ -84,7 +88,7 @@ public struct DICOMImageGeometry: Sendable, Equatable {
             return imagerPixelSpacing
         case .nominalScannedPixelSpacing:
             return nominalScannedPixelSpacing
-        case .none:
+        case .ultrasoundRegion, .none:
             return nil
         }
     }

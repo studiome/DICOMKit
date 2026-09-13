@@ -26,7 +26,7 @@ Impact ratings below mean:
 
 | Gap | Impact | Note |
 | --- | :---: | --- |
-| Pixel spacing precedence | **A** | Only Pixel Spacing `(0028,0030)` is read. Imager Pixel Spacing `(0018,1164)`, Pixel Spacing Calibration Type/Description `(0028,0A02)`/`(0028,0A04)`, and Ultrasound Region Calibration `(0018,6011)` are ignored, so on-image measurement silently uses the wrong scale for projection radiography and ultrasound. |
+| ~~Pixel spacing precedence~~ | **A** | ~~Only Pixel Spacing `(0028,0030)` is read. Imager Pixel Spacing `(0018,1164)`, Pixel Spacing Calibration Type/Description `(0028,0A02)`/`(0028,0A04)`, and Ultrasound Region Calibration `(0018,6011)` are ignored, so on-image measurement silently uses the wrong scale for projection radiography and ultrasound.~~ **Done** — see Phase 1, item 2. |
 | Enhanced multi-frame functional groups | **A** | Only Pixel Value Transformation and Frame VOI LUT are resolved. Pixel Measures, Plane Position/Orientation, Frame Content, Frame Anatomy, Real World Value Mapping, Frame Display Shutter and Derivation Image are not, so an Enhanced CT/MR object can be displayed but not measured, stacked, or reformatted. |
 | Real World Value Mapping `(0040,9096)` | **B** | Quantitative readout — PET SUV above all. |
 | Segmented Palette Color LUT | **B** | `(0028,1221)`–`(0028,1223)` in segmented form is not decoded. |
@@ -99,11 +99,11 @@ user cannot see, or crash on a hostile file. Nothing else should go first.
    - Apply the dataset's character set to nested sequence items, which inherit it.
    - Verify with round-trip fixtures for a Japanese `PN` and a Korean `PN`.
 
-2. **Pixel spacing precedence** (~3 commits)
-   - Add `DICOMImageGeometry.spacingSource` distinguishing Pixel Spacing, Imager Pixel Spacing, calibrated spacing, and none.
-   - Resolve precedence per PS3.3 C.7.6.1.1.2 and C.8.11.3.1.2, honouring Pixel Spacing Calibration Type.
-   - Add Ultrasound Region Calibration, exposing each region's physical units and deltas.
-   - Document that a caller must not measure when the source is `none`.
+2. **Pixel spacing precedence** — **Done** (3 commits: `1b1ca0c`, `95c6e41`, and this section's own "Resolve measurement scale per ultrasound region")
+   - Add `DICOMImageGeometry.spacingSource` distinguishing Pixel Spacing, Imager Pixel Spacing, calibrated spacing, and none. — `1b1ca0c` "Resolve pixel spacing precedence"
+   - Resolve precedence per PS3.3 C.7.6.1.1.2 and C.8.11.3.1.2, honouring Pixel Spacing Calibration Type. — `1b1ca0c` "Resolve pixel spacing precedence"
+   - Add Ultrasound Region Calibration, exposing each region's physical units and deltas. — `95c6e41` "Read ultrasound region calibration"
+   - Document that a caller must not measure when the source is `none`. — "Resolve measurement scale per ultrasound region" (a commit can't record its own final hash; see `git log` for it)
 
 3. **Fuzz testing** (~3 commits)
    - Add a `swift-testing`-driven corpus fuzzer over `DICOMFile(data:)`, `DICOMULPDU.decode`, and `DICOMDIMSECommand.decodeCommandSet`, seeded from the existing fixtures with structure-aware mutation.
