@@ -1291,6 +1291,38 @@ struct DICOMDIMSENServiceTests {
             )
         }
     }
+
+    /// Every PS3.7 Annex C status code the N-services introduce, and its expected
+    /// raw value and classification. All of these are Failure codes: none of them
+    /// falls in `DICOMDIMSEStatus.category`'s warning special cases (0x0001,
+    /// 0x0107, 0x0116, 0xB000...0xBFFF).
+    @Test func nServiceStatusCodesHaveExpectedRawValuesAndClassifyAsFailure() {
+        let codes: [(DICOMDIMSEStatus, UInt16)] = [
+            (.noSuchAttribute, 0x0105),
+            (.invalidAttributeValue, 0x0106),
+            (.processingFailure, 0x0110),
+            (.duplicateSOPInstance, 0x0111),
+            (.noSuchSOPInstance, 0x0112),
+            (.noSuchEventType, 0x0113),
+            (.noSuchArgument, 0x0114),
+            (.invalidArgumentValue, 0x0115),
+            (.invalidObjectInstance, 0x0117),
+            (.noSuchSOPClass, 0x0118),
+            (.classInstanceConflict, 0x0119),
+            (.missingAttribute, 0x0120),
+            (.missingAttributeValue, 0x0121),
+            (.noSuchActionType, 0x0123),
+            (.notAuthorized, 0x0124),
+            (.duplicateInvocation, 0x0210),
+            (.unrecognizedOperation, 0x0211),
+            (.mistypedArgument, 0x0212),
+            (.resourceLimitation, 0x0213)
+        ]
+        for (status, expectedRawValue) in codes {
+            #expect(status.rawValue == expectedRawValue)
+            #expect(status.category == .failure)
+        }
+    }
 }
 
 /// Replaces the value of the Command Field (0000,0100) element in an already-encoded

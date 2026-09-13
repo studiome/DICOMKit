@@ -48,6 +48,47 @@ public struct DICOMDIMSEStatus: Sendable, Equatable, RawRepresentable {
     public static let errorCannotUnderstand = DICOMDIMSEStatus(rawValue: 0xC000)
     /// Error: Data Set does not match SOP Class (PS3.4 Annex C).
     public static let errorDataSetDoesNotMatchSOPClass = DICOMDIMSEStatus(rawValue: 0xA900)
+
+    // MARK: - N-service status codes (PS3.7 Annex C)
+
+    /// No Such Attribute (PS3.7 Annex C).
+    public static let noSuchAttribute = DICOMDIMSEStatus(rawValue: 0x0105)
+    /// Invalid Attribute Value (PS3.7 Annex C).
+    public static let invalidAttributeValue = DICOMDIMSEStatus(rawValue: 0x0106)
+    /// Processing Failure (PS3.7 Annex C).
+    public static let processingFailure = DICOMDIMSEStatus(rawValue: 0x0110)
+    /// Duplicate SOP Instance (PS3.7 Annex C).
+    public static let duplicateSOPInstance = DICOMDIMSEStatus(rawValue: 0x0111)
+    /// No Such SOP Instance (PS3.7 Annex C).
+    public static let noSuchSOPInstance = DICOMDIMSEStatus(rawValue: 0x0112)
+    /// No Such Event Type (PS3.7 Annex C).
+    public static let noSuchEventType = DICOMDIMSEStatus(rawValue: 0x0113)
+    /// No Such Argument (PS3.7 Annex C).
+    public static let noSuchArgument = DICOMDIMSEStatus(rawValue: 0x0114)
+    /// Invalid Argument Value (PS3.7 Annex C).
+    public static let invalidArgumentValue = DICOMDIMSEStatus(rawValue: 0x0115)
+    /// Invalid Object Instance (PS3.7 Annex C).
+    public static let invalidObjectInstance = DICOMDIMSEStatus(rawValue: 0x0117)
+    /// No Such SOP Class (PS3.7 Annex C).
+    public static let noSuchSOPClass = DICOMDIMSEStatus(rawValue: 0x0118)
+    /// Class-Instance Conflict (PS3.7 Annex C).
+    public static let classInstanceConflict = DICOMDIMSEStatus(rawValue: 0x0119)
+    /// Missing Attribute (PS3.7 Annex C).
+    public static let missingAttribute = DICOMDIMSEStatus(rawValue: 0x0120)
+    /// Missing Attribute Value (PS3.7 Annex C).
+    public static let missingAttributeValue = DICOMDIMSEStatus(rawValue: 0x0121)
+    /// No Such Action Type (PS3.7 Annex C).
+    public static let noSuchActionType = DICOMDIMSEStatus(rawValue: 0x0123)
+    /// Not Authorized (PS3.7 Annex C).
+    public static let notAuthorized = DICOMDIMSEStatus(rawValue: 0x0124)
+    /// Duplicate Invocation (PS3.7 Annex C).
+    public static let duplicateInvocation = DICOMDIMSEStatus(rawValue: 0x0210)
+    /// Unrecognized Operation (PS3.7 Annex C).
+    public static let unrecognizedOperation = DICOMDIMSEStatus(rawValue: 0x0211)
+    /// Mistyped Argument (PS3.7 Annex C).
+    public static let mistypedArgument = DICOMDIMSEStatus(rawValue: 0x0212)
+    /// Resource Limitation (PS3.7 Annex C).
+    public static let resourceLimitation = DICOMDIMSEStatus(rawValue: 0x0213)
 }
 
 /// The sub-operation progress counters carried by pending and final C-MOVE/C-GET
