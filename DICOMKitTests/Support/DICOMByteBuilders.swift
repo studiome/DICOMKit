@@ -37,6 +37,11 @@ func float32(_ value: Float) -> Data {
     uint32(value.bitPattern)
 }
 
+/// Little-endian encoding of an IEEE 754 double-precision value, for the `FD` VR.
+func float64(_ value: Double) -> Data {
+    uint64(value.bitPattern)
+}
+
 private func tagBytes(_ tag: DICOMTag) -> Data {
     uint16(tag.group) + uint16(tag.element)
 }

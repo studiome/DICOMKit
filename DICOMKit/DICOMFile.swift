@@ -88,6 +88,16 @@ public struct DICOMFile: Sendable {
         )
     }
 
+    /// Ultrasound region calibration: Sequence of Ultrasound Regions
+    /// `(0018,6011)`.
+    ///
+    /// Empty when the sequence is absent. See ``DICOMUltrasoundRegion`` for
+    /// how to tell whether a region's scale is meaningful for a distance
+    /// measurement.
+    public var ultrasoundRegions: [DICOMUltrasoundRegion] {
+        dataset.ultrasoundRegions
+    }
+
     /// Enhanced Multi-frame rendering attributes, resolved per frame.
     ///
     /// Shared Functional Groups provide defaults; Per-frame Functional Groups
