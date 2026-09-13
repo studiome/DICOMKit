@@ -50,6 +50,39 @@ struct DICOMFuzzTests {
             }
         }
     }
+
+    @Test func upperLayerPDUDecoderNeverTrapsOnMutatedInput() throws {
+        let corpus = try ulpduFuzzCorpus()
+        let seed = fuzzSeed()
+        let iterations = fuzzIterations(default: 4000)
+        fuzzRun(name: "ulpdu", corpus: corpus, iterations: iterations, seed: seed) { data in
+            do {
+                // `DICOMULPDU` is a plain enum of value types (strings,
+                // arrays, fixed-width integers): fully decoding one, as
+                // `decode` does, already exercises everything the fuzzer can
+                // reach — there's no lazily-evaluated storage left to trap
+                // on access the way `DICOMFile`'s pixel data path has.
+                _ = try DICOMULPDU.decode(data)
+            } catch {
+                // Expected: malformed/mutated input rejected instead of
+                // trapping on it.
+            }
+        }
+    }
+
+    @Test func dimseCommandSetDecoderNeverTrapsOnMutatedInput() throws {
+        let corpus = try dimseFuzzCorpus()
+        let seed = fuzzSeed()
+        let iterations = fuzzIterations(default: 4000)
+        fuzzRun(name: "dimse", corpus: corpus, iterations: iterations, seed: seed) { data in
+            do {
+                _ = try DICOMDIMSECommand.decodeCommandSet(data)
+            } catch {
+                // Expected: malformed/mutated input rejected instead of
+                // trapping on it.
+            }
+        }
+    }
 }
 
 // MARK: - Shared fuzz harness
@@ -240,4 +273,93 @@ private func fuzzBigEndianElement(tag: DICOMTag, vr: DICOMVR, value: Data) -> Da
     }
     result.append(value)
     return result
+}
+
+// MARK: - Upper Layer PDU corpus
+
+/// A seed corpus of real, wire-encoded Upper Layer PDUs (PS3.8): an
+/// A-ASSOCIATE-RQ exercising presentation contexts, role selection, an
+/// asynchronous operations window, and user identity negotiation; an
+/// A-ASSOCIATE-AC; an A-ASSOCIATE-RJ; a P-DATA-TF with several PDVs; a
+/// release request and response; and an abort.
+func ulpduFuzzCorpus() throws -> [Data] {
+    var corpus: [Data] = []
+
+    let request = DICOMAssociationRequest(
+        calledAETitle: "CALLED_AE",
+        callingAETitle: "CALLING_AE",
+        presentationContexts: [
+            DICOMPresentationContext(
+                id: 1,
+                abstractSyntaxUID: "1.2.840.10008.5.1.4.1.1.2",
+                transferSyntaxUIDs: [TransferSyntax.explicitVRLittleEndian.uid, TransferSyntax.implicitVRLittleEndian.uid]
+            ),
+            DICOMPresentationContext(id: 3, abstractSyntaxUID: "1.2.840.10008.1.1", transferSyntaxUIDs: [TransferSyntax.implicitVRLittleEndian.uid])
+        ],
+        userIdentity: DICOMUserIdentityNegotiation(identity: .usernameAndPassword(username: "user", password: "pass"), positiveResponseRequested: true),
+        roleSelections: [DICOMRoleSelection(sopClassUID: "1.2.840.10008.5.1.4.1.1.2", supportsSCURole: true, supportsSCPRole: false)],
+        asynchronousOperationsWindow: DICOMAsynchronousOperationsWindow(maximumInvoked: 1, maximumPerformed: 1)
+    )
+    corpus.append(try DICOMULPDU.associationRequest(request).encoded())
+
+    let acceptance = DICOMAssociationAcceptance(
+        calledAETitle: "CALLED_AE",
+        callingAETitle: "CALLING_AE",
+        presentationContexts: [
+            DICOMPresentationContextAcceptance(id: 1, result: .acceptance, transferSyntaxUID: TransferSyntax.explicitVRLittleEndian.uid)
+        ],
+        roleSelections: [DICOMRoleSelection(sopClassUID: "1.2.840.10008.5.1.4.1.1.2", supportsSCURole: true, supportsSCPRole: true)],
+        asynchronousOperationsWindow: DICOMAsynchronousOperationsWindow(maximumInvoked: 1, maximumPerformed: 1)
+    )
+    corpus.append(try DICOMULPDU.associationAcceptance(acceptance).encoded())
+
+    corpus.append(try DICOMULPDU.associationRejection(
+        DICOMAssociationRejection(result: .permanent, source: .serviceUser, reason: 1)
+    ).encoded())
+
+    corpus.append(try DICOMULPDU.pData([
+        DICOMPDataValue(contextID: 1, isCommand: true, isLastFragment: false, data: Data([0x01, 0x02, 0x03, 0x04])),
+        DICOMPDataValue(contextID: 1, isCommand: false, isLastFragment: true, data: Data(repeating: 0xAB, count: 64)),
+        DICOMPDataValue(contextID: 3, isCommand: true, isLastFragment: true, data: Data([0xFF]))
+    ]).encoded())
+
+    corpus.append(try DICOMULPDU.releaseRequest.encoded())
+    corpus.append(try DICOMULPDU.releaseResponse.encoded())
+    corpus.append(try DICOMULPDU.abort(source: 0, reason: 0).encoded())
+
+    return corpus
+}
+
+// MARK: - DIMSE command set corpus
+
+/// A seed corpus covering every DIMSE command ``DICOMDIMSECommand`` can
+/// currently encode, so the decoder's fuzz coverage starts from something
+/// resembling every wire shape it must understand.
+func dimseFuzzCorpus() throws -> [Data] {
+    try [
+        DICOMDIMSECommand.cEchoRequest(messageID: 1),
+        .cEchoResponse(messageIDBeingRespondedTo: 1, status: .success),
+        .cStoreRequest(messageID: 1, affectedSOPClassUID: "1.2.840.10008.5.1.4.1.1.2", affectedSOPInstanceUID: "1.2.3.4.5"),
+        .cStoreResponse(messageIDBeingRespondedTo: 1, status: .success),
+        .cFindRequest(messageID: 1, affectedSOPClassUID: "1.2.840.10008.5.1.4.1.2.2.1"),
+        .cFindResponse(messageIDBeingRespondedTo: 1, status: .pending, identifierFollows: true, errorComment: nil),
+        .cFindResponse(messageIDBeingRespondedTo: 1, status: .errorCannotUnderstand, identifierFollows: false, errorComment: "malformed identifier"),
+        .cMoveRequest(messageID: 1, affectedSOPClassUID: "1.2.840.10008.5.1.4.1.2.2.2", moveDestination: "DEST_AE"),
+        .cMoveResponse(
+            messageIDBeingRespondedTo: 1,
+            status: .success,
+            identifierFollows: false,
+            subOperations: DICOMSubOperationCounts(remaining: 0, completed: 1, failed: 0, warning: 0),
+            errorComment: nil
+        ),
+        .cGetRequest(messageID: 1, affectedSOPClassUID: "1.2.840.10008.5.1.4.1.2.2.3"),
+        .cGetResponse(
+            messageIDBeingRespondedTo: 1,
+            status: .refusedOutOfResources,
+            identifierFollows: false,
+            subOperations: nil,
+            errorComment: "out of resources"
+        ),
+        .cCancelRequest(messageIDBeingRespondedTo: 1)
+    ].map { try $0.encodedCommandSet() }
 }
