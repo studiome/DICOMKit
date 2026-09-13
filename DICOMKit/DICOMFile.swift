@@ -287,6 +287,14 @@ public struct DICOMFile: Sendable {
         dataset.presentationLUTShape
     }
 
+    /// Whether Burned In Annotation `(0028,0301)` declares that pixel data
+    /// carries rendered identifying text. See
+    /// ``DICOMConfidentialityProfile/deidentify(_:replacement:)``, which
+    /// consults this before claiming a dataset has been de-identified.
+    public var burnedInAnnotation: DICOMBurnedInAnnotationStatus {
+        dataset.burnedInAnnotation
+    }
+
     /// The top-level Real World Value Mapping Sequence `(0040,9096)`.
     ///
     /// This is what a PET viewer uses to convert a stored pixel value to a

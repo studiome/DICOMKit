@@ -156,3 +156,68 @@ struct DICOMConfidentialityProfileTests {
         #expect(result[patientBirthDate] == nil)
     }
 }
+
+/// Tests for burned-in annotation handling: pixel data can carry
+/// identifiers as rendered text that no attribute-table action touches, so
+/// `DICOMConfidentialityProfile.deidentify` refuses to proceed when
+/// `(0028,0301)` declares that annotation is present, and surfaces a
+/// warning (rather than staying silent) when the attribute is absent.
+struct DICOMBurnedInAnnotationTests {
+    private let burnedInAnnotation = DICOMTag(group: 0x0028, element: 0x0301)
+
+    private func file(burnedIn value: String?) throws -> DICOMFile {
+        var elements = [
+            DICOMElement(tag: .sopClassUID, vr: .UI, value: Data("1.2.840.10008.5.1.4.1.1.7".utf8)),
+            DICOMElement(tag: .sopInstanceUID, vr: .UI, value: Data("1.2.3".utf8))
+        ]
+        if let value {
+            elements.append(DICOMElement(tag: burnedInAnnotation, vr: .CS, value: Data(value.utf8)))
+        }
+        return try DICOMFile(data: DICOMWriter.write(dataset: DICOMDataset(elements: elements)))
+    }
+
+    @Test func fileDeclaringBurnedInAnnotationYesReportsDeclaredPresent() throws {
+        let file = try file(burnedIn: "YES")
+
+        #expect(file.burnedInAnnotation == .declaredPresent)
+    }
+
+    @Test func fileDeclaringBurnedInAnnotationNoReportsDeclaredAbsent() throws {
+        let file = try file(burnedIn: "NO")
+
+        #expect(file.burnedInAnnotation == .declaredAbsent)
+    }
+
+    @Test func fileWithNoBurnedInAnnotationAttributeReportsUndeclared() throws {
+        let file = try file(burnedIn: nil)
+
+        #expect(file.burnedInAnnotation == .undeclared)
+    }
+
+    @Test func deidentifyThrowsWhenBurnedInAnnotationIsDeclaredPresent() throws {
+        let file = try file(burnedIn: "YES")
+        let profile = DICOMConfidentialityProfile()
+
+        #expect(throws: DICOMError.burnedInAnnotationPresent) {
+            try profile.deidentify(file, replacement: "Anonymous")
+        }
+    }
+
+    @Test func deidentifySucceedsWithNoWarningWhenBurnedInAnnotationIsDeclaredAbsent() throws {
+        let file = try file(burnedIn: "NO")
+        let profile = DICOMConfidentialityProfile()
+
+        let result = try profile.deidentify(file, replacement: "Anonymous")
+
+        #expect(result.warnings.isEmpty)
+    }
+
+    @Test func deidentifySucceedsWithWarningWhenBurnedInAnnotationIsUndeclared() throws {
+        let file = try file(burnedIn: nil)
+        let profile = DICOMConfidentialityProfile()
+
+        let result = try profile.deidentify(file, replacement: "Anonymous")
+
+        #expect(result.warnings.isEmpty == false)
+    }
+}

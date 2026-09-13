@@ -43,4 +43,11 @@ public enum DICOMError: Error, Sendable, Equatable {
     /// sequence) shares this bound, guarding against a malformed or hostile
     /// dataset driving unbounded recursion and overflowing the call stack.
     case sequenceNestingTooDeep
+    /// `DICOMConfidentialityProfile.deidentify(_:replacement:)` was asked to
+    /// de-identify a file whose Burned In Annotation `(0028,0301)` declares
+    /// `YES`: the pixel data itself carries rendered identifying text, and
+    /// DICOMKit does not modify pixels. No attribute-table action can make
+    /// such a dataset de-identified, so DICOMKit refuses to produce output
+    /// that would misrepresent it as such.
+    case burnedInAnnotationPresent
 }

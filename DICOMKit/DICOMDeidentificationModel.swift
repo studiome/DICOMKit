@@ -198,4 +198,118 @@ public struct DICOMConfidentialityProfile: Sendable {
             anonymizerAction(for: alternatives.first ?? .remove, replacement: replacement)
         }
     }
+
+    /// The result of ``deidentify(_:replacement:)``.
+    ///
+    /// This deliberately is not a bare `DICOMDataset`: a caller who only
+    /// ever looks at `.dataset` and never at `.warnings` would silently
+    /// treat a weaker claim (Burned In Annotation was never declared, so
+    /// its absence could not be confirmed) the same as the strongest one
+    /// (it was declared absent). Requiring `result.dataset` to be reached
+    /// through a value that also carries `warnings` keeps that gap visible
+    /// at the call site instead of letting it disappear into a discarded
+    /// second return value or a log line nobody reads.
+    public struct DeidentificationResult: Sendable, Equatable {
+        /// The de-identified dataset.
+        public let dataset: DICOMDataset
+        /// Non-fatal caveats about the strength of the de-identification
+        /// claim this result represents. Empty only when nothing weakens
+        /// it — for example, a non-empty array whenever Burned In
+        /// Annotation `(0028,0301)` was absent rather than explicitly `NO`.
+        public let warnings: [String]
+    }
+
+    /// De-identifies `file`'s dataset under this profile, first checking
+    /// whether pixel data can be trusted not to carry rendered identifying
+    /// text.
+    ///
+    /// A dataset whose pixels contain burned-in identifiers (patient name
+    /// overlays, annotated ultrasound measurements, scanned document
+    /// photos, and the like) is not de-identified no matter what this
+    /// method does to its attributes — and DICOMKit cannot detect or
+    /// redact such pixel content, because that requires image
+    /// understanding, not attribute manipulation. So:
+    ///
+    /// - When Burned In Annotation `(0028,0301)` is `YES`
+    ///   (``DICOMBurnedInAnnotationStatus/declaredPresent``), this throws
+    ///   ``DICOMError/burnedInAnnotationPresent`` instead of producing
+    ///   output that would misrepresent the result as de-identified.
+    /// - When `(0028,0301)` is absent
+    ///   (``DICOMBurnedInAnnotationStatus/undeclared``), this proceeds —
+    ///   refusing outright would reject the enormous number of real-world
+    ///   files that simply never populated this optional attribute — but
+    ///   the returned ``DeidentificationResult/warnings`` says so, because
+    ///   the resulting claim is weaker than when `(0028,0301)` is `NO`.
+    /// - When `(0028,0301)` is `NO`
+    ///   (``DICOMBurnedInAnnotationStatus/declaredAbsent``), this proceeds
+    ///   with no warning.
+    ///
+    /// Unlike ``makeAnonymizer(replacement:)``, this also applies Table
+    /// E.1-1's three repeating-group ("xx") tags wherever they appear in
+    /// `file.dataset` (recursively, including inside sequence items),
+    /// since here — working from a whole dataset rather than building a
+    /// tag-keyed `DICOMAnonymizer` up front — there is no need to give up
+    /// mask matching for a plain dictionary.
+    public func deidentify(_ file: DICOMFile, replacement: String) throws -> DeidentificationResult {
+        var warnings: [String] = []
+        switch file.burnedInAnnotation {
+        case .declaredPresent:
+            throw DICOMError.burnedInAnnotationPresent
+        case .undeclared:
+            warnings.append(
+                "Burned In Annotation (0028,0301) is not present, so it is not confirmed that pixel data is free of "
+                    + "identifying text. This de-identification claim covers dataset attributes only."
+            )
+        case .declaredAbsent:
+            break
+        }
+
+        var actions = makeAnonymizer(replacement: replacement).actions
+        for tag in Self.allTags(in: file.dataset) where actions[tag] == nil {
+            if let resolved = action(for: tag) {
+                actions[tag] = Self.anonymizerAction(for: resolved, replacement: replacement)
+            }
+        }
+        let dataset = DICOMAnonymizer(actions: actions).anonymize(file.dataset)
+        return DeidentificationResult(dataset: dataset, warnings: warnings)
+    }
+
+    /// Every tag present anywhere in `dataset`, including inside sequence
+    /// items, recursively. Used only to discover which of Table E.1-1's
+    /// masked (repeating-group) entries actually apply to this dataset, so
+    /// ``deidentify(_:replacement:)`` can add them to an otherwise
+    /// exact-tag `DICOMAnonymizer.actions` dictionary.
+    private static func allTags(in dataset: DICOMDataset) -> Set<DICOMTag> {
+        var tags = Set(dataset.tags)
+        for element in dataset {
+            guard let items = element.sequenceItems else { continue }
+            for item in items {
+                tags.formUnion(allTags(in: item))
+            }
+        }
+        return tags
+    }
+}
+
+/// Whether Burned In Annotation `(0028,0301)` declares that pixel data
+/// carries rendered identifying text (PS3.3 C.7.6.16.1.1).
+public enum DICOMBurnedInAnnotationStatus: Sendable, Equatable {
+    /// `(0028,0301)` is `NO`: pixel data does not carry burned-in text.
+    case declaredAbsent
+    /// `(0028,0301)` is `YES`: pixel data carries burned-in text.
+    case declaredPresent
+    /// `(0028,0301)` is absent, so nothing was declared either way.
+    case undeclared
+}
+
+extension DICOMDataset {
+    /// The Burned In Annotation status `(0028,0301)` declares. Shared by
+    /// ``DICOMFile/burnedInAnnotation``.
+    var burnedInAnnotation: DICOMBurnedInAnnotationStatus {
+        switch self[DICOMTag(group: 0x0028, element: 0x0301)]?.stringValue?.uppercased() {
+        case "YES": .declaredPresent
+        case "NO": .declaredAbsent
+        default: .undeclared
+        }
+    }
 }
