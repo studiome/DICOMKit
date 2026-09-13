@@ -308,3 +308,69 @@ struct DICOMDeidentificationMethodRecordingTests {
         #expect(codeValues(result.dataset) == ["113100", "113110"])
     }
 }
+
+/// End-to-end proof that `deidentify`'s output is not just correct in
+/// memory, but survives being written with `DICOMWriter.write` and read back
+/// with `DICOMFile(data:)`. A de-identifier whose output cannot be written
+/// and read back is not useful, no matter how correct its in-memory model is.
+struct DICOMDeidentificationRoundTripTests {
+    private let accessionNumber = DICOMTag(group: 0x0008, element: 0x0050)
+    // Verifying Observer Identification Code Sequence: a real Table E.1-1
+    // row coded bare `Z` whose VR is SQ.
+    private let verifyingObserverIdentificationCodeSequence = DICOMTag(group: 0x0040, element: 0xA088)
+    private let codeValue = DICOMTag(group: 0x0008, element: 0x0100)
+    private let patientIdentityRemoved = DICOMTag(group: 0x0012, element: 0x0062)
+    private let deidentificationMethod = DICOMTag(group: 0x0012, element: 0x0063)
+    private let deidentificationMethodCodeSequence = DICOMTag(group: 0x0012, element: 0x0064)
+
+    @Test func deidentifiedDatasetRoundTripsThroughWriteAndRead() throws {
+        let originalUID = "1.2.826.0.1.3680043.2.1125.1.68.420.42"
+        let pixelData = Data([0, 1, 2, 3, 4, 5, 6, 7])
+        let nestedCode = DICOMDataset(elements: [DICOMElement(tag: codeValue, vr: .SH, value: Data("121008".utf8))])
+
+        let dataset = DICOMDataset(elements: [
+            DICOMElement(tag: .sopClassUID, vr: .UI, value: Data("1.2.840.10008.5.1.4.1.1.7".utf8)),
+            DICOMElement(tag: .sopInstanceUID, vr: .UI, value: Data("1.2.3.4.5".utf8)),
+            DICOMElement(tag: DICOMTag(group: 0x0028, element: 0x0301), vr: .CS, value: Data("NO".utf8)),
+            // Type 2 attribute coded Z.
+            DICOMElement(tag: accessionNumber, vr: .SH, value: Data("ACC-100".utf8)),
+            // The same source UID in two different attributes, both coded U.
+            DICOMElement(tag: .studyInstanceUID, vr: .UI, value: Data(originalUID.utf8)),
+            DICOMElement(tag: .seriesInstanceUID, vr: .UI, value: Data(originalUID.utf8)),
+            // A sequence, coded Z.
+            DICOMElement(tag: verifyingObserverIdentificationCodeSequence, vr: .SQ, value: Data(), sequenceItems: [nestedCode]),
+            // Pixel Data.
+            DICOMElement(tag: .rows, vr: .US, value: uint16(2)),
+            DICOMElement(tag: .columns, vr: .US, value: uint16(2)),
+            DICOMElement(tag: .bitsAllocated, vr: .US, value: uint16(8)),
+            DICOMElement(tag: .pixelData, vr: .OB, value: pixelData)
+        ])
+        let file = try DICOMFile(data: DICOMWriter.write(dataset: dataset))
+
+        let result = try DICOMConfidentialityProfile().deidentify(file, replacement: "Anonymous")
+        let roundTripped = try DICOMFile(data: DICOMWriter.write(dataset: result.dataset))
+
+        // Z: present, zero-length, after surviving a write/read cycle.
+        #expect(roundTripped.dataset[accessionNumber] == DICOMElement(tag: accessionNumber, vr: .SH, value: Data()))
+
+        // U: the same source UID was remapped to the same output UID in both
+        // attributes, and that output UID differs from the original.
+        let remappedStudyUID = try #require(roundTripped.dataset[.studyInstanceUID]?.stringValue)
+        let remappedSeriesUID = try #require(roundTripped.dataset[.seriesInstanceUID]?.stringValue)
+        #expect(remappedStudyUID == remappedSeriesUID)
+        #expect(remappedStudyUID != originalUID)
+
+        // Sequence coded Z: present and empty, not removed.
+        #expect(roundTripped.dataset[verifyingObserverIdentificationCodeSequence]?.vr == .SQ)
+        #expect(roundTripped.dataset[verifyingObserverIdentificationCodeSequence]?.sequenceItems == [])
+
+        // Pixel Data: byte-identical.
+        #expect(roundTripped.dataset[.pixelData]?.value == pixelData)
+
+        // The recorded method attributes survive, with their code items.
+        #expect(roundTripped.dataset[patientIdentityRemoved]?.stringValue == "YES")
+        #expect(roundTripped.dataset[deidentificationMethod]?.stringValue?.isEmpty == false)
+        let methodCodeItems = try #require(roundTripped.dataset[deidentificationMethodCodeSequence]?.sequenceItems)
+        #expect(methodCodeItems.contains { $0[codeValue]?.stringValue == "113100" })
+    }
+}
