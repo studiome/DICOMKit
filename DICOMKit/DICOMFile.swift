@@ -109,6 +109,48 @@ public struct DICOMFile: Sendable {
         }
     }
 
+    /// Frame indices in display order, resolved from each frame's Frame
+    /// Content macro `(0020,9111)` (see ``frameFunctionalGroups``).
+    ///
+    /// Frames are grouped by Stack ID `(0020,9056)` — frames that declare no
+    /// Stack ID form one group together — and each group is emitted as a
+    /// contiguous run, in the order its first frame appears in storage.
+    /// Within a group, frames are ordered by In-Stack Position Number
+    /// `(0020,9057)`, then Temporal Position Index `(0020,9128)`, then the
+    /// frame's own stored index. A group whose frames carry none of those
+    /// keys therefore keeps its stored order: silently reordering frames
+    /// that carry no ordering information at all would be worse than
+    /// leaving them alone.
+    ///
+    /// This does NOT consult the Dimension Index Sequence `(0020,9222)`:
+    /// ``DICOMFrameContent/dimensionIndexValues`` is exposed raw because
+    /// interpreting it requires the dimension organization, which DICOMKit
+    /// does not model.
+    public func frameOrder() -> [Int] {
+        let groups = frameFunctionalGroups
+        guard !groups.isEmpty else { return [] }
+        var stackOrder: [String] = []
+        var seenStacks: Set<String> = []
+        var framesByStack: [String: [Int]] = [:]
+        for index in groups.indices {
+            let stackID = groups[index].frameContent?.stackID ?? ""
+            if !seenStacks.contains(stackID) {
+                seenStacks.insert(stackID)
+                stackOrder.append(stackID)
+            }
+            framesByStack[stackID, default: []].append(index)
+        }
+        return stackOrder.flatMap { stackID in
+            framesByStack[stackID]!.sorted { lhs, rhs in
+                let left = groups[lhs].frameContent
+                let right = groups[rhs].frameContent
+                if let l = left?.inStackPositionNumber, let r = right?.inStackPositionNumber, l != r { return l < r }
+                if let l = left?.temporalPositionIndex, let r = right?.temporalPositionIndex, l != r { return l < r }
+                return lhs < rhs
+            }
+        }
+    }
+
     /// Ultrasound region calibration: Sequence of Ultrasound Regions
     /// `(0018,6011)`.
     ///
@@ -684,6 +726,7 @@ public struct DICOMFile: Sendable {
                 if let value = perFrameGroups.pixelMeasures { resolved.pixelMeasures = value }
                 if let value = perFrameGroups.planePosition { resolved.planePosition = value }
                 if let value = perFrameGroups.planeOrientation { resolved.planeOrientation = value }
+                if let value = perFrameGroups.frameContent { resolved.frameContent = value }
             }
             return resolved
         }
@@ -708,6 +751,18 @@ public struct DICOMFile: Sendable {
         let planePositionItem = item[DICOMTag(group: 0x0020, element: 0x9113)]?.sequenceItems?.first
         // Plane Orientation (Patient) Sequence `(0020,9116)`.
         let planeOrientationItem = item[DICOMTag(group: 0x0020, element: 0x9116)]?.sequenceItems?.first
+        // Frame Content Sequence `(0020,9111)`.
+        let frameContentItem = item[DICOMTag(group: 0x0020, element: 0x9111)]?.sequenceItems?.first
+        let frameContent = frameContentItem.map { contentItem in
+            DICOMFrameContent(
+                stackID: contentItem[DICOMTag(group: 0x0020, element: 0x9056)]?.stringValue,
+                inStackPositionNumber: contentItem[DICOMTag(group: 0x0020, element: 0x9057)]?.uint32Values?.first.map(Int.init),
+                temporalPositionIndex: contentItem[DICOMTag(group: 0x0020, element: 0x9128)]?.uint32Values?.first.map(Int.init),
+                dimensionIndexValues: contentItem[DICOMTag(group: 0x0020, element: 0x9157)]?.uint32Values?.map(Int.init),
+                frameAcquisitionNumber: contentItem[DICOMTag(group: 0x0020, element: 0x9156)]?.uint16Value.map(Int.init),
+                frameAcquisitionDuration: contentItem[DICOMTag(group: 0x0018, element: 0x9220)]?.float64Values?.first
+            )
+        }
         return DICOMFrameFunctionalGroups(
             rescaleSlope: transformation?[.rescaleSlope]?.doubleValue,
             rescaleIntercept: transformation?[.rescaleIntercept]?.doubleValue,
@@ -715,7 +770,8 @@ public struct DICOMFile: Sendable {
             windowWidth: voi?[.windowWidth]?.doubleValue,
             pixelMeasures: pixelMeasures,
             planePosition: planePositionItem?[.imagePositionPatient]?.doubleValues,
-            planeOrientation: planeOrientationItem?[.imageOrientationPatient]?.doubleValues
+            planeOrientation: planeOrientationItem?[.imageOrientationPatient]?.doubleValues,
+            frameContent: frameContent
         )
     }
 

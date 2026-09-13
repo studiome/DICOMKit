@@ -24,6 +24,8 @@ public struct DICOMFrameFunctionalGroups: Sendable, Equatable {
     /// Image Orientation (Patient) `(0020,0037)` from the Plane Orientation
     /// (Patient) macro `(0020,9116)`.
     public var planeOrientation: [Double]?
+    /// The Frame Content macro `(0020,9111)`.
+    public var frameContent: DICOMFrameContent?
 
     public init(
         rescaleSlope: Double? = nil,
@@ -32,7 +34,8 @@ public struct DICOMFrameFunctionalGroups: Sendable, Equatable {
         windowWidth: Double? = nil,
         pixelMeasures: DICOMPixelMeasures? = nil,
         planePosition: [Double]? = nil,
-        planeOrientation: [Double]? = nil
+        planeOrientation: [Double]? = nil,
+        frameContent: DICOMFrameContent? = nil
     ) {
         self.rescaleSlope = rescaleSlope
         self.rescaleIntercept = rescaleIntercept
@@ -41,6 +44,45 @@ public struct DICOMFrameFunctionalGroups: Sendable, Equatable {
         self.pixelMeasures = pixelMeasures
         self.planePosition = planePosition
         self.planeOrientation = planeOrientation
+        self.frameContent = frameContent
+    }
+}
+
+/// The Frame Content macro `(0020,9111)`: frame-level identification and
+/// stack/temporal placement for an Enhanced Multi-frame object.
+public struct DICOMFrameContent: Sendable, Equatable {
+    /// Stack ID `(0020,9056)`.
+    public let stackID: String?
+    /// In-Stack Position Number `(0020,9057)`.
+    public let inStackPositionNumber: Int?
+    /// Temporal Position Index `(0020,9128)`.
+    public let temporalPositionIndex: Int?
+    /// Dimension Index Values `(0020,9157)`, exposed raw.
+    ///
+    /// Interpreting these values requires the Dimension Index Sequence
+    /// `(0020,9222)`'s dimension organization, which DICOMKit does not
+    /// model; treat this as opaque data rather than an understood ordering
+    /// key. See ``DICOMFile/frameOrder()``.
+    public let dimensionIndexValues: [Int]?
+    /// Frame Acquisition Number `(0020,9156)`.
+    public let frameAcquisitionNumber: Int?
+    /// Frame Acquisition Duration `(0018,9220)`, in milliseconds.
+    public let frameAcquisitionDuration: Double?
+
+    public init(
+        stackID: String? = nil,
+        inStackPositionNumber: Int? = nil,
+        temporalPositionIndex: Int? = nil,
+        dimensionIndexValues: [Int]? = nil,
+        frameAcquisitionNumber: Int? = nil,
+        frameAcquisitionDuration: Double? = nil
+    ) {
+        self.stackID = stackID
+        self.inStackPositionNumber = inStackPositionNumber
+        self.temporalPositionIndex = temporalPositionIndex
+        self.dimensionIndexValues = dimensionIndexValues
+        self.frameAcquisitionNumber = frameAcquisitionNumber
+        self.frameAcquisitionDuration = frameAcquisitionDuration
     }
 }
 
