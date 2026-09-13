@@ -81,4 +81,45 @@ struct DICOMCharacterSetTests {
 
         #expect(characterSet.decode(bytes) == "AB")
     }
+
+    // MARK: - ISO 2022 escape switching (multi-byte extensions)
+
+    @Test func escSwitchesG0ToJISX0208KanjiAndBackToASCII() {
+        let characterSet = DICOMCharacterSet(declaration: "ISO 2022 IR 6\\ISO 2022 IR 87")
+        var bytes = Data()
+        bytes.append(contentsOf: [0x1B, 0x24, 0x42]) // ESC $ B: G0 = JIS X 0208 Kanji
+        // JIS X 0208 row/cell bytes for "日本語" (verified independently via
+        // Foundation's own ISO-2022-JP encoder, which emits exactly this
+        // escape/payload/escape framing for that string).
+        bytes.append(contentsOf: [0x46, 0x7C, 0x4B, 0x5C, 0x38, 0x6C])
+        bytes.append(contentsOf: [0x1B, 0x28, 0x42]) // ESC ( B: back to ASCII
+        bytes.append(contentsOf: Data("XY".utf8))
+
+        #expect(characterSet.decode(bytes) == "日本語XY")
+    }
+
+    @Test func escSwitchesG1ToKoreanEUCPair() {
+        let characterSet = DICOMCharacterSet(declaration: "ISO 2022 IR 149")
+        var bytes = Data()
+        bytes.append(contentsOf: [0x1B, 0x24, 0x29, 0x43]) // ESC $ ) C: G1 = KS X 1001 Korean
+        // EUC-KR bytes for "한글" (verified independently via Foundation's
+        // own EUC-KR encoding), already GR (high bit set).
+        bytes.append(contentsOf: [0xC7, 0xD1, 0xB1, 0xDB])
+
+        #expect(characterSet.decode(bytes) == "한글")
+    }
+
+    @Test func invalidMultiByteBytesFallBackRatherThanReturningNil() {
+        let characterSet = DICOMCharacterSet(declaration: "ISO 2022 IR 6\\ISO 2022 IR 87")
+        var bytes = Data()
+        bytes.append(contentsOf: [0x1B, 0x24, 0x42]) // ESC $ B: G0 = JIS X 0208 Kanji
+        bytes.append(0x41)                            // an incomplete (unpaired) double-byte code
+        bytes.append(contentsOf: [0x1B, 0x28, 0x42]) // ESC ( B: back to ASCII
+        bytes.append(contentsOf: Data("Z".utf8))
+
+        // The lone 0x41 cannot form a JIS X 0208 pair, so ISO-2022-JP decoding
+        // of that run fails; the decoder falls back to decoding the raw run
+        // as ISO 8859-1 (which never fails) instead of losing the whole value.
+        #expect(characterSet.decode(bytes) == "AZ")
+    }
 }

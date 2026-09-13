@@ -99,7 +99,7 @@ public enum DICOMCodeElement: Sendable, Equatable, Hashable {
     fileprivate static let cfStringEncodingISOLatinThai: CFStringEncoding = 0x020B
     fileprivate static let cfStringEncodingGB18030_2000: CFStringEncoding = 0x0632
 
-    private static func encoding(_ cfEncoding: CFStringEncoding) -> String.Encoding {
+    fileprivate static func encoding(_ cfEncoding: CFStringEncoding) -> String.Encoding {
         String.Encoding(rawValue: CFStringConvertEncodingToNSStringEncoding(cfEncoding))
     }
 }
@@ -232,7 +232,13 @@ public struct DICOMCharacterSet: Sendable, Equatable {
         [0x2D, 0x48]: (.g1, .hebrew),            // ESC - H
         [0x2D, 0x4C]: (.g1, .cyrillic),          // ESC - L
         [0x2D, 0x4D]: (.g1, .latin5),            // ESC - M
-        [0x2D, 0x54]: (.g1, .thai)               // ESC - T
+        [0x2D, 0x54]: (.g1, .thai),              // ESC - T
+
+        // Multi-byte code extensions.
+        [0x24, 0x42]: (.g0, .japaneseKanji),                    // ESC $ B
+        [0x24, 0x28, 0x44]: (.g0, .japaneseSupplementaryKanji), // ESC $ ( D
+        [0x24, 0x29, 0x43]: (.g1, .korean),                     // ESC $ ) C
+        [0x24, 0x29, 0x41]: (.g1, .simplifiedChinese)           // ESC $ ) A
     ]
 
     /// Decodes a declaration with ISO 2022 code extensions by walking its
@@ -304,8 +310,63 @@ public struct DICOMCharacterSet: Sendable, Equatable {
 
     /// Decodes one contiguous run of bytes that all belong to the same G0/G1
     /// repertoire. For single-byte repertoires (and UTF-8/GB18030) this is
-    /// the same whole-buffer decode as the non-extension path.
+    /// the same whole-buffer decode as the non-extension path; multi-byte
+    /// code extensions are decoded by `decodeMultiByteRun`, falling back to
+    /// ISO 8859-1 like every other path here when that fails.
     private static func decodeRun(_ data: Data, repertoire: DICOMCodeElement) -> String? {
-        decodeWholeBuffer(data, repertoire: repertoire)
+        guard repertoire.isMultiByteCodeExtension else {
+            return decodeWholeBuffer(data, repertoire: repertoire)
+        }
+        if let decoded = decodeMultiByteRun(data, repertoire: repertoire) { return decoded }
+        return String(data: data, encoding: .isoLatin1)
     }
+
+    /// Decodes one run of a multi-byte ISO 2022 code extension by handing it
+    /// to Foundation in a form Foundation already understands, rather than
+    /// shipping and maintaining JIS X 0208/0212, KS X 1001, or GB2312
+    /// code-page tables in this package.
+    ///
+    /// Japanese Kanji and Supplementary Kanji runs are re-wrapped as a
+    /// self-contained ISO-2022-JP(-2) document: the same designation escape
+    /// that selected the repertoire, the run bytes verbatim, then `ESC ( B`
+    /// to return to ASCII — exactly the framing `String.Encoding.iso2022JP`
+    /// (or its JIS X 0212 superset) expects, since DICOM's escape framing
+    /// for these repertoires already matches ISO-2022-JP's.
+    ///
+    /// Korean and Simplified Chinese runs arrive as GR bytes (DICOM invokes
+    /// G1 via the high bit rather than a shift code), which is exactly what
+    /// EUC-KR/EUC-CN expect. Since a run is classified by that same high
+    /// bit, every byte routed here already has it set; each byte is OR'd
+    /// with 0x80 anyway as a defensive no-op, in case a future caller ever
+    /// hands this a run assembled some other way.
+    private static func decodeMultiByteRun(_ data: Data, repertoire: DICOMCodeElement) -> String? {
+        switch repertoire {
+        case .japaneseKanji:
+            return decodeISO2022JPRun(data, designation: [0x1B, 0x24, 0x42], encoding: .iso2022JP)
+        case .japaneseSupplementaryKanji:
+            return decodeISO2022JPRun(data, designation: [0x1B, 0x24, 0x28, 0x44], encoding: DICOMCodeElement.encoding(cfStringEncodingISO2022JP2))
+                ?? decodeISO2022JPRun(data, designation: [0x1B, 0x24, 0x28, 0x44], encoding: .iso2022JP)
+        case .korean:
+            return decodeEUCRun(data, encoding: DICOMCodeElement.encoding(cfStringEncodingEUC_KR))
+        case .simplifiedChinese:
+            return decodeEUCRun(data, encoding: DICOMCodeElement.encoding(cfStringEncodingEUC_CN))
+        default:
+            return nil
+        }
+    }
+
+    private static func decodeISO2022JPRun(_ data: Data, designation: [UInt8], encoding: String.Encoding) -> String? {
+        var wrapped = Data(designation)
+        wrapped.append(data)
+        wrapped.append(contentsOf: [0x1B, 0x28, 0x42]) // ESC ( B: back to ASCII
+        return String(data: wrapped, encoding: encoding)
+    }
+
+    private static func decodeEUCRun(_ data: Data, encoding: String.Encoding) -> String? {
+        String(data: Data(data.map { $0 | 0x80 }), encoding: encoding)
+    }
+
+    fileprivate static let cfStringEncodingISO2022JP2: CFStringEncoding = 0x0821
+    fileprivate static let cfStringEncodingEUC_KR: CFStringEncoding = 0x0940
+    fileprivate static let cfStringEncodingEUC_CN: CFStringEncoding = 0x0930
 }
