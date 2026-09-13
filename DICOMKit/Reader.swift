@@ -8,6 +8,10 @@ import Foundation
 struct Reader {
     let data: Data
     var offset: Int
+    /// Controls how ambiguous VRs (`UN`, private tags) are resolved while
+    /// reading. Set by the caller (``DICOMFile``, ``DICOMMetadataFile``)
+    /// right after constructing the reader.
+    var options: DICOMReadOptions = .default
     /// When enabled, native Pixel Data is skipped rather than copied and its
     /// source range is retained for an offset-based reader.
     var skipsNativePixelData = false
@@ -34,8 +38,9 @@ struct Reader {
     mutating func readElement(transferSyntax: TransferSyntax) throws -> DICOMElement {
         let byteOrder: ByteOrder = transferSyntax == .explicitVRBigEndian ? .bigEndian : .littleEndian
         let tag = try readTag(byteOrder: byteOrder)
-        let vr: DICOMVR
+        var vr: DICOMVR
         let length: UInt32
+        let isExplicitVRWireFormat: Bool
 
         // Listed exhaustively rather than with a `default`, so that adding a
         // transfer syntax has to state which encoding its datasets use
@@ -45,6 +50,7 @@ struct Reader {
         case .explicitVRLittleEndian, .explicitVRBigEndian, .deflatedExplicitVRLittleEndian, .rleLossless, .jpegBaseline,
              .jpegLossless, .jpegLosslessSV1, .jpegLSLossless,
              .jpegLSNearLossless, .jpeg2000Lossless, .jpeg2000:
+            isExplicitVRWireFormat = true
             let vrText = String(bytes: try readData(count: 2), encoding: .ascii) ?? ""
             guard let parsedVR = DICOMVR(rawValue: vrText) else { throw DICOMError.invalidVR(vrText) }
             vr = parsedVR
@@ -60,6 +66,7 @@ struct Reader {
                 length = UInt32(try readUInt16(byteOrder: byteOrder))
             }
         case .implicitVRLittleEndian:
+            isExplicitVRWireFormat = false
             // Read the length before resolving the VR: when a tag isn't in
             // DICOMDictionary and its length is undefined (0xFFFFFFFF), the
             // Implicit VR convention is to treat it as a sequence (SQ) rather
@@ -71,6 +78,23 @@ struct Reader {
             vr = DICOMDictionary.vr(for: tag) ?? (length == .max ? .SQ : .UN)
         case .unknown:
             throw DICOMError.unsupportedTransferSyntax(transferSyntax.uid)
+        }
+
+        // PS3.5 6.2.2: data that passed through middleware which converted
+        // Implicit VR to Explicit VR without a dictionary of its own
+        // typically leaves every attribute it didn't recognize tagged `UN`,
+        // even though the attribute has a well-defined VR. Re-derive it from
+        // DICOMDictionary so typed accessors work on it.
+        //
+        // This is restricted to little-endian byte order (every wire format
+        // here except Explicit VR Big Endian): a `UN` value's bytes are
+        // always encoded little-endian by convention, even inside an
+        // Explicit VR Big Endian dataset, so re-tagging a `UN` element read
+        // under a big-endian reader would make numeric accessors interpret
+        // its bytes with the wrong byte order.
+        if isExplicitVRWireFormat, byteOrder == .littleEndian, vr == .UN, length != .max, options.reinterpretsUnknownVR,
+           let dictVR = reinterpretedVR(for: tag), dictVR != .SQ {
+            vr = dictVR
         }
 
         if vr == .SQ || (vr == .UN && length == .max) {
@@ -234,6 +258,19 @@ struct Reader {
 
     mutating func readUInt32(byteOrder: ByteOrder = .littleEndian) throws -> UInt32 {
         byteOrder.uint32(in: try readData(count: 4), at: 0)
+    }
+
+    /// Looks up the VR `DICOMDictionary` associates with `tag`, for
+    /// re-interpreting a defined-length `UN` element (see
+    /// ``DICOMReadOptions/reinterpretsUnknownVR``).
+    ///
+    /// Returns `nil` (leaving the element `UN`) for Pixel Data, for any tag
+    /// in an odd (private) group, or for a tag the dictionary doesn't know —
+    /// none of those can be safely re-derived.
+    private func reinterpretedVR(for tag: DICOMTag) -> DICOMVR? {
+        guard tag != .pixelData, tag.group.isMultiple(of: 2) else { return nil }
+        guard let dictVR = DICOMDictionary.vr(for: tag), dictVR != .UN else { return nil }
+        return dictVR
     }
 
     mutating func readData(count: Int) throws -> Data {

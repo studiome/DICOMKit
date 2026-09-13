@@ -80,10 +80,11 @@ public struct DICOMMetadataFile: Sendable {
     public let encapsulatedPixelDataReference: DICOMEncapsulatedPixelDataReference?
     private let sourceURL: URL
 
-    public init(url: URL) throws {
+    public init(url: URL, options: DICOMReadOptions = .default) throws {
         let data = try Data(contentsOf: url, options: .mappedIfSafe)
         guard data.count >= 132, data[128...131] == Data("DICM".utf8) else { throw DICOMError.missingPart10Preamble }
         var reader = Reader(data: data, offset: 132)
+        reader.options = options
         var meta: [DICOMElement] = []
         while reader.peekTag()?.group == 0x0002 { meta.append(try reader.readElement(transferSyntax: .explicitVRLittleEndian)) }
         let metadata = DICOMDataset(elements: meta)
@@ -97,6 +98,7 @@ public struct DICOMMetadataFile: Sendable {
         if syntax == .deflatedExplicitVRLittleEndian {
             let decoded = try DeflateCodec.inflateRaw(data.subdata(in: reader.offset..<data.count))
             var inflated = Reader(data: decoded, offset: 0)
+            inflated.options = options
             dataset = DICOMDataset(elements: try inflated.readDataset(transferSyntax: .explicitVRLittleEndian))
             nativePixelDataReference = nil
             encapsulatedPixelDataReference = nil

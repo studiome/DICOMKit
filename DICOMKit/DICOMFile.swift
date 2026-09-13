@@ -45,8 +45,8 @@ public struct DICOMFile: Sendable {
     /// file. Individual element values are still materialized by the parser;
     /// use this entry point for large local files when the platform supports
     /// mapped data.
-    public init(url: URL) throws {
-        try self.init(data: Data(contentsOf: url, options: .mappedIfSafe))
+    public init(url: URL, options: DICOMReadOptions = .default) throws {
+        try self.init(data: Data(contentsOf: url, options: .mappedIfSafe), options: options)
     }
 
     /// Typed display and patient-space geometry, when the dataset supplies it.
@@ -923,9 +923,11 @@ public struct DICOMFile: Sendable {
     /// The reader supports Explicit VR Little Endian and Implicit VR Little
     /// Endian datasets, including defined-length and undefined-length sequences.
     ///
-    /// - Parameter input: The complete contents of a DICOM Part 10 file.
+    /// - Parameters:
+    ///   - input: The complete contents of a DICOM Part 10 file.
+    ///   - options: Controls how ambiguous VRs are resolved while parsing.
     /// - Throws: ``DICOMError`` if the file is malformed or uses an unsupported syntax.
-    public init(data input: Data) throws {
+    public init(data input: Data, options: DICOMReadOptions = .default) throws {
         // `Data` slices retain the absolute indices of their underlying buffer,
         // so a slice such as `buffer[500...]` has `startIndex == 500`. Reading
         // it with fixed offsets (like the preamble check below, or the `Reader`
@@ -939,6 +941,7 @@ public struct DICOMFile: Sendable {
         }
 
         var reader = Reader(data: data, offset: 132)
+        reader.options = options
         var metaElements: [DICOMElement] = []
         while reader.peekTag()?.group == 0x0002 {
             metaElements.append(try reader.readElement(transferSyntax: .explicitVRLittleEndian))
@@ -956,6 +959,7 @@ public struct DICOMFile: Sendable {
         if transferSyntax == .deflatedExplicitVRLittleEndian {
             let compressed = data.subdata(in: reader.offset..<data.count)
             var inflatedReader = Reader(data: try DeflateCodec.inflateRaw(compressed), offset: 0)
+            inflatedReader.options = options
             dataset = DICOMDataset(elements: try inflatedReader.readDataset(transferSyntax: .explicitVRLittleEndian))
         } else {
             dataset = DICOMDataset(elements: try reader.readDataset(transferSyntax: transferSyntax))
@@ -968,15 +972,17 @@ public struct DICOMFile: Sendable {
     /// The caller must supply its transfer syntax because a raw dataset has
     /// no authoritative syntax declaration. For ordinary exchange files use
     /// ``init(data:)`` instead.
-    public init(datasetData input: Data, transferSyntax: TransferSyntax) throws {
+    public init(datasetData input: Data, transferSyntax: TransferSyntax, options: DICOMReadOptions = .default) throws {
         guard transferSyntax.isSupported else {
             throw DICOMError.unsupportedTransferSyntax(transferSyntax.uid)
         }
         var reader = Reader(data: Data(input), offset: 0)
+        reader.options = options
         self.metaInformation = DICOMDataset()
         self.transferSyntax = transferSyntax
         if transferSyntax == .deflatedExplicitVRLittleEndian {
             var inflatedReader = Reader(data: try DeflateCodec.inflateRaw(Data(input)), offset: 0)
+            inflatedReader.options = options
             self.dataset = DICOMDataset(elements: try inflatedReader.readDataset(transferSyntax: .explicitVRLittleEndian))
         } else {
             self.dataset = DICOMDataset(elements: try reader.readDataset(transferSyntax: transferSyntax))
