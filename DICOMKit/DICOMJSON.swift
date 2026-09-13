@@ -34,11 +34,23 @@ public struct DICOMJSONDataset: Codable, Sendable, Equatable {
         return key.count == 8 && key.unicodeScalars.allSatisfy(hexadecimalScalars.contains)
     }
 
+    /// Converts a dataset to DICOM JSON, decoding text with the dataset's
+    /// own Specific Character Set `(0008,0005)` before re-encoding it as
+    /// UTF-8 — PS3.18 F.2 requires every DICOM JSON string value to be
+    /// UTF-8, regardless of what the source dataset declared.
+    ///
+    /// A sequence item that declares no `(0008,0005)` of its own inherits
+    /// the enclosing dataset's declaration (PS3.5 7.5.3); one that declares
+    /// its own, including an explicit empty value, uses that instead.
     public init(dataset: DICOMDataset) {
+        self.init(dataset: dataset, characterSet: dataset.characterSet)
+    }
+
+    fileprivate init(dataset: DICOMDataset, characterSet: DICOMCharacterSet) {
         self.elements = Dictionary(uniqueKeysWithValues: dataset.compactMap { element in
             // Group Length is explicitly excluded by PS3.18 F.2.2.
             guard element.tag.element != 0 else { return nil }
-            return (String(format: "%04X%04X", element.tag.group, element.tag.element), DICOMJSONElement(element: element))
+            return (String(format: "%04X%04X", element.tag.group, element.tag.element), DICOMJSONElement(element: element, characterSet: characterSet))
         })
     }
 
@@ -48,6 +60,16 @@ public struct DICOMJSONDataset: Codable, Sendable, Equatable {
     /// `BulkDataURI` deliberately has no implicit network fetch. A caller must
     /// resolve it through its own authenticated WADO-RS transport before
     /// constructing an in-memory dataset.
+    ///
+    /// DICOM JSON values are always UTF-8 (PS3.18 F.2), so every text
+    /// element in the returned dataset is encoded as UTF-8 regardless of
+    /// what character set the JSON's originating dataset declared. This does
+    /// *not* add a `(0008,0005)` Specific Character Set element that wasn't
+    /// already present in the JSON — a caller that round-trips a
+    /// non-default-repertoire dataset through DICOM JSON must set
+    /// `(0008,0005)` to `ISO_IR 192` itself, since otherwise the returned
+    /// dataset's declared character set (whatever `(0008,0005)` said, or
+    /// none at all) would contradict its actual UTF-8 bytes.
     public func dicomDataset() throws -> DICOMDataset {
         try DICOMDataset(elements: elements.map { key, value in
             guard key.count == 8,
@@ -63,6 +85,10 @@ public struct DICOMJSONDataset: Codable, Sendable, Equatable {
     ///
     /// No request is made unless a resolver is supplied. This keeps bearer
     /// tokens, authentication, and host allow-lists under application control.
+    ///
+    /// As with ``dicomDataset()``, every text element in the returned dataset
+    /// is UTF-8 regardless of what character set the JSON's originating
+    /// dataset declared, and no `(0008,0005)` element is added.
     public func dicomDataset(resolvingBulkDataWith resolver: some DICOMJSONBulkDataResolver) async throws -> DICOMDataset {
         var decodedElements: [DICOMElement] = []
         decodedElements.reserveCapacity(elements.count)
@@ -121,17 +147,23 @@ public struct DICOMJSONElement: Codable, Sendable, Equatable {
         try container.encodeIfPresent(bulkDataURI, forKey: .bulkDataURI)
     }
 
-    init(element: DICOMElement) {
+    /// - Parameter characterSet: The Specific Character Set to decode
+    ///   charset-sensitive text with (`LO`, `LT`, `PN`, `SH`, `ST`, `UC`,
+    ///   `UT`; see PS3.5 6.1.2.3) — the enclosing dataset's own declaration,
+    ///   or a sequence item's inherited/overriding one. Every other string
+    ///   VR is restricted to the Default Character Repertoire and always
+    ///   decodes as plain UTF-8/ASCII, ignoring this parameter.
+    init(element: DICOMElement, characterSet: DICOMCharacterSet) {
         vr = element.vr
         bulkDataURI = nil
         if let items = element.sequenceItems {
-            value = items.map { .sequence(DICOMJSONDataset(dataset: $0)) }
+            value = items.map { .sequence(DICOMJSONDataset(dataset: $0, characterSet: $0.characterSet(inheriting: characterSet))) }
             inlineBinary = nil
         } else if Self.isInlineBinaryVR(element.vr) {
             value = nil
             inlineBinary = element.value.base64EncodedString()
         } else {
-            value = Self.values(for: element)
+            value = Self.values(for: element, characterSet: characterSet)
             inlineBinary = nil
         }
     }
@@ -152,10 +184,13 @@ public struct DICOMJSONElement: Codable, Sendable, Equatable {
         return DICOMElement(tag: tag, vr: vr, value: try Self.encodedValue(for: vr, values: value ?? []))
     }
 
-    private static func values(for element: DICOMElement) -> [DICOMJSONValue]? {
+    private static func values(for element: DICOMElement, characterSet: DICOMCharacterSet) -> [DICOMJSONValue]? {
         switch element.vr {
         case .PN:
-            return element.stringValues?.map { .personName(DICOMJSONPersonName(dicomValue: $0)) }
+            // PN is one of the seven VRs Specific Character Set governs
+            // (PS3.5 6.1.2.3); it's handled separately from the other six
+            // only because it also needs Person Name component splitting.
+            return element.stringValues(characterSet: characterSet)?.map { .personName(DICOMJSONPersonName(dicomValue: $0)) }
         case .AT:
             return element.attributeTagValues?.map { .string(String(format: "%04X%04X", $0.group, $0.element)) }
         case .US: return element.uint16Values?.map { .number(Double($0)) }
@@ -166,7 +201,13 @@ public struct DICOMJSONElement: Codable, Sendable, Equatable {
         case .FD: return element.float64Values?.map(DICOMJSONValue.number)
         case .UV: return element.uint64Values?.map { .string(String($0)) }
         case .SV: return element.uint64Values?.map { .string(String(Int64(bitPattern: $0))) }
-        case .AE, .AS, .CS, .DA, .DS, .DT, .IS, .LO, .LT, .SH, .ST, .TM, .UC, .UI, .UR, .UT:
+        // The remaining six VRs Specific Character Set governs (PS3.5 6.1.2.3).
+        case .LO, .LT, .SH, .ST, .UC, .UT:
+            return element.stringValues(characterSet: characterSet)?.map(DICOMJSONValue.string)
+        // Restricted to the Default Character Repertoire (PS3.5 6.1.2.3):
+        // always plain UTF-8/ASCII, regardless of the dataset's Specific
+        // Character Set declaration.
+        case .AE, .AS, .CS, .DA, .DS, .DT, .IS, .TM, .UI, .UR:
             return element.stringValues?.map(DICOMJSONValue.string)
         default:
             return nil

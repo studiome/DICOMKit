@@ -1471,6 +1471,119 @@ struct DICOMDatasetTests {
         #expect(try json.dicomDataset() == dataset)
     }
 
+    /// PS3.18 F.2 requires DICOM JSON string values to be UTF-8. A dataset
+    /// declaring `ISO 2022 IR 6\ISO 2022 IR 87` (the standard Japanese
+    /// declaration) must have its `PN` and `LO` values decoded with that
+    /// character set before being re-encoded as UTF-8 in the JSON — not read
+    /// with the UTF-8-only default, which would produce mojibake.
+    @Test func convertsJapaneseISO2022DatasetToUnicodeJSON() throws {
+        // "Tanaka" (alphabetic) "=" "田中" (ideographic, JIS X 0208-escaped).
+        // Kanji bytes verified independently via Foundation's own
+        // ISO-2022-JP encoder; see DICOMCharacterSetTests.tanakaKanjiBytes.
+        var patientName = Data("Tanaka".utf8)
+        patientName.append(0x3D) // '=' component-group delimiter
+        patientName.append(contentsOf: [0x1B, 0x24, 0x42]) // ESC $ B: G0 = JIS X 0208 Kanji
+        patientName.append(contentsOf: [0x45, 0x44, 0x43, 0x66]) // 田中
+        patientName.append(contentsOf: [0x1B, 0x28, 0x42]) // ESC ( B: back to ASCII
+
+        // "山田" (JIS X 0208-escaped), verified independently the same way.
+        var institutionName = Data()
+        institutionName.append(contentsOf: [0x1B, 0x24, 0x42]) // ESC $ B
+        institutionName.append(contentsOf: [0x3B, 0x33, 0x45, 0x44]) // 山田
+        institutionName.append(contentsOf: [0x1B, 0x28, 0x42]) // ESC ( B
+
+        let dataset = DICOMDataset(elements: [
+            DICOMElement(tag: .specificCharacterSet, vr: .CS, value: Data("ISO 2022 IR 6\\ISO 2022 IR 87".utf8)),
+            DICOMElement(tag: .patientName, vr: .PN, value: patientName),
+            DICOMElement(tag: DICOMTag(group: 0x0008, element: 0x0080), vr: .LO, value: institutionName)
+        ])
+
+        let json = DICOMJSONDataset(dataset: dataset)
+
+        #expect(json.elements["00100010"]?.value == [.personName(DICOMJSONPersonName(alphabetic: "Tanaka", ideographic: "田中"))])
+        #expect(json.elements["00080080"]?.value == [.string("山田")])
+    }
+
+    /// `CS` is restricted to the Default Character Repertoire (PS3.5 6.1.2.3)
+    /// and must keep decoding with the fixed UTF-8 default regardless of the
+    /// dataset's declared Specific Character Set — unlike the seven VRs
+    /// Specific Character Set actually governs. These bytes are the JIS
+    /// X 0208 escape sequence and row/cell bytes for "山田" (see
+    /// `convertsJapaneseISO2022DatasetToUnicodeJSON`): if `CS` were wrongly
+    /// widened to honor the declared character set, this would decode as
+    /// "山田" instead of coming through as the literal escape bytes.
+    @Test func csValueUnaffectedByDatasetCharacterSet() throws {
+        var csValue = Data()
+        csValue.append(contentsOf: [0x1B, 0x24, 0x42]) // ESC $ B: G0 = JIS X 0208 Kanji
+        csValue.append(contentsOf: [0x3B, 0x33, 0x45, 0x44]) // 山田
+        csValue.append(contentsOf: [0x1B, 0x28, 0x42]) // ESC ( B: back to ASCII
+        let tag = DICOMTag(group: 0x0008, element: 0x0060)
+
+        let dataset = DICOMDataset(elements: [
+            DICOMElement(tag: .specificCharacterSet, vr: .CS, value: Data("ISO 2022 IR 6\\ISO 2022 IR 87".utf8)),
+            DICOMElement(tag: tag, vr: .CS, value: csValue)
+        ])
+
+        let json = DICOMJSONDataset(dataset: dataset)
+
+        #expect(json.elements["00080060"]?.value == dataset[tag]?.stringValues?.map(DICOMJSONValue.string))
+        #expect(json.elements["00080060"]?.value != [.string("山田")])
+    }
+
+    /// A dataset that already declares UTF-8 (`ISO_IR 192`) must convert
+    /// exactly as before threading the character set through.
+    @Test func utf8DeclaredCharacterSetConvertsUnchanged() throws {
+        let dataset = DICOMDataset(elements: [
+            DICOMElement(tag: .specificCharacterSet, vr: .CS, value: Data("ISO_IR 192".utf8)),
+            DICOMElement(tag: .patientName, vr: .PN, value: Data("Yamada^Tarō".utf8))
+        ])
+
+        let json = DICOMJSONDataset(dataset: dataset)
+
+        #expect(json.elements["00100010"]?.value == [.personName(DICOMJSONPersonName(alphabetic: "Yamada^Tarō"))])
+    }
+
+    /// A sequence item that declares no `(0008,0005)` of its own must
+    /// inherit the enclosing dataset's Specific Character Set (PS3.5 7.5.3)
+    /// when converting to JSON, not fall back to the ASCII default.
+    @Test func sequenceItemWithoutOwnCharacterSetInheritsParentForJSONConversion() throws {
+        var institutionName = Data()
+        institutionName.append(contentsOf: [0x1B, 0x24, 0x42]) // ESC $ B
+        institutionName.append(contentsOf: [0x3B, 0x33, 0x45, 0x44]) // 山田
+        institutionName.append(contentsOf: [0x1B, 0x28, 0x42]) // ESC ( B
+
+        let nested = DICOMDataset(elements: [
+            DICOMElement(tag: DICOMTag(group: 0x0008, element: 0x0080), vr: .LO, value: institutionName)
+        ])
+        let dataset = DICOMDataset(elements: [
+            DICOMElement(tag: .specificCharacterSet, vr: .CS, value: Data("ISO 2022 IR 6\\ISO 2022 IR 87".utf8)),
+            DICOMElement(tag: .referencedStudySequence, vr: .SQ, value: Data(), sequenceItems: [nested])
+        ])
+
+        let json = DICOMJSONDataset(dataset: dataset)
+
+        guard case .sequence(let itemJSON)? = json.elements["00081110"]?.value?.first else {
+            Issue.record("expected a nested sequence value")
+            return
+        }
+        #expect(itemJSON.elements["00080080"]?.value == [.string("山田")])
+    }
+
+    /// `dicomDataset()` always produces UTF-8 bytes (PS3.18 F.2), regardless
+    /// of what character set the JSON's originating dataset declared, and
+    /// must not fabricate a `(0008,0005)` element that wasn't present in the
+    /// JSON.
+    @Test func dicomDatasetProducesUTF8BytesWithoutAddingCharacterSetElement() throws {
+        let json = DICOMJSONDataset(elements: [
+            "00080080": DICOMJSONElement(vr: .LO, value: [.string("山田")])
+        ])
+
+        let dataset = try json.dicomDataset()
+
+        #expect(dataset[DICOMTag(group: 0x0008, element: 0x0080)]?.value == Data("山田".utf8))
+        #expect(dataset[.specificCharacterSet] == nil)
+    }
+
     @Test func exposesImageGeometry() throws {
         let dataset = DICOMDataset(elements: [
             DICOMElement(tag: .pixelSpacing, vr: .DS, value: Data("0.5\\0.75".utf8)),
