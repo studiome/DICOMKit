@@ -631,7 +631,10 @@ public struct DICOMFile: Sendable {
             bitsPerEntry: bitsPerEntry,
             entries: data,
             type: item[DICOMTag(group: 0x0028, element: 0x3004)]?.stringValue,
-            explanation: item[.lutExplanation]?.stringValue
+            // LUT Explanation is free text (LO), so it honors Specific
+            // Character Set; the item inherits the main dataset's
+            // declaration unless it names its own (PS3.5 7.5.3).
+            explanation: item.stringValue(for: .lutExplanation, inheriting: dataset.characterSet)
         )
     }
 

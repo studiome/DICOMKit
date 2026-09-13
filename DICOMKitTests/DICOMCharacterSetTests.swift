@@ -175,4 +175,88 @@ struct DICOMCharacterSetTests {
         let element = DICOMElement(tag: DICOMTag(group: 0x0008, element: 0x0080), vr: .LO, value: value)
         #expect(element.stringValues(characterSet: characterSet) == ["田中", "CD"])
     }
+
+    // MARK: - Character set inheritance in sequence items (PS3.5 7.5.3)
+
+    /// JIS X 0208 row/cell bytes for "山田" (see `escSwitchesG0ToJISX0208KanjiAndBackToASCII`).
+    private static let yamadaKanjiBytes: [UInt8] = [0x3B, 0x33, 0x45, 0x44]
+
+    @Test func sequenceItemInheritsParentCharacterSetWhenItDeclaresNone() {
+        var value = Data()
+        value.append(contentsOf: [0x1B, 0x24, 0x42])
+        value.append(contentsOf: Self.yamadaKanjiBytes)
+        value.append(contentsOf: [0x1B, 0x28, 0x42])
+
+        let parent = DICOMDataset(elements: [
+            DICOMElement(tag: .specificCharacterSet, vr: .CS, value: Data("ISO 2022 IR 6\\ISO 2022 IR 87".utf8))
+        ])
+        let item = DICOMDataset(elements: [
+            DICOMElement(tag: .lutExplanation, vr: .LO, value: value)
+        ])
+
+        let inherited = item.characterSet(inheriting: parent.characterSet)
+        #expect(inherited.codeElements == [.asciiDefault, .japaneseKanji])
+        #expect(item.stringValue(for: .lutExplanation, inheriting: parent.characterSet) == "山田")
+    }
+
+    @Test func sequenceItemOwnCharacterSetOverridesParent() {
+        let parent = DICOMDataset(elements: [
+            DICOMElement(tag: .specificCharacterSet, vr: .CS, value: Data("ISO_IR 100".utf8))
+        ])
+        let item = DICOMDataset(elements: [
+            DICOMElement(tag: .specificCharacterSet, vr: .CS, value: Data("ISO_IR 192".utf8)),
+            DICOMElement(tag: .lutExplanation, vr: .LO, value: Data("日本語".utf8))
+        ])
+
+        #expect(item.characterSet(inheriting: parent.characterSet).codeElements == [.utf8])
+        #expect(item.stringValue(for: .lutExplanation, inheriting: parent.characterSet) == "日本語")
+    }
+
+    @Test func nestedItemTwoLevelsDeepInheritsFromNearestDeclaringAncestor() {
+        let grandparent = DICOMDataset(elements: [
+            DICOMElement(tag: .specificCharacterSet, vr: .CS, value: Data("ISO_IR 100".utf8))
+        ])
+        // Neither the parent nor the child declares its own Specific
+        // Character Set, so both must resolve back to the grandparent's.
+        let parent = DICOMDataset(elements: [])
+        let child = DICOMDataset(elements: [
+            DICOMElement(tag: .lutExplanation, vr: .LO, value: Data([0xE9])) // é in ISO 8859-1
+        ])
+
+        let parentCharacterSet = parent.characterSet(inheriting: grandparent.characterSet)
+        let childCharacterSet = child.characterSet(inheriting: parentCharacterSet)
+
+        #expect(childCharacterSet.codeElements == [.latin1])
+        #expect(child.stringValue(for: .lutExplanation, inheriting: parentCharacterSet) == "é")
+    }
+
+    @Test func dicomFileModalityLUTExplanationInheritsDatasetCharacterSet() throws {
+        var explanationValue = Data()
+        explanationValue.append(contentsOf: [0x1B, 0x24, 0x42])
+        explanationValue.append(contentsOf: Self.yamadaKanjiBytes)
+        explanationValue.append(contentsOf: [0x1B, 0x28, 0x42])
+
+        // The LUT Sequence item declares no Specific Character Set of its
+        // own, so DICOMFile must inherit the main dataset's declaration to
+        // decode LUT Explanation — exercising the audited call site in
+        // `DICOMFile.makeModalityLUT()`.
+        let lutItem = DICOMDataset(elements: [
+            DICOMElement(tag: .lutDescriptor, vr: .US, value: uint16(3) + uint16(0) + uint16(16)),
+            DICOMElement(tag: .lutData, vr: .OW, value: uint16(10) + uint16(20) + uint16(30)),
+            DICOMElement(tag: .lutExplanation, vr: .LO, value: explanationValue)
+        ])
+        let dataset = DICOMDataset(elements: [
+            DICOMElement(tag: .specificCharacterSet, vr: .CS, value: Data("ISO 2022 IR 6\\ISO 2022 IR 87".utf8)),
+            DICOMElement(tag: .samplesPerPixel, vr: .US, value: uint16(1)),
+            DICOMElement(tag: .photometricInterpretation, vr: .CS, value: Data("MONOCHROME2".utf8)),
+            DICOMElement(tag: .rows, vr: .US, value: uint16(1)),
+            DICOMElement(tag: .columns, vr: .US, value: uint16(1)),
+            DICOMElement(tag: .bitsAllocated, vr: .US, value: uint16(16)),
+            DICOMElement(tag: DICOMTag(group: 0x0028, element: 0x3000), vr: .SQ, value: Data(), sequenceItems: [lutItem]),
+            DICOMElement(tag: .pixelData, vr: .OW, value: Data([0, 0]))
+        ])
+
+        let file = try DICOMFile(data: DICOMWriter.write(dataset: dataset))
+        #expect(file.pixelDataFrames?.first?.modalityLUT?.explanation == "山田")
+    }
 }

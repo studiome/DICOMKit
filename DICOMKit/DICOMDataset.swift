@@ -28,9 +28,29 @@ public struct DICOMDataset: Sendable, Sequence, Equatable {
         DICOMCharacterSet(declaration: storage[.specificCharacterSet]?.stringValue)
     }
 
+    /// This dataset's own Specific Character Set declaration, or `parent`
+    /// when it declares none.
+    ///
+    /// A sequence item inherits the enclosing dataset's Specific Character
+    /// Set unless it declares its own `(0008,0005)` (PS3.5 7.5.3). An item
+    /// that declares an empty value still counts as declaring its own — it
+    /// explicitly selects the default repertoire — so only the complete
+    /// absence of the attribute falls back to `parent`.
+    public func characterSet(inheriting parent: DICOMCharacterSet) -> DICOMCharacterSet {
+        guard let declaration = storage[.specificCharacterSet] else { return parent }
+        return DICOMCharacterSet(declaration: declaration.stringValue)
+    }
+
     /// Decodes a text value using this dataset's Specific Character Set.
     public func stringValue(for tag: DICOMTag) -> String? {
         storage[tag]?.stringValue(characterSet: characterSet)
+    }
+
+    /// Decodes a text value using this dataset's own Specific Character Set
+    /// declaration, falling back to `parent` when this dataset (typically a
+    /// sequence item) declares none.
+    public func stringValue(for tag: DICOMTag, inheriting parent: DICOMCharacterSet) -> String? {
+        storage[tag]?.stringValue(characterSet: characterSet(inheriting: parent))
     }
 
     /// Decodes a `PN` value using this dataset's Specific Character Set.
