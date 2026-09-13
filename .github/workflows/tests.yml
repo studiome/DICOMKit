@@ -54,7 +54,29 @@ jobs:
           # runner image may drop.
           simulator="$(xcrun simctl list devices available | grep -m1 -oE 'iPhone [^(]+' | sed 's/ *$//')"
           echo "Testing on $simulator"
+
+          # SwiftPM generates one scheme per product (DICOMKit,
+          # DICOMKitAuthoring, DICOMKitNetworking, DICOMKitBenchmark) plus an
+          # aggregate "DICOMKit-Package" scheme, and only the aggregate
+          # carries the test action. This split happened when the package
+          # grew from one library product to three (06c3b3c); a future
+          # product split won't change which scheme has the tests, so keep
+          # using the aggregate here.
+          set -o pipefail
           xcodebuild test \
-            -scheme DICOMKit \
+            -scheme DICOMKit-Package \
             -destination "platform=iOS Simulator,name=$simulator" \
-            CODE_SIGNING_ALLOWED=NO
+            CODE_SIGNING_ALLOWED=NO 2>&1 | tee test-output.log
+
+          # xcodebuild's own exit status is preserved by `set -o pipefail`
+          # above, but that alone isn't enough: every test in this package is
+          # swift-testing (@Test), not XCTest, so xcodebuild's "Executed 0
+          # tests, with 0 failures" counter is meaningless here (that's the
+          # XCTest counter) and xcodebuild happily prints
+          # "** TEST SUCCEEDED **" and exits 0 even if the swift-testing
+          # bundle never ran at all. Guard against that silent no-op by
+          # requiring the swift-testing summary line to actually appear.
+          if ! grep -qE '^✔ Test run with [0-9]+ tests? in [0-9]+ suites? passed' test-output.log; then
+            echo "::error::No passing swift-testing run summary found in xcodebuild output — the test bundle may not have run at all."
+            exit 1
+          fi
