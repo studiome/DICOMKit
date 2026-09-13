@@ -42,6 +42,10 @@ if let pixelData = file.pixelData {
 - ``DICOMPixelData`` — Render supported uncompressed Pixel Data.
 - ``DICOMFloatingPixelData`` — Access native Float and Double Float Pixel Data.
 - ``DICOMFrameAttributes`` — Inspect Enhanced Multi-frame display attributes.
+- ``DICOMFrameFunctionalGroups`` — Resolve every Enhanced Multi-frame macro
+  DICOMKit understands, shared-then-per-frame.
+- ``DICOMRealWorldValueMap`` — Convert a stored pixel value to a real-world
+  value such as PET SUV.
 - ``DICOMOverlay`` — Access embedded Overlay Plane bitmaps.
 - ``DICOMPresentationLUTShape`` — Inspect presentation polarity.
 - ``DICOMModalityLUT`` — Apply the Modality LUT Sequence ahead of windowing.
@@ -86,6 +90,25 @@ fallback while fixture-output comparisons are accumulated.
 Pixel Padding Value `(0028,0120)`
 and Pixel Padding Range Limit `(0028,0121)` are excluded from automatically
 computed windows.
+
+``DICOMFile/frameFunctionalGroups`` resolves every Enhanced Multi-frame
+functional group macro DICOMKit understands (PS3.3 C.7.6.16) shared-then-
+per-frame, so Enhanced CT/MR objects can be measured and reformatted, not
+just displayed: Pixel Value Transformation and Frame VOI LUT (also exposed
+through the older ``DICOMFrameAttributes``), Pixel Measures and Plane
+Position/Orientation (combined per frame into ``DICOMImageGeometry`` by
+``DICOMFile/frameGeometries``), Frame Content (Stack ID, In-Stack Position
+Number, Temporal Position Index — resolved into display order by
+``DICOMFile/frameOrder()``), Frame Anatomy, and a Frame Display Shutter that
+``DICOMFile/pixelDataFrames`` prefers over the dataset-level
+``DICOMDisplayShutter`` when present. ``DICOMFile/frameOrder()`` does not
+consult the Dimension Index Sequence `(0020,9222)`: raw
+``DICOMFrameContent/dimensionIndexValues`` are exposed without interpretation
+because that requires a dimension organization DICOMKit does not model.
+``DICOMRealWorldValueMap`` reads the Real World Value Mapping Sequence
+`(0040,9096)`, both at the top level and per frame — the transform a PET
+viewer uses for Standardized Uptake Value, kept separate from the Modality
+LUT because a real-world value is reported, not windowed.
 
 Use ``DICOMFile/makeLazyPixelData()`` when image frames may not be displayed
 immediately. It defers and memoizes frame decoding; the parsed file's encoded
@@ -197,3 +220,13 @@ protocol foundation, not a clinical interoperability or PACS conformance claim.
 - ``DICOMPixelData``
 - ``PhotometricInterpretation``
 - ``DICOMImageError``
+
+### Enhanced Multi-frame
+
+- ``DICOMFrameAttributes``
+- ``DICOMFrameFunctionalGroups``
+- ``DICOMPixelMeasures``
+- ``DICOMFrameContent``
+- ``DICOMFrameAnatomy``
+- ``DICOMCodeSequenceItem``
+- ``DICOMRealWorldValueMap``

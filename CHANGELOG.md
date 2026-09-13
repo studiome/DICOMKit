@@ -4,6 +4,26 @@ All notable changes to DICOMKit are documented here.
 
 ## v0.5 — Unreleased
 
+- Added full Enhanced Multi-frame functional group resolution. Generalized
+  the shared-then-per-frame merge that previously only handled Pixel Value
+  Transformation and Frame VOI LUT into `DICOMFrameFunctionalGroups`
+  (`DICOMFile.frameFunctionalGroups`), and used it to resolve: Pixel
+  Measures and Plane Position/Orientation, combined per frame into
+  `DICOMImageGeometry` by `DICOMFile.frameGeometries`; Frame Content (Stack
+  ID, In-Stack Position Number, Temporal Position Index), resolved into
+  display order by `DICOMFile.frameOrder()`, which groups frames by stack
+  and leaves a group with no ordering keys in stored order rather than
+  reordering it arbitrarily; Frame Anatomy (laterality and anatomic region,
+  via the new shared `DICOMCodeSequenceItem`); and a per-frame Frame
+  Display Shutter that `pixelDataFrames` now prefers over the dataset-level
+  `DICOMDisplayShutter` when a frame declares one.
+- Added `DICOMRealWorldValueMap` for the Real World Value Mapping Sequence
+  `(0040,9096)`, exposed both on `DICOMFile` and per frame on
+  `DICOMFrameFunctionalGroups`. Handles the US/SS Pixel Representation
+  dependency for First/Last Value Mapped and the mutually exclusive
+  slope/intercept and LUT-data forms. This is the transform a PET viewer
+  uses for Standardized Uptake Value, kept separate from the Modality LUT
+  because it produces a value to report, not one to window.
 - Added a DIMSE SCU and SCP foundation on top of the DICOM Upper Layer
   protocol: association PDUs, a Network.framework TCP/TLS transport, an
   inbound `NetworkDICOMULListener`, and C-ECHO, C-STORE, C-FIND, C-MOVE,

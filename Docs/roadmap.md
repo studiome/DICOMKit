@@ -27,8 +27,8 @@ Impact ratings below mean:
 | Gap | Impact | Note |
 | --- | :---: | --- |
 | ~~Pixel spacing precedence~~ | **A** | ~~Only Pixel Spacing `(0028,0030)` is read. Imager Pixel Spacing `(0018,1164)`, Pixel Spacing Calibration Type/Description `(0028,0A02)`/`(0028,0A04)`, and Ultrasound Region Calibration `(0018,6011)` are ignored, so on-image measurement silently uses the wrong scale for projection radiography and ultrasound.~~ **Done** — see Phase 1, item 2. |
-| Enhanced multi-frame functional groups | **A** | Only Pixel Value Transformation and Frame VOI LUT are resolved. Pixel Measures, Plane Position/Orientation, Frame Content, Frame Anatomy, Real World Value Mapping, Frame Display Shutter and Derivation Image are not, so an Enhanced CT/MR object can be displayed but not measured, stacked, or reformatted. |
-| Real World Value Mapping `(0040,9096)` | **B** | Quantitative readout — PET SUV above all. |
+| ~~Enhanced multi-frame functional groups~~ | **A** | ~~Only Pixel Value Transformation and Frame VOI LUT are resolved. Pixel Measures, Plane Position/Orientation, Frame Content, Frame Anatomy, Real World Value Mapping, Frame Display Shutter and Derivation Image are not, so an Enhanced CT/MR object can be displayed but not measured, stacked, or reformatted.~~ **Done** — see Phase 2, item 4. Derivation Image remains unresolved. |
+| ~~Real World Value Mapping `(0040,9096)`~~ | **B** | ~~Quantitative readout — PET SUV above all.~~ **Done** — see Phase 2, item 4. |
 | Segmented Palette Color LUT | **B** | `(0028,1221)`–`(0028,1223)` in segmented form is not decoded. |
 | Presentation LUT Sequence `(2050,0010)` | **B** | Only the LUT *Shape* is honoured; a table-valued Presentation LUT is ignored. |
 | Bitmap Display Shutter | **C** | Parsed as a shape but never applied (documented in the API). |
@@ -112,17 +112,19 @@ user cannot see, or crash on a hostile file. Nothing else should go first.
    - Assert the invariant "never trap, never hang" — every input either parses or throws — and wire a bounded (~400k-iteration, run-seeded) campaign into CI. — "Run the fuzzer in CI" (a commit can't record its own final hash; see `git log` for it)
    - A local campaign of ~9M mutations across 15 seeds (including `0` and `UInt64.max`, at up to 300k iterations per target per seed) found no crashing or invariant-violating input, so this phase adds no regression fixtures under `DICOMKitTests/Fixtures/Fuzz/`.
 
-### Phase 2 — Enhanced multi-frame (impact A/B)
+### Phase 2 — Enhanced multi-frame (impact A/B) — **Done**
 
-Modern CT and MR ship as Enhanced objects. Today they render but cannot be
-measured or reformatted, which is the single largest functional hole for a
-viewer.
+Modern CT and MR ship as Enhanced objects. Before this phase they rendered
+but could not be measured or reformatted, which was the single largest
+functional hole for a viewer.
 
-4. **Full functional group resolution** (~6 commits)
-   - Generalize `renderingAttributes(frameCount:)` into a `DICOMFrameFunctionalGroups` type resolving shared-then-per-frame for every macro DICOMKit needs.
-   - Add Pixel Measures (per-frame pixel spacing, slice thickness, spacing between slices), Plane Position/Orientation (per-frame geometry), Frame Content (stack ID, in-stack position, temporal index), Frame Anatomy, and Frame Display Shutter.
-   - Expose per-frame `DICOMImageGeometry`, so `DICOMHierarchy` can order Enhanced frames the way it already orders single-frame instances.
-   - Add Real World Value Mapping with its LUT and slope/intercept forms, and a `realWorldValue(for:)` accessor alongside the existing modality/VOI pipeline.
+4. **Full functional group resolution** — **Done** (5 commits: `602def3`, `2901d85`, `37bcc07`, `c9cba30`, `61fc962`)
+   - Generalize `renderingAttributes(frameCount:)` into a `DICOMFrameFunctionalGroups` type resolving shared-then-per-frame for every macro DICOMKit needs. — `602def3` "Generalize functional group resolution"
+   - Add Pixel Measures (per-frame pixel spacing, slice thickness, spacing between slices) and Plane Position/Orientation, combined per frame into `DICOMImageGeometry` by `DICOMFile.frameGeometries`. — `2901d85` "Resolve per-frame geometry from functional groups"
+   - Add Frame Content (stack ID, in-stack position, temporal index) and `DICOMFile.frameOrder()`, which groups frames by stack and orders each group by in-stack position then temporal position, leaving a group with no ordering keys in stored order. — `37bcc07` "Resolve frame content and order frames"
+   - Add Frame Anatomy (laterality and anatomic region, via the new shared `DICOMCodeSequenceItem`) and per-frame Frame Display Shutter, which `pixelDataFrames` prefers over the dataset-level shutter when present. — `c9cba30` "Resolve frame anatomy and display shutter"
+   - Add Real World Value Mapping with its LUT and slope/intercept forms (`DICOMRealWorldValueMap.value(for:)`), exposed on `DICOMFile` and per frame on `DICOMFrameFunctionalGroups`. — `61fc962` "Read real world value mappings"
+   - Derivation Image `(0008,9124)` remains unresolved; expose per-frame `DICOMImageGeometry` through `DICOMHierarchy` ordering is future work, not part of this phase.
 
 ### Phase 3 — Interoperability with real archives (impact B)
 

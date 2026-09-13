@@ -56,8 +56,18 @@ See the [changelog](CHANGELOG.md) for the current implementation status.
   parsing and reopen local Pixel Data when a consumer requests frames
 - Exposes native Float and Double Float Pixel Data frames through
   `DICOMFile.floatingPixelDataFrames`, preserving IEEE 754 values
-- Exposes Overlay Plane bitmaps, ICC Profile data, Presentation LUT Shape, and
-  resolved Enhanced Multi-frame rescale/window attributes for display layers
+- Exposes Overlay Plane bitmaps, ICC Profile data, and Presentation LUT Shape
+  for display layers
+- Resolves Enhanced Multi-frame functional groups shared-then-per-frame
+  (`DICOMFile.frameFunctionalGroups`): Pixel Value Transformation and Frame
+  VOI LUT, Pixel Measures and Plane Position/Orientation (per-frame
+  `DICOMFile.frameGeometries`), Frame Content (stack ID, in-stack position,
+  temporal position index — resolved into display order by
+  `DICOMFile.frameOrder()`), Frame Anatomy, and a per-frame Display Shutter
+  that `pixelDataFrames` prefers over the dataset-level one
+- Reads the Real World Value Mapping Sequence `(0040,9096)`
+  (`DICOMRealWorldValueMap`), both top-level and per-frame, for quantitative
+  readouts such as PET SUV — a transform separate from the Modality LUT
 - Applies the Modality LUT Sequence `(0028,3000)` in the 16-bit rendering
   path, taking precedence over Rescale Slope/Intercept per PS3.3 C.11.1, and
   exposes Cine module attributes (`DICOMFile.cineAttributes`) and the Display
