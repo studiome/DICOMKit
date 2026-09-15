@@ -145,6 +145,31 @@ struct DICOMwebClientTests {
 
         #expect(transport.requests.first?.url?.path == "/dicomweb/studies/1.2.3")
     }
+
+    @Test func pathComponentsWithSlashesAreEscapedRatherThanChangingTheRequestPath() async throws {
+        // A UID value that reaches path construction from an untrusted
+        // source (e.g. echoed back by a QIDO-RS response before a follow-up
+        // WADO-RS call) must not be able to inject extra path segments —
+        // "/" and ".." here are data, not path structure.
+        let transport = CapturingDICOMwebTransport(response: Data("[]".utf8))
+        let client = DICOMwebClient(baseURL: URL(string: "https://example.test/dicomweb")!, transport: transport)
+
+        _ = try await client.searchSeries(studyInstanceUID: "1.2.3/../../admin")
+
+        let request = try #require(transport.requests.first)
+        // `URL.path` percent-*decodes*, so an escaped "%2F" would read back
+        // as "/" and look identical to a real path separator. Inspect the
+        // percent-*encoded* path instead, which is what's actually sent on
+        // the wire and what a server's own path-based routing would act on.
+        let requestURL = try #require(request.url)
+        let encodedPath = try #require(URLComponents(url: requestURL, resolvingAgainstBaseURL: false)?.percentEncodedPath)
+        #expect(!encodedPath.contains("/admin"))
+        #expect(encodedPath.contains("%2F") || encodedPath.contains("%2E"))
+        // The decoded path still names the correct resource, exactly one
+        // (mangled-looking, but harmless) segment per component.
+        let decodedPath = try #require(request.url?.path)
+        #expect(decodedPath.hasPrefix("/dicomweb/studies/"))
+    }
 }
 
 private final class CapturingDICOMwebTransport: DICOMwebTransport, @unchecked Sendable {

@@ -237,8 +237,31 @@ public struct DICOMwebClient: Sendable {
         return try await perform(request).data
     }
 
+    /// Path characters this client will not let a caller-supplied component
+    /// (a UID echoed back from a server response, for example) pass through
+    /// as literal path *structure*.
+    ///
+    /// `/` is excluded so a component can never introduce an extra path
+    /// segment. `.` is excluded so a component consisting only of dots
+    /// (`.`, `..`) can never be interpreted as a dot-segment during URL
+    /// normalization (RFC 3986 §5.2.4) and eat a preceding segment — both
+    /// would otherwise let a malicious or non-conformant server redirect
+    /// this client's own follow-up request to an unintended path on the
+    /// same host, e.g. by returning a QIDO-RS `StudyInstanceUID` of
+    /// `"../../admin"` that a later WADO-RS call passes straight to
+    /// ``endpoint(_:)``.
+    private static let pathComponentAllowedCharacters = CharacterSet.urlPathAllowed.subtracting(CharacterSet(charactersIn: "/."))
+
     private func endpoint(_ components: [String]) -> URL {
-        components.reduce(baseURL) { $0.appendingPathComponent($1) }
+        var urlComponents = URLComponents(url: baseURL, resolvingAgainstBaseURL: false) ?? URLComponents()
+        var path = urlComponents.percentEncodedPath
+        for component in components {
+            let encoded = component.addingPercentEncoding(withAllowedCharacters: Self.pathComponentAllowedCharacters) ?? component
+            if !path.hasSuffix("/") { path += "/" }
+            path += encoded
+        }
+        urlComponents.percentEncodedPath = path
+        return urlComponents.url ?? components.reduce(baseURL) { $0.appendingPathComponent($1) }
     }
 
     private func perform(_ request: URLRequest) async throws -> (data: Data, response: HTTPURLResponse) {
