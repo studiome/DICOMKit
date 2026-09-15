@@ -133,11 +133,10 @@ public struct DICOMMetadataFile: Sendable {
               let bits = dataset[.bitsAllocated]?.uint16Value,
               let photometricName = dataset[.photometricInterpretation]?.stringValue,
               bits.isMultiple(of: 8),
-              let frames = Int(dataset[.numberOfFrames]?.stringValue ?? "1"), frames > 0 else { return nil }
-        let bytesPerFrame = Int(rows) * Int(columns) * Int(samples) * (Int(bits) / 8)
-        guard bytesPerFrame > 0 else { return nil }
+              let frames = Int(dataset[.numberOfFrames]?.stringValue ?? "1"), frames > 0, frames <= DICOMFile.maxFrameCount else { return nil }
+        guard let bytesPerFrame = safeProduct(Int(rows), Int(columns), Int(samples), Int(bits) / 8), bytesPerFrame > 0 else { return nil }
         let value = try reference.load()
-        guard value.count >= bytesPerFrame * frames else { return nil }
+        guard let totalBytes = safeProduct(bytesPerFrame, frames), value.count >= totalBytes else { return nil }
         return (0..<frames).map { index in
             DICOMPixelData(
                 value: value.subdata(in: index * bytesPerFrame..<(index + 1) * bytesPerFrame),

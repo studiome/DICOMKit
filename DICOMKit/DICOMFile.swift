@@ -197,7 +197,7 @@ public struct DICOMFile: Sendable {
     /// override them for matching frame indexes. Returns an empty array unless
     /// a positive Number of Frames is available.
     public var frameAttributes: [DICOMFrameAttributes] {
-        guard let frameCount = Int(dataset[.numberOfFrames]?.stringValue ?? ""), frameCount > 0 else { return [] }
+        guard let frameCount = Int(dataset[.numberOfFrames]?.stringValue ?? ""), frameCount > 0, frameCount <= DICOMFile.maxFrameCount else { return [] }
         return resolvedFunctionalGroups(frameCount: frameCount).map {
             DICOMFrameAttributes(rescaleSlope: $0.rescaleSlope, rescaleIntercept: $0.rescaleIntercept, windowCenter: $0.windowCenter, windowWidth: $0.windowWidth)
         }
@@ -220,11 +220,25 @@ public struct DICOMFile: Sendable {
     /// Number of Frames `(0028,0008)`, defaulting to `1` when absent —
     /// shared by ``pixelDataFrames`` and ``frameFunctionalGroups`` so they
     /// agree on how many frames a dataset has. `nil` when the attribute is
-    /// present but not a positive integer.
+    /// present but not a positive integer, or exceeds ``maxFrameCount``.
     private var defaultedFrameCount: Int? {
-        guard let frameCount = Int(dataset[.numberOfFrames]?.stringValue ?? "1"), frameCount > 0 else { return nil }
+        guard let frameCount = Int(dataset[.numberOfFrames]?.stringValue ?? "1"), frameCount > 0, frameCount <= DICOMFile.maxFrameCount else { return nil }
         return frameCount
     }
+
+    /// Upper bound on Number of Frames `(0028,0008)` DICOMKit will act on.
+    ///
+    /// PS3.5 places no ceiling on this value, and it's an `IS` with up to 12
+    /// digits, so a malformed or hostile file can declare an astronomically
+    /// large frame count. ``frameAttributes``, ``frameFunctionalGroups``,
+    /// ``frameGeometries``, and ``pixelDataFrames`` each allocate one array
+    /// entry per frame regardless of whether Pixel Data is even present, so
+    /// treating an oversized declaration as malformed here — the same way
+    /// ``Reader/maxSequenceDepth`` treats over-deep nesting — keeps a single
+    /// short attribute from exhausting memory. No real acquisition
+    /// approaches this bound: even high frame-rate 4D cardiac, perfusion, or
+    /// whole-body multi-station studies stay in the thousands of frames.
+    static let maxFrameCount = 1 << 20
 
     /// Cine module attributes (PS3.3 C.7.6.5), when the dataset carries any.
     ///
@@ -332,7 +346,7 @@ public struct DICOMFile: Sendable {
     public var floatingPixelDataFrames: [DICOMFloatingPixelData]? {
         guard let rows = dataset[.rows]?.uint16Value,
               let columns = dataset[.columns]?.uint16Value,
-              let frameCount = Int(dataset[.numberOfFrames]?.stringValue ?? "1"), frameCount > 0 else { return nil }
+              let frameCount = Int(dataset[.numberOfFrames]?.stringValue ?? "1"), frameCount > 0, frameCount <= DICOMFile.maxFrameCount else { return nil }
         let pixelsPerFrame = Int(rows) * Int(columns)
         let values: [Double]
         if let element = dataset[.floatPixelData], let floats = element.float32Values {
@@ -340,7 +354,7 @@ public struct DICOMFile: Sendable {
         } else if let element = dataset[.doubleFloatPixelData], let doubles = element.float64Values {
             values = doubles
         } else { return nil }
-        guard values.count == pixelsPerFrame * frameCount else { return nil }
+        guard let totalCount = safeProduct(pixelsPerFrame, frameCount), values.count == totalCount else { return nil }
         return (0..<frameCount).map { frame in
             DICOMFloatingPixelData(rows: Int(rows), columns: Int(columns), values: Array(values[frame * pixelsPerFrame..<(frame + 1) * pixelsPerFrame]))
         }
@@ -621,9 +635,11 @@ public struct DICOMFile: Sendable {
             }
 
         default:
-            guard bitsAllocated.isMultiple(of: 8) else { return nil }
-            let bytesPerFrame = pixelCount * Int(samplesPerPixel) * (Int(bitsAllocated) / 8)
-            guard bytesPerFrame > 0, pixelElement.value.count >= bytesPerFrame * frameCount else { return nil }
+            guard bitsAllocated.isMultiple(of: 8),
+                  let bytesPerFrame = safeProduct(pixelCount, Int(samplesPerPixel), Int(bitsAllocated) / 8),
+                  bytesPerFrame > 0,
+                  let totalBytes = safeProduct(bytesPerFrame, frameCount),
+                  pixelElement.value.count >= totalBytes else { return nil }
             frames = (0..<frameCount).map { frame in
                 DecodedPixelDataFrame(
                     value: pixelElement.value.subdata(in: frame * bytesPerFrame..<(frame + 1) * bytesPerFrame),
@@ -1024,6 +1040,21 @@ public struct DICOMFile: Sendable {
         }
         return try DICOMWriter.encodeDataset(dataset, transferSyntax: targetSyntax, sequenceLengthEncoding: sequenceLengthEncoding)
     }
+}
+
+/// Multiplies `values` left to right, returning `nil` instead of trapping if
+/// the running product would overflow `Int`. Byte-count math derived from
+/// wire fields (Rows, Columns, Samples per Pixel, Bits Allocated, Number of
+/// Frames) has no natural ceiling of its own, so every multiplication that
+/// combines two or more of them needs this rather than `*`.
+func safeProduct(_ values: Int...) -> Int? {
+    var result = 1
+    for value in values {
+        let multiplied = result.multipliedReportingOverflow(by: value)
+        guard !multiplied.overflow else { return nil }
+        result = multiplied.partialValue
+    }
+    return result
 }
 
 private func ybrFullToRGB(_ value: Data) -> Data {
