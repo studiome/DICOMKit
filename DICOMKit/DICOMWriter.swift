@@ -25,10 +25,22 @@ public enum DICOMWriter {
         }
         var encodedDataset = Data()
         for element in dataset where element.tag.group != 0x0002 {
-            if element.tag == .pixelData,
-               transferSyntax.usesEncapsulatedPixelData,
-               element.encapsulatedFragments == nil {
-                throw DICOMError.invalidEncapsulatedPixelData
+            if element.tag == .pixelData {
+                if transferSyntax.usesEncapsulatedPixelData, element.encapsulatedFragments == nil {
+                    throw DICOMError.invalidEncapsulatedPixelData
+                }
+                // The reverse mismatch: fragments already encapsulated (for
+                // example, still-compressed data carried over from a file
+                // that was read rather than written by hand) written under
+                // a transfer syntax that doesn't use encapsulation would
+                // otherwise silently produce a file whose declared
+                // Transfer Syntax UID contradicts its actual Pixel Data
+                // encoding — `append` below writes encapsulated form
+                // whenever fragments are present, regardless of
+                // `transferSyntax`.
+                if !transferSyntax.usesEncapsulatedPixelData, element.encapsulatedFragments != nil {
+                    throw DICOMError.invalidEncapsulatedPixelData
+                }
             }
             try append(element, to: &encodedDataset, explicitVR: transferSyntax != .implicitVRLittleEndian, sequenceLengthEncoding: sequenceLengthEncoding, byteOrder: transferSyntax == .explicitVRBigEndian ? .bigEndian : .littleEndian)
         }

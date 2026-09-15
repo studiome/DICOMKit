@@ -144,6 +144,22 @@ struct DICOMWriterTests {
         }
     }
 
+    @Test func rejectsEncapsulatedPixelDataForANonEncapsulatedTransferSyntax() throws {
+        // The reverse of `rejectsNativePixelDataForEncapsulatedTransferSyntax`:
+        // writing already-encapsulated fragments (e.g. still-compressed data
+        // from a file that was read, not written by hand) under a transfer
+        // syntax that doesn't use encapsulation would otherwise silently
+        // produce a file whose declared Transfer Syntax UID contradicts its
+        // actual Pixel Data encoding.
+        let dataset = DICOMDataset(elements: [
+            try DICOMElement(encapsulatedPixelDataFrames: [[Data([0x12])]])
+        ])
+
+        #expect(throws: DICOMError.invalidEncapsulatedPixelData) {
+            _ = try DICOMWriter.write(dataset: dataset, transferSyntax: .explicitVRLittleEndian)
+        }
+    }
+
     @Test func writesUndefinedLengthSequenceAndDICOMFileConvenienceAPI() throws {
         let dataset = DICOMDataset(elements: [DICOMElement(tag: .referencedStudySequence, vr: .SQ, value: Data(), sequenceItems: [DICOMDataset(elements: [DICOMElement(tag: .patientName, vr: .PN, value: Data("Doe^Jane".utf8))])])])
         let original = try DICOMFile(data: DICOMWriter.write(dataset: dataset))
