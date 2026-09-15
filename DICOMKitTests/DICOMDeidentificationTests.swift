@@ -299,6 +299,24 @@ struct DICOMDeidentificationMethodRecordingTests {
         #expect(codeValues(result.dataset).contains("113110"))
     }
 
+    @Test func retainSafePrivateOptionIsNotRecordedBecauseNothingIsActuallyRetained() throws {
+        // DICOMKit ships no private dictionary to judge which private
+        // attributes are "safe" (see DICOMPrivateDictionary), and Table
+        // E.1-1's only row for this option (Private Attributes) can't be
+        // represented as a concrete or maskable tag (see
+        // DICOMDeidentification.generated.swift's header comment), so
+        // selecting this option changes nothing about which attributes are
+        // removed: `DICOMAnonymizer`'s `removePrivateTags` still strips
+        // every one of them. Recording code 113111 would claim a retention
+        // that never happens.
+        let profile = DICOMConfidentialityProfile(options: [.retainSafePrivate])
+
+        let result = try profile.deidentify(try file(), replacement: "Anonymous")
+
+        #expect(!codeValues(result.dataset).contains("113111"))
+        #expect(result.dataset[deidentificationMethod]?.stringValue?.contains("Retain Safe Private") != true)
+    }
+
     @Test func unselectedOptionCodesDoNotAppear() throws {
         let profile = DICOMConfidentialityProfile(options: [.retainUIDs])
 

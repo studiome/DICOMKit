@@ -366,7 +366,7 @@ public struct DICOMConfidentialityProfile: Sendable {
     /// ``methodCodes``/`(0012,0064)` regardless.
     private var methodDescription: String {
         var parts = ["Basic Application Level Confidentiality Profile"]
-        for option in DICOMDeidentificationOption.allCases where options.contains(option) {
+        for option in Self.recordableOptions where options.contains(option) {
             parts.append(option.label)
         }
         let description = parts.joined(separator: "; ")
@@ -379,13 +379,26 @@ public struct DICOMConfidentialityProfile: Sendable {
     /// ``DICOMDeidentificationOption/deidentificationMethodCode``).
     private var methodCodes: [DICOMCodeSequenceItem] {
         var codes = [DICOMCodeSequenceItem(codeValue: "113100", codingSchemeDesignator: "DCM", codeMeaning: "Basic Application Confidentiality Profile")]
-        for option in DICOMDeidentificationOption.allCases where options.contains(option) {
+        for option in Self.recordableOptions where options.contains(option) {
             if let code = option.deidentificationMethodCode {
                 codes.append(code)
             }
         }
         return codes
     }
+
+    /// ``DICOMDeidentificationOption/allCases``, excluding ``DICOMDeidentificationOption/retainSafePrivate``.
+    ///
+    /// Table E.1-1's only row for that option (Private Attributes,
+    /// `(gggg,eeee)` where `gggg` is odd) can't be represented as a
+    /// concrete or maskable tag and is dropped from
+    /// `DICOMDeidentificationTable` (see its generated header comment), so
+    /// no entry's resolved action ever changes when this option is
+    /// selected: `DICOMAnonymizer`'s `removePrivateTags` strips every
+    /// private attribute regardless. Recording this option's code or label
+    /// would claim a retention that never happens, contradicting
+    /// ``recordingElements``'s whole reason for existing.
+    private static let recordableOptions = DICOMDeidentificationOption.allCases.filter { $0 != .retainSafePrivate }
 
     /// Every tag present anywhere in `dataset`, including inside sequence
     /// items, recursively. Used only to discover which of Table E.1-1's
