@@ -438,6 +438,10 @@ public struct DICOMPixelData: Sendable {
     }
 
     private func windowedSample(_ sample: Double, center: Double, width: Double) -> UInt8 {
+        // A rescaled sample can be non-finite (e.g. Rescale Slope parsed
+        // from a malformed `"nan"` DS value): clamp instead of trapping on
+        // the `UInt8` conversion below.
+        guard sample.isFinite else { return sample < 0 ? 0 : 255 }
         let lower = center - 0.5 - (width - 1) / 2
         let upper = center - 0.5 + (width - 1) / 2
         if sample <= lower { return 0 }

@@ -23,6 +23,10 @@ public struct DICOMVOILUT: Sendable, Equatable {
     }
 
     func renderedValue(for value: Double) -> UInt8 {
+        // A rescaled sample can be non-finite (e.g. Rescale Slope parsed
+        // from a malformed `"nan"` DS value): clamp to the LUT's extremes
+        // instead of trapping on the `Int` conversion below.
+        guard value.isFinite else { return entries[value < 0 ? 0 : entryCount - 1] }
         let offset = Int(value.rounded(.towardZero)) - Int(firstMappedValue)
         return entries[min(max(offset, 0), entryCount - 1)]
     }
