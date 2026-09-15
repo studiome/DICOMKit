@@ -73,11 +73,23 @@ public struct DICOMDirectory: Sendable, Equatable {
         guard !offsets.isEmpty else { throw DICOMError.invalidDICOMDirectory }
         let sourceRecords = Dictionary(uniqueKeysWithValues: items.enumerated().map { (offsets[$0.offset], $0.element) })
         let recordByOffset = Dictionary(uniqueKeysWithValues: records.compactMap { record in record.itemOffset.map { ($0, record) } })
-        rootRecords = try Self.nodes(startingAt: rootOffset, recordByOffset: recordByOffset, sourceRecords: sourceRecords, visited: [])
+        rootRecords = try Self.nodes(startingAt: rootOffset, recordByOffset: recordByOffset, sourceRecords: sourceRecords, visited: [], depth: 0)
     }
 
-    private static func nodes(startingAt offset: UInt32, recordByOffset: [UInt32: DICOMDirectoryRecord], sourceRecords: [UInt32: DICOMDataset], visited: Set<UInt32>) throws -> [DICOMDirectoryNode] {
+    /// Recursion depth limit for lower-level directory entity chains.
+    ///
+    /// PS3.3 does not cap how many levels a DICOMDIR's Patient/Study/Series/
+    /// Image hierarchy may nest, and the cycle guard (`visited`) only rules
+    /// out revisiting the same offset -- a long, acyclic chain of records
+    /// still recurses once per level. Real hierarchies stay within a handful
+    /// of levels, so this is generous while still keeping a hostile or
+    /// corrupt DICOMDIR from blowing the call stack, mirroring
+    /// ``Reader/maxSequenceDepth``.
+    static let maxDirectoryDepth = 64
+
+    private static func nodes(startingAt offset: UInt32, recordByOffset: [UInt32: DICOMDirectoryRecord], sourceRecords: [UInt32: DICOMDataset], visited: Set<UInt32>, depth: Int) throws -> [DICOMDirectoryNode] {
         guard offset != 0 else { return [] }
+        guard depth < maxDirectoryDepth else { throw DICOMError.invalidDICOMDirectory }
         var result: [DICOMDirectoryNode] = []
         var nextOffset: UInt32? = offset
         var visited = visited
@@ -90,7 +102,8 @@ public struct DICOMDirectory: Sendable, Equatable {
                 startingAt: source[.offsetOfReferencedLowerLevelDirectoryEntity]?.uint32Values?.first ?? 0,
                 recordByOffset: recordByOffset,
                 sourceRecords: sourceRecords,
-                visited: visited
+                visited: visited,
+                depth: depth + 1
             )
             result.append(DICOMDirectoryNode(record: record, children: children))
             nextOffset = source[.offsetOfTheNextDirectoryRecord]?.uint32Values?.first
