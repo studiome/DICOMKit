@@ -34,6 +34,10 @@ public enum DICOMAssociationError: Error, Sendable, Equatable {
     /// was asked to move a Modality Performed Procedure Step to `.inProgress`,
     /// which N-SET may never do — a step only enters `IN PROGRESS` once, via N-CREATE.
     case invalidProcedureStepTransition
+    /// A command set or data set being reassembled from P-DATA-TF PDVs grew
+    /// past ``DICOMAssociation/maximumCommandSetSize``/``DICOMAssociation/maximumDatasetSize``
+    /// without its last-fragment bit ever being set.
+    case reassembledMessageTooLarge
 }
 
 /// The final status and identifier datasets returned by a C-FIND operation.
@@ -105,6 +109,24 @@ public actor DICOMAssociation {
     private let responseTimeout: Duration?
     private var acceptance: DICOMAssociationAcceptance?
     private var requestedPresentationContexts: [DICOMPresentationContext] = []
+
+    /// Upper bound on a command set reassembled from P-DATA-TF PDVs.
+    ///
+    /// PS3.8 places no ceiling on how many PDVs may carry fragments of one
+    /// command set before the last-fragment bit is set, so a peer that never
+    /// sets it could otherwise force unbounded growth of the accumulator in
+    /// ``receiveRequest()``/``receiveCommand(contextID:)``. Real DIMSE
+    /// command sets are always small (a handful of attributes), so this is
+    /// generous while still bounding the worst case.
+    static let maximumCommandSetSize = 1 << 20 // 1 MiB
+
+    /// Upper bound on a data set reassembled from P-DATA-TF PDVs.
+    ///
+    /// Same rationale as ``maximumCommandSetSize``, but data sets can
+    /// legitimately be large (a multi-frame image), so this is sized well
+    /// above any single real SOP instance while still bounding the worst
+    /// case for ``receiveRequest()``/``receiveDataset(contextID:)``.
+    static let maximumDatasetSize = 1 << 28 // 256 MiB
 
     /// Creates an association. A non-`nil` timeout applies to every peer PDU
     /// awaited by this actor, including association negotiation and DIMSE responses.
@@ -551,6 +573,7 @@ public actor DICOMAssociation {
                 contextID = contextID ?? value.contextID
                 guard contextID == value.contextID else { throw DICOMAssociationError.unexpectedDIMSECommand }
                 command.append(value.data)
+                guard command.count <= Self.maximumCommandSetSize else { throw DICOMAssociationError.reassembledMessageTooLarge }
                 guard value.isLastFragment else { continue }
                 let decoded = try DICOMDIMSECommand.decodeCommandSet(command)
                 guard let contextID else { throw DICOMAssociationError.unexpectedDIMSECommand }
@@ -560,6 +583,7 @@ public actor DICOMAssociation {
                     guard case .pData(let datasetValues) = try await receivePDU() else { throw DICOMAssociationError.unexpectedPDU }
                     for fragment in datasetValues where fragment.contextID == contextID && !fragment.isCommand {
                         dataset.append(fragment.data)
+                        guard dataset.count <= Self.maximumDatasetSize else { throw DICOMAssociationError.reassembledMessageTooLarge }
                         if fragment.isLastFragment { return DICOMDIMSERequest(command: decoded, contextID: contextID, dataset: dataset) }
                     }
                 }
@@ -729,6 +753,7 @@ public actor DICOMAssociation {
             guard case .pData(let values) = try await receivePDU() else { throw DICOMAssociationError.unexpectedPDU }
             for value in values where value.contextID == contextID && value.isCommand {
                 command.append(value.data)
+                guard command.count <= Self.maximumCommandSetSize else { throw DICOMAssociationError.reassembledMessageTooLarge }
                 if value.isLastFragment { return command }
             }
         }
@@ -741,6 +766,7 @@ public actor DICOMAssociation {
             guard case .pData(let values) = try await receivePDU() else { throw DICOMAssociationError.unexpectedPDU }
             for value in values where value.contextID == contextID && !value.isCommand {
                 dataset.append(value.data)
+                guard dataset.count <= Self.maximumDatasetSize else { throw DICOMAssociationError.reassembledMessageTooLarge }
                 if value.isLastFragment { return dataset }
             }
         }
