@@ -203,4 +203,12 @@ struct DICOMDisplayShutterTests {
 
         #expect(file.displayShutter == nil)
     }
+
+    @Test func circularShutterWithAnOversizedRadiusDoesNotTrapOnOverflow() {
+        // Radius (0018,1612) is an IS with up to 12 digits; squaring a value
+        // this large overflows `Int` if done with unchecked `*`.
+        let shutter = DICOMDisplayShutter(shapes: [.circular(center: DICOMShutterVertex(row: 0, column: 0), radius: 999_999_999_999)])
+
+        #expect(shutter.obscures(row: 5, column: 5) == false)
+    }
 }

@@ -54,8 +54,14 @@ public struct DICOMDisplayShutter: Sendable, Equatable {
                     return true
                 }
             case let .circular(center, radius):
-                let deltaRow = row - center.row
-                let deltaColumn = column - center.column
+                // Radius and center are parsed from `IS` strings with up to
+                // 12 digits, so squaring them in `Int` can overflow and
+                // trap; `Double` has enough range that squaring never
+                // overflows, at a precision cost that's immaterial to a
+                // pixel-obscured boolean test.
+                let deltaRow = Double(row - center.row)
+                let deltaColumn = Double(column - center.column)
+                let radius = Double(radius)
                 if deltaRow * deltaRow + deltaColumn * deltaColumn > radius * radius {
                     return true
                 }
