@@ -69,6 +69,15 @@ enum RLELosslessDecoder {
     }
 
     private static func decodePackBits(_ encoded: Data, expectedCount: Int) throws -> Data {
+        // A PackBits replicate run yields at most 128 bytes of output per 2
+        // bytes of input, so an `encoded` segment too short to plausibly
+        // produce `expectedCount` bytes even under that best case is
+        // rejected here, before `reserveCapacity` below, so a tiny fragment
+        // paired with huge declared dimensions can't force reserving
+        // gigabytes of capacity.
+        guard encoded.count > 0, expectedCount <= encoded.count * 64 else {
+            throw DICOMImageError.truncatedPixelData
+        }
         var sourceOffset = encoded.startIndex
         var output = Data()
         output.reserveCapacity(expectedCount)

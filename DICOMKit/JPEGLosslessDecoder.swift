@@ -26,6 +26,14 @@ enum JPEGLosslessDecoder {
 
         let pixelCount = try checkedProduct(expectedWidth, expectedHeight)
         let sampleCount = try checkedProduct(pixelCount, header.components.count)
+        // Even in the best case, decoding needs at least one entropy-coded
+        // bit per sample (Huffman codewords are at least 1 bit, and a
+        // difference category of 0 costs no additional bits). Rejecting a
+        // fragment too short to plausibly hold `sampleCount` samples here,
+        // before allocating `reducedSamples` below, keeps a tiny fragment
+        // paired with huge declared dimensions from forcing a
+        // multi-gigabyte allocation.
+        guard sampleCount <= data.count * 8 else { throw DICOMImageError.truncatedPixelData }
         var reader = EntropyBitReader(data: data, offset: parser.offset)
         let initialPredictor = 1 << (header.precision - header.pointTransform - 1)
         let maximumReducedSample = (1 << (header.precision - header.pointTransform)) - 1
