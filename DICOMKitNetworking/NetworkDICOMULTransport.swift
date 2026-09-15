@@ -9,6 +9,8 @@ public enum DICOMNetworkError: Error, Sendable, Equatable {
     case connectionClosed
     case incompletePDU
     case listenerFailed(String)
+    /// A peer declared a PDU length past ``NetworkDICOMULTransport/maximumPDULength``.
+    case pduTooLarge
 }
 
 /// A TCP or TLS implementation of ``DICOMULTransport`` backed by Network.framework.
@@ -19,6 +21,31 @@ public enum DICOMNetworkError: Error, Sendable, Equatable {
 public actor NetworkDICOMULTransport: DICOMULTransport {
     private let connection: NWConnection
     private var isConnected = false
+    /// The in-flight connection attempt, if one is already running.
+    ///
+    /// `connect()` only sets ``isConnected`` after its `await`, so without
+    /// this, two concurrent callers (`send`/`receive` both call `connect()`)
+    /// could each observe `!isConnected`, each install their own
+    /// `stateUpdateHandler` on ``connection``, and each call `start()` —
+    /// but only the handler set *last* ever fires, orphaning the other
+    /// caller's continuation forever. Storing the attempt here lets a
+    /// second caller await the same attempt instead of starting a new one;
+    /// safe because setting this and checking ``isConnected`` never
+    /// straddles an `await`, so no other call to `connect()` can interleave
+    /// between them.
+    private var connectTask: Task<Void, Error>?
+
+    /// Upper bound on a single PDU's declared length.
+    ///
+    /// The 4-byte PDU Length field (PS3.8 9.3) can name up to ~4 GiB, and
+    /// this transport reads it directly off the wire before any
+    /// association has negotiated Maximum Length Received `(0051H)` — so
+    /// a malicious or misbehaving peer can pair a tiny (or absent) payload
+    /// with a length near `UInt32.max`, forcing ``receiveExactly(_:)`` to
+    /// block indefinitely waiting for bytes that never arrive. This is far
+    /// above any real negotiated PDU size (commonly 16 KiB–1 MiB) while
+    /// still bounding the worst case.
+    static let maximumPDULength = 256 * 1024 * 1024
 
     public init(host: String, port: UInt16, parameters: NWParameters = .tcp) throws {
         guard let endpointPort = NWEndpoint.Port(rawValue: port) else { throw DICOMNetworkError.invalidPort }
@@ -35,27 +62,41 @@ public actor NetworkDICOMULTransport: DICOMULTransport {
     /// Starts the underlying connection. `send` and `receive` start it automatically.
     public func connect() async throws {
         guard !isConnected else { return }
-        let connection = self.connection
-        let _: Void = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-            connection.stateUpdateHandler = { state in
-                // Detach after settling once: a later `.cancelled` from `close()` would
-                // otherwise resume this same continuation a second time and crash.
-                switch state {
-                case .ready:
-                    connection.stateUpdateHandler = nil
-                    continuation.resume()
-                case .failed(let error):
-                    connection.stateUpdateHandler = nil
-                    continuation.resume(throwing: DICOMNetworkError.connectionFailed(error.debugDescription))
-                case .cancelled:
-                    connection.stateUpdateHandler = nil
-                    continuation.resume(throwing: DICOMNetworkError.connectionClosed)
-                default: break
-                }
-            }
-            connection.start(queue: .global(qos: .userInitiated))
+        if let connectTask {
+            try await connectTask.value
+            return
         }
-        isConnected = true
+        let connection = self.connection
+        let task = Task<Void, Error> {
+            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+                connection.stateUpdateHandler = { state in
+                    // Detach after settling once: a later `.cancelled` from `close()` would
+                    // otherwise resume this same continuation a second time and crash.
+                    switch state {
+                    case .ready:
+                        connection.stateUpdateHandler = nil
+                        continuation.resume()
+                    case .failed(let error):
+                        connection.stateUpdateHandler = nil
+                        continuation.resume(throwing: DICOMNetworkError.connectionFailed(error.debugDescription))
+                    case .cancelled:
+                        connection.stateUpdateHandler = nil
+                        continuation.resume(throwing: DICOMNetworkError.connectionClosed)
+                    default: break
+                    }
+                }
+                connection.start(queue: .global(qos: .userInitiated))
+            }
+        }
+        connectTask = task
+        do {
+            try await task.value
+            isConnected = true
+            connectTask = nil
+        } catch {
+            connectTask = nil
+            throw error
+        }
     }
 
     public func send(_ pdu: DICOMULPDU) async throws {
@@ -76,6 +117,7 @@ public actor NetworkDICOMULTransport: DICOMULTransport {
         let high = UInt32(header[2]) << 24 | UInt32(header[3]) << 16
         let low = UInt32(header[4]) << 8 | UInt32(header[5])
         let length = Int(high | low)
+        guard length <= Self.maximumPDULength else { throw DICOMNetworkError.pduTooLarge }
         return try DICOMULPDU.decode(header + (try await receiveExactly(length)))
     }
 
